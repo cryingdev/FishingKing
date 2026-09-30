@@ -202,8 +202,9 @@ namespace FishingKing
                 ("arctic_char", 0.20f, 0f, 1.0f, "rim"),
                 ("burbot", 0.30f, 6f, 1.0f, "rock"),
                 ("sturgeon", 0.40f, 0f, 1.5f, "rim"),
-                ("yellowtail", 0.40f, 12f, 1.1f, "hull"),
-                ("bluefin_tuna", 0.35f, 14f, 1.3f, "hull"),
+                ("yellowtail", 0.40f, 12f, 1.1f, "hull,rock"),         // (the ocean's reef pinnacle too)
+                ("mahi_mahi", 0.45f, 12f, 1.0f, "weed"),               // under the drifting weed mat
+                ("bluefin_tuna", 0.35f, 14f, 1.3f, "hull,weed"),
                 ("great_white", 0.45f, 16f, 1.6f, "hull"),
                 ("coelacanth", 0.60f, 14f, 1.5f, "crystal,rock"),
                 ("anglerfish", 0.40f, 8f, 1.1f, "rock"),

@@ -37,6 +37,10 @@ namespace FishingKing
         /// <summary>Zones outlined in the aim layer as last built, and its alpha now (for the tests).</summary>
         public int ZonesDrawn { get; private set; }
         public float Alpha => alpha;
+        /// <summary>Per zone outlined in the aim layer as last built: the canvas pixels of its dashes (index r * W + c, rows
+        /// from the bottom like the stage's layers), so a test can tell which of them lie in open water (for the tests).</summary>
+        public readonly Dictionary<string, List<int>> AimPixels = new Dictionary<string, List<int>>();
+        public int AimOrder => aimSr != null ? aimSr.sortingOrder : 0;
         public bool ShowDrawn => showSr != null && showSr.enabled;
 
         public static ObstacleOverlay Create(FishingController c)
@@ -91,7 +95,7 @@ namespace FishingKing
             bool show = Obstacles.Show && obs != null && !obs.Empty;
             if (show && showTex == null) BuildShow();
             if (showSr != null) showSr.enabled = show;
-            // (the ocean's front layer bobs with the swell: the hull zone with it)
+            // (the ocean's front layer bobs with the swell, 1 px: the zones with it, so the hull's stay under the bow)
             transform.localPosition = stage.DeckBob;
         }
 
@@ -168,7 +172,7 @@ namespace FishingKing
         }
 
         /// <summary>A closed outline through the canvas points, 1 px, dashed 2 on / 2 off along the perimeter (or solid).</summary>
-        void Outline(List<Vector2> pts, Color32 col, bool dashed)
+        void Outline(List<Vector2> pts, Color32 col, bool dashed, List<int> sink = null)
         {
             int k = 0, lastC = int.MinValue, lastR = int.MinValue;
             int n = pts.Count;
@@ -184,7 +188,11 @@ namespace FishingKing
                     if (c == lastC && r == lastR) continue;
                     lastC = c;
                     lastR = r;
-                    if (!dashed || (k & 3) < 2) Plot(c, r, col);
+                    if (!dashed || (k & 3) < 2)
+                    {
+                        Plot(c, r, col);
+                        if (sink != null && c >= 0 && c < W && r >= 0 && r < H) sink.Add(r * W + c);
+                    }
                     k++;
                 }
             }
@@ -214,6 +222,7 @@ namespace FishingKing
             builtX = anchorX;
             builtCast = castDist;
             Clear();
+            AimPixels.Clear();
             int n = 0;
             var anchor = new Vector2(anchorX, 0f);
             void Draw(Obstacle o, Color32 col)
@@ -221,7 +230,9 @@ namespace FishingKing
                 if (Obstacles.Dist(o, anchor) > castDist + 2f) return;
                 var pts = Project(o.Poly, o.top, true);
                 if (pts == null || pts.Count < 3 || Span(pts) < 4f) return;
-                Outline(pts, col, true);
+                var sink = new List<int>();
+                Outline(pts, col, true, sink);
+                AimPixels[o.id] = sink;
                 n++;
             }
             foreach (var o in obs.Snags) Draw(o, SnagCol);

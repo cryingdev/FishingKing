@@ -2,19 +2,33 @@
 obstacles/ocean.py - the OCEAN's obstacles (Docs/obstacles_spec.md 3.7). Owner: B3 (was B2 in 13.6).
 
 The angler stands on the bow of a boat far out at sea: nothing painted is in the water (the deck, bulwarks, pulpit,
-cooler, life ring, coil and rod are the boat he stands on; the cast leaves the rod tip beyond the bow: spec 1.3). What
-the ocean exports is the boat's HULL under the bow, an export-only helper:
+cooler, life ring, coil and rod are the boat he stands on; the cast leaves the rod tip beyond the bow: spec 1.3).
+Everything the ocean exports is an export-only helper (never painted: only ever seen as the aim outlines):
   hull   snag hull   the hull under the painted bow: plan = hyb_ocean.outline(inset=0) (the gunwale outline the stage
                      builds the bulwark / cap rail / deck from, Blender x, y -> game x, z), y -1.4 .. 0; abrasive.
                      "front" layer (the ocean's front layer bobs with the swell: spec 9.3).
          skirt       the ring round it (snag, top -0.35): 1.5 m, not the spec's 1.0 - see SKIRT below.
          cover       grown 1.2 m, cover type "hull" (방어 / 참다랑어 / 백상아리 dive under the bow): the hold point lies
                      in front of the stem, inside the skirt.
+  The hull and its zones all lie under the painted bow (z <= 2.7): the aim outlines never show them. The open water
+  gets its own structure, in view and within every rod's cast (REEF / KELP below):
+  reef   snag rock   a submerged pinnacle (수중여) left of the bow, centre (-6.5, 16.0), ~2.2 m across its top, from the
+                     bed up to 2.2 m under the surface; abrasive. Sinking lures (spoon, jig, egi) and float rigs set
+                     deeper than 2.2 m snag on it; a crank (runs to 2.5 m) grazes its top (the 딱! deflection).
+         cover       grown 1.5 m, cover type "rock" (방어 hold on the reef: the line rubs on the rock).
+  kelp   weed weed   a drifting mat of sargassum weed (모자반 떼) right of the bow, centre (6.2, 11.5), ~5.2 x 2.8 m,
+                     from 1.4 m under the surface up to the film (top -0.05: surface lures and the kona catch it too).
+         cover       grown 1.0 m, cover type "weed" (만새기 / 참다랑어 hang under floating weed); not abrasive.
+  Both keep off the straight-ahead lane (|x| < 3 m) and lie short of the legends' lurk band (z 20-45, 6 m deep), and
+  their outlines (drawn at the zone's top, refracted) fall in open water, clear of the painted bow. (A structure on the
+  bed would read wrongly: 16 m down, refraction draws its outline some 10 m nearer, on top of the kelp.)
 SKIRT: the exporter puts a cover's hold point on the skirt ring 0.6 x skirt out from the footprint and only inside the
 fight's limits with a margin (z >= zNear + 0.5 = 2.1). The stem is at z 1.25, so a 1.0 m skirt puts it at z 1.85 and
 the exporter writes no cover at all; 1.5 m puts it at z 2.15 (inside the skirt, which then reaches z 2.75, so a fish
 holding there rubs the line on the hull: spec 7.3 / 7.4 case 2).
 """
+import math
+
 STAGE = "ocean"
 
 # hyb_ocean.main(): render_front(random.Random(31)), then render_back(random.Random(77)). The back layer is the open
@@ -29,16 +43,63 @@ RULES = [
 HULL_BOT = -1.4
 SKIRT, SKIRT_TOP, COVER = 1.5, -0.35, 1.2
 
+# the open-water structure: (centre (x, z), plan radii of an irregular outline (radius, angle deg), rotation)
+REEF_C, REEF_TOP, REEF_COVER = (-6.5, 16.0), -2.2, 1.5
+REEF_R = [1.25, 1.05, 1.2, 0.95, 1.1, 1.3, 1.0, 1.15, 1.2, 0.9, 1.05, 1.2]
+KELP_C, KELP_AX, KELP_ROT, KELP_BOT, KELP_TOP, KELP_COVER = (6.2, 11.5), (2.6, 1.4), -18.0, -1.4, -0.05, 1.0
+KELP_R = [1.0, 0.92, 1.05, 0.9, 0.97, 1.0, 0.88, 1.04, 0.95, 1.0, 0.9, 1.02, 0.96, 0.9, 1.0, 0.94]
+
+
+def depth_at(L, z):
+    """StageLayout.DepthAt (Assets/Scripts/Core/Art.cs) without the tide (the ocean has none)."""
+    zs, vs = L["depthZ"], L["depthV"]
+    if z <= zs[0]:
+        return float(vs[0])
+    for i in range(1, len(zs)):
+        if z <= zs[i]:
+            return float(vs[i - 1] + (vs[i] - vs[i - 1]) * (z - zs[i - 1]) / (zs[i] - zs[i - 1]))
+    return float(vs[-1])
+
+
+def _prism(ctx, kind, oid, ring, z0, z1, **props):
+    """A vertical prism (Blender axes) over the plan ring (x, y) between z0 and z1."""
+    n = len(ring)
+    v = [(x, y, z) for z in (z0, z1) for (x, y) in ring]
+    f = [tuple(range(n))[::-1], tuple(range(n, 2 * n))] + [(k, (k + 1) % n, n + (k + 1) % n, n + k) for k in range(n)]
+    return ctx["helper"](kind, oid, v, f, **props)
+
+
+def _blob(c, radii, ax=(1.0, 1.0), rot_deg=0.0):
+    """An irregular closed outline round c: radius radii[k] x the ellipse axes, rotated."""
+    n = len(radii)
+    cs, sn = math.cos(math.radians(rot_deg)), math.sin(math.radians(rot_deg))
+    out = []
+    for k, r in enumerate(radii):
+        a = 2 * math.pi * k / n
+        x, y = ax[0] * r * math.cos(a), ax[1] * r * math.sin(a)
+        out.append((c[0] + x * cs - y * sn, c[1] + x * sn + y * cs))
+    return out
+
 
 def extra(ctx):
-    smod = ctx["smod"]
+    smod, L = ctx["smod"], ctx["L"]
+    out = []
+    # ---- the hull under the bow
     pts = smod.outline(inset=0.0)                       # the gunwale outline (Blender x, y), clockwise from aft-left
     n = len(pts)
     v = [(x, y, z) for z in (HULL_BOT, 0.0) for (x, y) in pts]
     f = [tuple(range(n)), tuple(range(2 * n - 1, n - 1, -1))] + [(k, k + 1, n + k + 1, n + k) for k in range(n - 1)] \
         + [(n - 1, 0, n, 2 * n - 1)]
-    return [ctx["helper"]("snag", "hull", v, f, mat="hull", tags="hull,abrasive", bot=HULL_BOT, top=0.0,
-                          skirt=SKIRT, skirt_top=SKIRT_TOP, cover=COVER, cover_for="hull")]
+    out.append(ctx["helper"]("snag", "hull", v, f, mat="hull", tags="hull,abrasive", bot=HULL_BOT, top=0.0,
+                             skirt=SKIRT, skirt_top=SKIRT_TOP, cover=COVER, cover_for="hull"))
+    # ---- the reef pinnacle: bed .. 2.2 m under the surface
+    bed = -depth_at(L, REEF_C[1])
+    out.append(_prism(ctx, "snag", "reef", _blob(REEF_C, REEF_R), bed - 0.3, REEF_TOP, mat="rock",
+                      tags="rock,abrasive,reef", top=REEF_TOP, bot=-99.0, cover=REEF_COVER, cover_for="rock"))
+    # ---- the drifting weed mat: 1.4 m deep .. the film
+    out.append(_prism(ctx, "weed", "kelp", _blob(KELP_C, KELP_R, KELP_AX, KELP_ROT), KELP_BOT, KELP_TOP, mat="weed",
+                      tags="weed,kelp", top=KELP_TOP, bot=KELP_BOT, cover=KELP_COVER, cover_for="weed"))
+    return out
 
 
 # ---------------------------------------------------------------------------------------------------- the checks
@@ -124,6 +185,30 @@ def check(ctx):
                 "(z >= zNear + 0.2 = %.2f) %s" % (e["hx"], e["hz"], X.inside(sk, (e["hx"], e["hz"])),
                                                   X.inside(p, (e["hx"], e["hz"])), L["zNear"] + 0.2,
                                                   e["hz"] >= L["zNear"] + 0.2))
+    # the open-water structure: where the aim outlines draw it (the zone at its top, refracted) vs the painted bow
+    for oid in ("reef", "reef.cover", "kelp", "kelp.cover"):
+        e = obst.get(oid)
+        if e is None:
+            log("CHECK ocean %s FAIL: missing" % oid)
+            continue
+        p = np.array(e["pts"]).reshape(-1, 2)
+        samp = np.concatenate([p[k - 1] + (p[k] - p[k - 1]) * t[:, None]
+                               for k in range(len(p)) for t in [np.linspace(0, 1, 16, endpoint=False)]])
+        y = min(0.0, e["top"])
+        q = cam.px(cam.apparent(np.stack([samp[:, 0], np.full(len(samp), y), samp[:, 1]], -1)))[:, :2]
+        on = (q[:, 0] >= 0) & (q[:, 0] < W) & (q[:, 1] >= 0) & (q[:, 1] < H)
+        qi = q[on].astype(int)
+        deck = int(A[qi[:, 1], qi[:, 0]].sum()) if len(qi) else 0
+        near = float(np.min(np.hypot(p[:, 0], p[:, 1])))
+        extra_ = ""
+        if e["kind"] == "cover":
+            extra_ = " hold (%.2f, %.2f) cross %s for %s" % (e["hx"], e["hz"], e["holdCross"], ",".join(e["coverFor"]))
+        ok = on.all() and (deck == 0 or e["kind"] == "cover")      # (covers are not outlined while aiming)
+        log("CHECK ocean %-11s %s %-5s %-4s x %.2f..%.2f z %.2f..%.2f y %.2f..%.2f, %.1f m from him at the nearest; "
+            "outline on screen %d/%d samples (px x %.0f..%.0f y %.0f..%.0f), on the painted bow %d%s"
+            % (oid, "PASS" if ok else "FAIL", e["kind"], e["mat"], p[:, 0].min(), p[:, 0].max(), p[:, 1].min(),
+               p[:, 1].max(), e["bot"], e["top"], near, int(on.sum()), len(q), q[:, 0].min(), q[:, 0].max(),
+               q[:, 1].min(), q[:, 1].max(), deck, extra_))
     # close-up preview of the bow (4x): the hull at the gunwale (yellow, the painted bow edge it follows) and the
     # underwater zones at their apparent tops as the game would draw them
     back = R.load_png(os.path.join(X.C.SPRITES, "Stages", "ocean_back.png"))

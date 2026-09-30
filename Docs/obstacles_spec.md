@@ -285,8 +285,30 @@ circle (`r` + margin). Stages have <= ~200 entries; no spatial index is needed.
 
 | Blender | kind / mat | notes |
 |---|---|---|
-| helper: the hull under the bow | snag hull, abrasive, `bot` -1.4, `top` 0 | plan = `hyb_ocean.outline(inset=0)` (the gunwale outline, Blender x, y); `skirt` 1.0, `cover` 1.2 `hull` (the fish diving under the bow) |
+| helper: the hull under the bow | snag hull, abrasive, `bot` -1.4, `top` 0 | plan = `hyb_ocean.outline(inset=0)` (the gunwale outline, Blender x, y); `skirt` 1.5 (1.0 leaves the hold point short of the fight's limits: no cover), `cover` 1.2 `hull` (the fish diving under the bow) |
+| helper `reef`: a submerged rock pinnacle (수중여) left of the bow | snag rock, abrasive (tags rock, abrasive, reef), `bot` -99, `top` -2.2 | an irregular 12-gon round (-6.5, 16.0), 2.4 x 2.1 m (x -7.63..-5.25, z 14.96..17.04); `cover` 1.5 `rock` (hold (-7.04, 17.34), behind it: the line crosses the rock) |
+| helper `kelp`: a drifting mat of sargassum weed (모자반) right of the bow | weed weed (tags weed, kelp), `bot` -1.4, `top` -0.05 | an irregular 16-gon round (6.2, 11.5), 4.9 x 3.0 m (x 3.75..8.67, z 9.99..13.04); `cover` 1.0 `weed` (hold (7.00, 13.02), behind it) |
 | deck, bulwark, rails, cooler, rod, coil | not obstacles | the cast leaves the rod tip beyond the bow |
+
+The hull and its zones lie under the painted bow (z <= 2.7): the aim outlines (sorted under the front layer, 9.3) can
+never show them, so the ocean gets its open-water structure from `reef` and `kelp`, 11-17 m out (within every rod's
+cast + 2 m), off the straight-ahead lane (|x| >= 3.75) and short of the ocean legends' lurk band (z 20-45, 6 m deep:
+청새치 / 백상아리 lurk points and encounters are untouched). What they do:
+
+- **reef**: sinking lures (spoon, jig, egi) and float rigs set deeper than 2.2 m snag on it (`밑걸림!`); a crank (runs
+  to 2.5 m) grazes its top (depthF 0.5, the 딱! deflection 6.8); surface lures, the minnow and a kona run fast pass
+  over (a kona left to sink does not). A 방어 (cover `rock`, added to its `hull`) holds on it: bites there x1.35, cover
+  runs to it, and the line rubs on the rock (`줄이 바위에 쓸린다!`).
+- **kelp**: reaches the film, so surface lures and the kona catch it too (`수초에 걸렸다!`; soft: a sweep either way
+  frees it), the frog is weedless. 만새기 (new: seek 0.45, reach 12, dig 1.0, `weed`) and 참다랑어 (`hull, weed`) hang
+  under it: bites x1.35, cover runs into it (not abrasive: the fish digs in, the line is not worn).
+- The ocean current (drift) moves rigs as before; a snagged rig stays fixed at its snag point (6.4).
+
+A structure on the bed (18-20 m down here) does not read: the outline is drawn at the zone's top refracted
+(`Persp.Apparent`), and 16 m down that puts it ~10 m nearer on screen than it lies. The exporter's ocean check prints,
+per new zone, its outline projected with the JSON camera against the painted bow: reef 128 / 128 samples on screen and 0
+on the bow, kelp 176 / 176 and 0 (the covers, never outlined while aiming, touch the painted rod / pulpit rail at a few
+samples in `-fkobstacles show` only).
 
 ### 3.8 cave (owner B3)
 
@@ -553,8 +575,9 @@ set in `GameDatabase.BuildFish` by one table (like the jump styles). Everyone el
 | arctic_char | 북극곤들매기 | 0.20 | - | 1.0 | rim |
 | burbot | 모캐 | 0.30 | 6 | 1.0 | rock |
 | sturgeon (legend) | 철갑상어 | 0.40 | - | 1.5 | rim |
-| yellowtail | 방어 | 0.40 | 12 | 1.1 | hull |
-| bluefin_tuna | 참다랑어 | 0.35 | 14 | 1.3 | hull |
+| yellowtail | 방어 | 0.40 | 12 | 1.1 | hull, rock (the ocean's reef) |
+| mahi_mahi | 만새기 | 0.45 | 12 | 1.0 | weed (the ocean's drifting weed mat) |
+| bluefin_tuna | 참다랑어 | 0.35 | 14 | 1.3 | hull, weed |
 | great_white (legend) | 백상아리 | 0.45 | 16 | 1.6 | hull |
 | coelacanth (legend) | 실러캔스 | 0.60 | 14 | 1.5 | crystal, rock |
 | anglerfish | 초롱아귀 | 0.40 | 8 | 1.1 | rock |
@@ -700,7 +723,8 @@ opaque pixels are not drawn (the outline stays "in the water").
 
 A static overlay built once at stage load (and on a rod change): a 640x400 point-filtered `Texture2D` placed exactly
 like the back sprite (centred on the scene origin, 16 px per unit), sorting `Fx.OrderRipple + 1` (under the fan dots);
-only its alpha animates. On the ocean it follows the front layer's swell bob (the hull zone).
+only its alpha animates. On the ocean it follows the front layer's swell bob (1 px; the hull zones stay under the bow,
+the reef and the weed mat show in the open water in front of it).
 
 ---
 
@@ -903,6 +927,14 @@ forcing the next run's cover roll, `DebugHook` as today), seeded so the rolls re
 | 7 | the same fish again, side pressure against the cover run | `pullout`: turned with A < 0.6, `커버에서 끌어냈다!` | `obst_pullout.png` |
 | 8 | swamp (only if `obstacles_swamp.json` exists, else `SKIP`): the frog onto a pad cluster, wait 2 s, wind off the edge; then a worm float onto a pad, a 톡 | `frog_pad` (sat, dropped off, window opened), `pad_snag` (snagged, freed) | `obst_pad.png` |
 | 9 | `-fkobstacles show` on for 1 s on every stage that has data | - | `obst_show_<stage>.png` |
+
+The ocean (3.7) has its own set: the same command with `-fkstage ocean` (`Debug/AutoPilot.ObstaclesOcean.cs`):
+`ocean_aim` (the reef and the weed mat outlined, every dash in open water; the hull's none; the aim layer under the front
+layer), `ocean_snag_reef` (a spoon 3 m down wound through the reef snags, a 톡 frees it), `ocean_snag_kelp` (a minnow
+0.8 m down in the mat: a weed snag), `ocean_snag_open` (the same spoon in open water: none), `ocean_bites` (BiteMult
+with the hook in `reef.cover` / `kelp.cover` against open water: x1.35 / x1.15), `ocean_cover` (방어 -> `reef.cover`,
+만새기 -> `kelp.cover`; a hooked 방어 sent to the reef rubs the line on it), `ocean_drift`, `ocean_lurk`; shots
+`obst_ocean_aim`, `obst_ocean_snag`, `obst_ocean_rub`, `obst_ocean_show`.
 
 No other capture rounds.
 

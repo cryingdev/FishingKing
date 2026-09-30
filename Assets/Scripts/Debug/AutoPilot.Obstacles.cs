@@ -44,6 +44,22 @@ namespace FishingKing
             var sd = Game.Data;
             sd.sweepHint = sd.tideHint = sd.driftHint = sd.mendHint = sd.sideHint = sd.timeHint = true;
             var ctl = FindAnyObjectByType<FishingController>();
+            if (ctl != null && ctl.Stage.Def.id == "ocean")
+            {
+                // (-fkstage ocean: the ocean's open-water structure instead: AutoPilot.ObstaclesOcean.cs)
+                if (Dialog.Open)
+                {
+                    Click("알겠어요");
+                    yield return new WaitForSeconds(0.5f);
+                }
+                yield return OceanObstacles(ctl);
+                PointerInput.SimLeft = PointerInput.SimRight = false;
+                PointerInput.SimDown = false;
+                PointerInput.SimActive = false;
+                Debug.Log($"[OBST] obstacles test (ocean) done: {obFails} failed");
+                Application.Quit();
+                yield break;
+            }
             if (ctl == null || ctl.Stage.Def.id != "stream")
             {
                 yield return GoStage("stream");
