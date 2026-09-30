@@ -31,5 +31,6 @@
 | `-fkaqua feed\|live\|clean\|decor\|tanks\|migrate` | 수족관 시나리오 (사료·생먹이·청소·꾸미기·수조 단계·구 세이브) |
 | `-fkaquahours <h>` · `-fkaquafeed basic\|premium` · `-fkaquadirt <0..1>` · `-fkaqualog` | 수족관 시간 빨리 감기·먹이 유지·오염도·로그 |
 | `-fkactors2d` | 3D 캐릭터 대신 2D 스프라이트 |
+| `-fkencplay coolsave` → `-fkauto legcool` | 저장된 전설어 쿨다운 검사: `-fkencounter natural -fkauto encounter -fkencplay coolsave`로 실패 조우(쿨다운 저장) 후, 같은 `-fksave`로 `-fkencounter` 없이 `-fkscene Fishing -fkstage <같은 곳> -fkauto legcool` 재실행 → 아직 자리 비움·시간 지나면 복귀·시계 되돌림 상한 확인 |
 
 에디터 빌드: `Unity.exe -batchmode -quit -projectPath <프로젝트> -executeMethod FishingKing.EditorTools.FishingKingSetup.BuildWindows [-fkBuildOut <폴더>]` (기본 출력 `Builds/Windows`).

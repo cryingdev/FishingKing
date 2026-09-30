@@ -807,7 +807,7 @@ namespace FishingKing
             }
             LegendWatch.DebugMode = "now";
             LegendWatch.DebugLegend = sp.id;
-            LegendWatch.CoolUntil.Clear();
+            LegendWatch.ClearCooldowns();
             // (the lurk point comes at once; its next cue put off past this run, which checks the encounter's own zoom)
             yield return null;
             if (ctl.Watch.HasLurk) ctl.Watch.DebugLurk(ctl.Watch.Lurk, 60f);

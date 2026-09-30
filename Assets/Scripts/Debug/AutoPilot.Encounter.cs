@@ -11,7 +11,9 @@ namespace FishingKing
     /// -fkauto encounter (Docs/lures_legend_spec.md 4.5, Docs/legends_rollout.md 6): plays the legend encounter with the
     /// simulated pointer, with -fkencounter (now: it starts 1 s after the lure lands; natural: the key is worked the way
     /// the legend likes near the lurk point until the meter fills) and -fkstage / -fklegend for which legend.
-    /// -fkencplay perfect | bad | early | both (default both: a perfect encounter, then a failed one). Each mood is played
+    /// -fkencplay perfect | bad | early | both (default both: a perfect encounter, then a failed one) | coolsave (a failed
+    /// one whose cooldown is set and saved despite -fkencounter; relaunch with the same -fksave and -fkauto legcool to check
+    /// it survived: <see cref="LegendCoolTest"/>). Each mood is played
     /// by its verb:
     /// <list type="bullet">
     /// <item>perfect: Wind the band midpoint (circles, radius 0.12 H); RunPause the band midpoint for the mid run length,
@@ -55,7 +57,10 @@ namespace FishingKing
             }
             string mode = Arg("-fkencplay");
             if (string.IsNullOrEmpty(mode) || mode.StartsWith("-")) mode = "both";
-            var plays = mode == "both" ? new[] { "perfect", "bad" } : new[] { mode };
+            // coolsave: a failed encounter whose cooldown is set and saved (checked after a relaunch by -fkauto legcool)
+            bool coolSave = mode == "coolsave";
+            LegendWatch.DebugKeepCool = coolSave;
+            var plays = mode == "both" ? new[] { "perfect", "bad" } : coolSave ? new[] { "bad" } : new[] { mode };
             PointerInput.SimDpi = 0f;
             encKey = Game.I.Bait;
             encId = LegendWatch.DebugLegend ?? (ctl.Watch != null ? ctl.Watch.Legend.id : "none");
@@ -72,6 +77,15 @@ namespace FishingKing
             StartCoroutine(EncCaptionCheck(ctl));
             foreach (var style in plays)
                 yield return EncounterRun(ctl, style);
+            if (coolSave)
+            {
+                var sp = GameDatabase.GetFish(encId);
+                var rec = Game.I.FindLegend(encId);
+                long left = LegendWatch.Remaining(encId);
+                EncCheck($"cooldown saved ({encId}: {left}s left of {rec?.coolLen ?? 0}s, until {rec?.coolUntil ?? 0}, away {ctl.Watch.AwayOf(sp)})",
+                    sp != null && rec != null && rec.coolLen == Mathf.CeilToInt(sp.encounter.coolFail) && left > 0 && ctl.Watch.AwayOf(sp));
+                Game.I.Save();
+            }
             Log($"[CAP] total: {capFrames} captioned frames, caption on the face {capHits}, overlays on the face {capOverlays}, spot changes while a caption showed {capMoves}" +
                 $"; top view: {capTopFrames} captioned frames, caption on the lure {capFrogHits}, overlays on the lure {capFrogOverlays}");
             EncCheck($"no caption on the legend's face ({capHits} of {capFrames} captioned frames)", capFrames > 0 && capHits == 0);

@@ -145,7 +145,7 @@ namespace FishingKing
                 string mode = Arg("-fkencounter");
                 LegendWatch.DebugMode = mode == "natural" ? "natural" : "now";
                 LegendWatch.DebugLegend = sp.id;
-                LegendWatch.CoolUntil.Clear();
+                LegendWatch.ClearCooldowns();
                 foreach (var lr in I.data.legends) lr.pity = 0;
             }
             FishSpawner.OnlySpecies = GameDatabase.GetFish(Arg("-fkfish"));

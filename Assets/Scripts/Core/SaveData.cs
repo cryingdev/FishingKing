@@ -41,12 +41,16 @@ namespace FishingKing
     }
 
     /// <summary>A legend met through its underwater encounter: times seen (reached the approach), failed, and the pity
-    /// bonus on the next encounter's starting interest (rises by the legend's pityStep per fail, reset when it is landed).</summary>
+    /// bonus on the next encounter's starting interest (rises by the legend's pityStep per fail, reset when it is landed),
+    /// and its cooldown: away until coolUntil (unix seconds, wall clock: it runs on while the app is closed; 0 = none),
+    /// coolLen the length it was given (a device clock set back never makes it longer: LegendWatch.Remaining).</summary>
     [Serializable]
     public class LegendRecord
     {
         public string id;
         public int seen, fails, pity;
+        public long coolUntil;
+        public int coolLen;
     }
 
     [Serializable]

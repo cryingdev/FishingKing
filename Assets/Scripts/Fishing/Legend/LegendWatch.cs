@@ -16,10 +16,10 @@ namespace FishingKing
     /// </summary>
     public class LegendWatch
     {
-        /// <summary>Unscaled time until which a legend (by species id) is away (runtime only, per session).</summary>
-        public static readonly Dictionary<string, float> CoolUntil = new Dictionary<string, float>();
         /// <summary>-fkencounter: null (normal), "now" (1 s after the lure lands, no conditions) or "natural" (see Game).</summary>
         public static string DebugMode;
+        /// <summary>Test hook (-fkencplay coolsave): cooldowns are set even under -fkencounter (normally it has none).</summary>
+        public static bool DebugKeepCool;
         /// <summary>-fklegend: the legend the -fkencounter test is for (null = the stage's first).</summary>
         public static string DebugLegend;
         /// <summary>Which legend's wrong-lure tip a stage shows next (the ocean alternates, one per visit).</summary>
@@ -115,21 +115,49 @@ namespace FishingKing
             return legends.Count > 0 ? new LegendWatch(c, legends) : null;
         }
 
-        public bool AwayOf(FishSpecies sp) => CoolUntil.TryGetValue(sp.id, out float t) && Time.unscaledTime < t;
+        /// <summary>
+        /// Seconds a legend (by species id) is still away. Cooldowns are saved in its <see cref="LegendRecord"/> as a wall
+        /// clock end (unix seconds), so they keep running while the app is closed; a device clock set back is capped at the
+        /// cooldown's own length (the end moved up to now + that length).
+        /// </summary>
+        public static long Remaining(string id)
+        {
+            var rec = Game.I != null ? Game.I.FindLegend(id) : null;
+            if (rec == null || rec.coolUntil <= 0) return 0;
+            long now = SaveSystem.Now, left = rec.coolUntil - now;
+            if (left > rec.coolLen)
+            {
+                left = rec.coolLen;
+                rec.coolUntil = now + left;
+            }
+            return left > 0 ? left : 0;
+        }
+
+        /// <summary>Every saved cooldown off (the -fkencounter tests).</summary>
+        public static void ClearCooldowns()
+        {
+            if (Game.I == null) return;
+            foreach (var r in Game.Data.legends) r.coolUntil = r.coolLen = 0;
+        }
+
+        public bool AwayOf(FishSpecies sp) => Remaining(sp.id) > 0;
 
         /// <summary>Every legend of the stage is away.</summary>
         public bool Away => entries.All(e => AwayOf(e.sp));
 
-        /// <summary>Sends a legend away for this long (no cooldowns in the -fkencounter test).</summary>
+        /// <summary>Sends a legend away for this long, saved (no cooldowns in the -fkencounter test).</summary>
         public void Cool(FishSpecies sp, float seconds)
         {
             foreach (var e in entries) e.meter = 0f;
-            if (DebugMode != null)
+            if (DebugMode != null && !DebugKeepCool)
             {
                 HasLurk = false;
                 return;
             }
-            CoolUntil[sp.id] = Time.unscaledTime + seconds;
+            var rec = Game.I.Legend(sp.id);
+            rec.coolLen = Mathf.Max(0, Mathf.CeilToInt(seconds));
+            rec.coolUntil = SaveSystem.Now + rec.coolLen;
+            Game.I.Save();
             if (Away) HasLurk = false;
         }
 

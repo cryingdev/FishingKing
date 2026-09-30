@@ -778,7 +778,8 @@ values in `PROFILE` for the preview mock, and list their lure billboards:
    - the great white needs **≥ 100 kgf (티타늄 와이어)**.
    - Below the gate, that legend's meter stops at 0.7 and gives its gear tip once per visit. With PE 8호 a player can
      only meet the marlin.
-5. **Cooldowns and pity are per legend.** After a marlin fight the great white can still come, and vice versa.
+5. **Cooldowns and pity are per legend,** both saved in its `LegendRecord` (the cooldown as a wall-clock end, so it
+   survives a relaunch: Docs/lures_legend_spec.md 2.11). After a marlin fight the great white can still come, and vice versa.
 6. **Tips:**
    - A non-key lure near the lurk for 30 s gets the marlin's `tipWrongLure` first, then the great white's on the next
      visit.

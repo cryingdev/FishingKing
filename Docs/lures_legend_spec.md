@@ -36,7 +36,7 @@ Constraints that are not negotiable:
 | States | `Encounter` + `Strike` | One `Encounter` + pure phase model | **One `S.Encounter`**, with phases in a pure `LegendEncounter` model (like FightModel). |
 | Hook window | 0.8 s + hookBonus, perfect ≤ 0.25 s | 0.45 s + hookBonus, perfect ≤ 0.2 s | **0.6 s + hookBonus**, perfect ≤ 0.25 s, taps buffered 0.15 s before the close. |
 | Early tap | Gauge set to 70 | −40 and back to wary | **Gauge set to 65** (curious band). It is a second chance, not a fail. |
-| Cooldown | 45 s, saved | 90 s / 180 s, runtime | **60 s after a fail, 180 s after any fight.** Runtime only (static per session). |
+| Cooldown | 45 s, saved | 90 s / 180 s, runtime | **60 s after a fail, 180 s after any fight.** Saved per legend as a wall-clock end, so it runs on while the app is closed (see 2.11). |
 | Seen / first-encounter data | `SpeciesRecord.seen` | `SpeciesRecord.seen` | **A new `LegendRecord` list.** Adding seen-only `SpeciesRecord`s would break `RegisterCatch` (new species = `rec == null`) and the collection counter (`records.Count`). |
 | Ice | Grey out steady / topwater lures | Grey out or leave useless | **Grey out every lure except 바닥 and 수직**, with the note "얼음 구멍에서는 쓸 수 없어요". |
 | 황금 떡밥 | A spawn boost only | No role for converted legends | For **converted** legends it has no effect (the key lure is what matters). The 5 unconverted legends keep the current golden-bait path unchanged. |
@@ -667,11 +667,11 @@ Perfect play takes about 12 s of Tease, plus 7.3 s of intro and about 1.5 s of b
 **Save** (`SaveData`):
 
 ```csharp
-[Serializable] public class LegendRecord { public string id; public int seen, fails, pity; }
+[Serializable] public class LegendRecord { public string id; public int seen, fails, pity; public long coolUntil; public int coolLen; }
 public List<LegendRecord> legends = new List<LegendRecord>();   // Sanitize: ??= new
 ```
 
-Cooldowns are runtime only: a static `Dictionary<string, float>` on `LegendWatch`, keyed by legend id and holding the unscaled time until which the legend is unavailable.
+Cooldowns are saved in the legend's `LegendRecord`: `coolUntil` is the wall-clock end (UTC unix seconds, `SaveSystem.Now`; 0 = none) and `coolLen` the length it was given. `LegendWatch.Cool` sets both and saves; `LegendWatch.Remaining(id)` / `AwayOf` read them. Because the end is wall clock, a cooldown keeps running while the app is closed and a relaunch does not reset it. If the device clock is set back, a remaining time longer than `coolLen` is capped at `coolLen` (the end moved to now + `coolLen`). Saves from before this have no cooldown. The `-fkencounter` tests clear the saved cooldowns at start and set none.
 
 ### 2.12 Korean texts
 
@@ -826,7 +826,7 @@ Coelacanth (root node)
 | File | Kind | Responsibility |
 |---|---|---|
 | `LureInput.cs` | Pure | `LureInput`: flick, tap and pause detection (1.1); `event Action<float> Flicked`; `PauseT`, `WindRunT`, `Winding`; keyboard T / Shift+T. `LureAction`: Q, `StrikeOpen`, `Feedback` (1.4). |
-| `Legend/LegendWatch.cs` | Plain class | Lurk point, cues, meter, tells, gear gate, roll, static cooldowns; `Debug` hooks for `-fkencounter`. |
+| `Legend/LegendWatch.cs` | Plain class | Lurk point, cues, meter, tells, gear gate, roll, saved cooldowns (read from `LegendRecord`); `Debug` hooks for `-fkencounter`. |
 | `Legend/LegendEncounter.cs` | Pure | The phase machine and gauge (2.3, 2.8, 2.9). Inputs each tick: `LureInput` and `Gesture`. Outputs: `Phase`, `Gauge`, `Mood`, `PhaseT`, and events `Penalty(kind, text)`, `Credit(text)`, `MoodChanged`, `Tell`, `Close`, `Hooked(perfect, lure)`, `Failed(reason, tip)`. |
 | `Legend/EncounterView.cs` | MonoBehaviour | RTs, cameras, quads, crop rect animation, dim, frame, timer, backdrop parallax, particles, line, eyeshine, flash, wipe, choreography targets, per-frame `_LurePos`. |
 | `Legend/Legend3D.cs` | Poser (like `Reel3D`) | `TryCreate(EncounterDef, cm)`; `Pose(dt, swimHz, mood, yawToTarget, jaw, skull, dorsal1, finFlare)`; `EyeL`, `EyeR`, `Mouth`; `SetBodyVisible(bool)`. |
@@ -893,7 +893,7 @@ With `w = 0` the output is bit-identical to today's, so the angler and the reels
 | Switch | Effect |
 |---|---|
 | `-fkencounter [now\|natural]` | Owns and equips `bait_egi`. If the equipped line is under 20 kg, owns and equips `line_pe3`. Cooldowns are 0 and pity is 0. **`now`** (default): the encounter starts 1.0 s after the lure lands, skipping the conditions. **`natural`**: the lurk point is placed at (Angler.X, −, 16) right away, the soak is 2 s, the meter fills ×8 and the roll always succeeds. Use it with `-fkscene Fishing -fkstage cave`. |
-| `-fkencplay perfect\|bad\|early` | The AutoPilot `encounter` play style (default `perfect`). |
+| `-fkencplay perfect\|bad\|early` | The AutoPilot `encounter` play style (default `perfect`). `coolsave`: a failed encounter whose cooldown is set and saved despite `-fkencounter`; relaunch with the same `-fksave`, no `-fkencounter`, and `-fkauto legcool` to check it survived. |
 | `-fklure <id>` | Owns and equips that lure, like `-fkbait`. With `-fkauto lure`, runs the lure-action scenario. |
 
 Existing switches still apply: `-fkfresh`, `-fkrich`, `-fksave`, `-fkscene`, `-fkstage`, `-fkrod`, `-fkshots`, `-fkflick`.
@@ -981,7 +981,6 @@ The planned data for those rows (not implemented):
 
 **Out of scope:**
 - colour variants of lures;
-- saved cooldowns;
 - circular iris masks;
 - new underwater sets for other stages;
 - any change to the fight model beyond `Hold()`;
