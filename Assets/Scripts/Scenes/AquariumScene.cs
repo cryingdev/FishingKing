@@ -116,11 +116,7 @@ namespace FishingKing
             collectBtn = UIKit.Button(ip.transform, "받기", "yellow", Collect, new Vector2(130, 56), 18, Art.UI("coin"));
             collectBtn.GetComponent<RectTransform>().At(new Vector2(1, 0.5f), new Vector2(-10, 0), new Vector2(130, 56), new Vector2(1, 0.5f));
             collectLabel = collectBtn.GetComponentInChildren<Text>();
-            // big pending sums stay on one line: shrink the digits to fit instead of wrapping
-            collectLabel.horizontalOverflow = HorizontalWrapMode.Wrap;
-            collectLabel.resizeTextForBestFit = true;
-            collectLabel.resizeTextMinSize = 11;
-            collectLabel.resizeTextMaxSize = 18;
+            collectLabel.horizontalOverflow = HorizontalWrapMode.Overflow; // (one line: long sums get a smaller face, see SetCollectText)
 
             var up = upBtn = UIKit.Button(root, "수조 확장", "blue", () =>
             {
@@ -172,7 +168,7 @@ namespace FishingKing
             if (bonus > 0.004f) state += $" · <color=#8ae08a>장식 +{bonus * 100f:0}%</color>";
             if (pen >= 0.005f) state += $" · <color=#ffb87a>청소 -{pen * 100f:0}%</color>";
             income.text = d.aquarium.Count > 0 ? $"관람 수입 {UIKit.Num(pm)} 코인/분\n<size=15>{state}</size>" : "물고기를 넣으면\n관람 수입이 생겨요";
-            collectLabel.text = pending > 0 ? UIKit.Num(pending) : "받기";
+            SetCollectText(pending > 0 ? UIKit.Num(pending) : "받기");
             collectBtn.interactable = pending > 0;
             // the top hint teaches the feeding while someone is hungry, then the cleaning; the decoration mode says how
             string h = TapHint;
@@ -285,6 +281,15 @@ namespace FishingKing
             if (string.IsNullOrEmpty(word)) return without;
             char c = word[word.Length - 1];
             return c >= 0xAC00 && c <= 0xD7A3 && (c - 0xAC00) % 28 != 0 ? withFinal : without;
+        }
+
+        /// <summary>The collect button's label on one line: a crisp pixel face that fits its ~76 units (7+ characters drop to the small face).</summary>
+        void SetCollectText(string t)
+        {
+            var pick = PixelFonts.For(t.Length >= 7 ? 12 : t.Length >= 6 ? 16 : 18);
+            collectLabel.font = pick.font;
+            collectLabel.fontSize = pick.size;
+            collectLabel.text = t;
         }
 
         void Collect()
