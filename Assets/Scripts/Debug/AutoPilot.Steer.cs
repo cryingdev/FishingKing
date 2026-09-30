@@ -22,8 +22,10 @@ namespace FishingKing
     /// <item>clearance: the rod's clearance from the hat (<see cref="ActorStrip.Clearance"/>) at the walk range's ends and
     /// centre, the rig far left / ahead / right, the rod swept left / centred / right, idle and reeling;</item>
     /// <item>fights: the same fish (species, size, seed, spot) fought three times for 14 s with the same reeling: side
-    /// pressure none / against every run / with every run (the A / D keys): stamina drain per second of run, run lengths
-    /// and turn times, tension; shots fight_side_good / fight_side_bad.</item>
+    /// pressure none / against every run / with every run (the A / D keys): turns and turn times, the side multipliers
+    /// the fight model got at full lean; shots fight_side_good / fight_side_bad. The drain, load and run-length effects
+    /// are measured on the fight model itself, paired and at a fixed step (<see cref="SideBench"/>: deterministic); the
+    /// live fights' drain, tension and run lengths are logged as statistical information.</item>
     /// </list>
     /// Then a grid of fights hooked far left / ahead / far right (13 m) and close in (6 m) at both walk ends, the rod leant
     /// left / centred / right: leaning must never bring the rod onto the hat (Angler keeps it off, KeepOffHat).
@@ -781,6 +783,10 @@ namespace FishingKing
         {
             public string name;
             public float t, runTime, drain, tension, mult, tmult, stam0, stam1, clrMin = 999f, tensionAll, tiltT, tiltMax;
+            // the side multipliers the fight model got from the controller in runs (the lean keys applied): extremes
+            public float multMax = 1f, multMin = 1f, tmultMax = 1f, tmultMin = 1f;
+            // the shortest time a turned run ran on after its turn
+            public float runOnMin = 999f;
             public string clrAt = "";
             public int runs, turned;
             public readonly List<float> durs = new List<float>(), turns = new List<float>(), turnedDurs = new List<float>();
@@ -828,7 +834,7 @@ namespace FishingKing
                     s.runs++;
                     s.durs.Add(dur);
                     // (a turned run runs on after its turn: the turn's time is LastTurnT, the run's whole length dur)
-                    if (turned) { s.turned++; s.turns.Add(ctl.LastTurnT); s.turnedDurs.Add(dur); }
+                    if (turned) { s.turned++; s.turns.Add(ctl.LastTurnT); s.turnedDurs.Add(dur); s.runOnMin = Mathf.Min(s.runOnMin, dur - ctl.LastTurnT); }
                     Log(string.Format(CI, "[SIDE] {0} run {1} ended after {2:0.00}s{3} (stamina {4:0.000})", mode, side > 0 ? "R" : "L", dur,
                         turned ? string.Format(CI, " TURNED at {0:0.00}s", ctl.LastTurnT) : "", ctl.Fight != null ? ctl.Fight.Stamina : -1f));
                 };
@@ -864,6 +870,10 @@ namespace FishingKing
                         s.tension += f.TensionRatio * dt;
                         s.mult += f.SideDrainMult * dt;
                         s.tmult += f.SideTensionMult * dt;
+                        s.multMax = Mathf.Max(s.multMax, f.SideDrainMult);
+                        s.multMin = Mathf.Min(s.multMin, f.SideDrainMult);
+                        s.tmultMax = Mathf.Max(s.tmultMax, f.SideTensionMult);
+                        s.tmultMin = Mathf.Min(s.tmultMin, f.SideTensionMult);
                     }
                     s.tensionAll += f.TensionRatio * dt;
                     prevRun = ctl.FishRun != 0;
@@ -925,22 +935,113 @@ namespace FishingKing
                 same.TensionRun, same.TensionRun / Mathf.Max(1e-6f, none.TensionRun), none.MeanRun, opp.MeanRun, same.MeanRun, opp.turned, opp.runs, opp.MeanTurn)
                 + string.Format(CI, "; model drain x{0:0.00}/x{1:0.00}/x{2:0.00} load x{3:0.000}/x{4:0.000}/x{5:0.000} (none/opposite/same); turned runs last {6:0.00}s",
                     none.MultRun, opp.MultRun, same.MultRun, none.TMultRun, opp.TMultRun, same.TMultRun, opp.MeanTurnedRun));
-            SCheck($"against the run tires it faster: drain x{N(ro)} of none's (model x{N(opp.MultRun)}; want ~x{N(FightModel.SideDrainGood)})", ro > 1.25f && ro < 1.6f);
-            SCheck($"with the run tires it slower: drain x{N(rs)} of none's (model x{N(same.MultRun)}; want ~x{N(FightModel.SideDrainBad)})", rs > 0.65f && rs < 0.9f);
+            // The three fights above are live: their runs (lengths, sides, the rests between) come out differently from run
+            // to run (frame timing, the depth rolls), so drain, tension and run lengths measured across them are statistical
+            // (logged above as information only). What side pressure does to the fish is measured instead on the fight model
+            // itself, paired: the same fish (species, size, seed) stepped at a fixed 1/60 s with the same input, the side
+            // pressure applied only from its first rolled run on (<see cref="SideBench"/>): deterministic. The live fights prove
+            // the controller applies it: the model's multipliers during their runs (the lean keys held against / with / none).
+            var bench = SideBench(ctl, sp, cm);
+            SCheck($"against the run tires it faster: same fish, same run, drain x{N(bench.drainGood, "0.000")} of none's (want ~x{N(FightModel.SideDrainGood)}); in the live fight the model got x{N(opp.multMax)} at full lean (none's x{N(none.multMax)}/x{N(none.multMin)}; live drain x{N(ro)}, statistical)",
+                bench.drainGood > 1.3f && bench.drainGood < 1.5f && opp.multMax > FightModel.SideDrainGood - 0.01f && none.multMax == 1f && none.multMin == 1f);
+            SCheck($"with the run tires it slower: same fish, same run, drain x{N(bench.drainBad, "0.000")} of none's (want ~x{N(FightModel.SideDrainBad)}); in the live fight the model got x{N(same.multMin)} at full lean (live drain x{N(rs)}, statistical)",
+                bench.drainBad > 0.7f && bench.drainBad < 0.9f && same.multMin < FightModel.SideDrainBad + 0.01f);
             SCheck($"against the run turns it: {opp.turned} of {opp.runs} runs turned after {N(opp.MeanTurn)} s (none's runs last {N(none.MeanRun)} s, none turned {none.turned})",
                 opp.turned > 0 && opp.MeanTurn < none.MeanRun && none.turned == 0 && same.turned == 0);
-            SCheck($"a turned run runs on (its head come round) and is cut short: turned runs last {N(opp.MeanTurnedRun)} s (turned at {N(opp.MeanTurn)} s; none's runs {N(none.MeanRun)} s)",
-                opp.MeanTurnedRun > opp.MeanTurn + 0.15f && opp.MeanTurnedRun < none.MeanRun);
-            SCheck($"with the run it runs longer: mean run {N(same.MeanRun)} s vs none's {N(none.MeanRun)} s", same.MeanRun > none.MeanRun);
-            // (the turned runs are short, so their mean tension also depends on how far the pull had built up: the model's
-            // load factor is the direct measure; the longer runs leant with it show it in the tension too)
-            SCheck($"either lean loads the line ~10 % more: model load x{N(opp.TMultRun, "0.000")} (against) / x{N(same.TMultRun, "0.000")} (with) / x{N(none.TMultRun, "0.000")} (none); measured tension in runs x{N(same.TensionRun / Mathf.Max(1e-6f, none.TensionRun))} (with) / x{N(opp.TensionRun / Mathf.Max(1e-6f, none.TensionRun))} (against) of none's",
-                opp.TMultRun > 1.05f && same.TMultRun > 1.05f && Mathf.Abs(none.TMultRun - 1f) < 1e-4f && same.TensionRun > none.TensionRun);
+            SCheck($"a turned run runs on (its head come round) and is cut short: live turned runs ran on >= {N(opp.runOnMin)} s after the turn; same fish, same run turned after {N(bench.turnAt)} s lasts {N(bench.runTurned)} s vs {N(bench.runNone)} s unturned (x{N(FightModel.TurnCut)} of the rest)",
+                opp.turned > 0 && opp.runOnMin >= 0.05f && bench.runTurned > bench.turnAt + 0.05f && bench.runTurned < bench.runNone - 0.1f);
+            SCheck($"with the run it runs longer: same fish, same run, {N(bench.runBad)} s leant with it vs {N(bench.runNone)} s (x{N(bench.runBad / Mathf.Max(1e-3f, bench.runNone))}; live mean runs {N(same.MeanRun)} / {N(none.MeanRun)} s, statistical)",
+                bench.runBad > bench.runNone * 1.3f);
+            SCheck($"either lean loads the line ~10 % more: same fish, same run, tension x{N(bench.tensionGood, "0.000")} (against) / x{N(bench.tensionBad, "0.000")} (with) of none's; in the live fights the model's load at full lean x{N(opp.tmultMax, "0.000")} / x{N(same.tmultMax, "0.000")} / x{N(none.tmultMax, "0.000")} (none; live tension in runs x{N(same.TensionRun / Mathf.Max(1e-6f, none.TensionRun))} / x{N(opp.TensionRun / Mathf.Max(1e-6f, none.TensionRun))}, statistical)",
+                bench.tensionGood > 1.05f && bench.tensionGood < 1.15f && bench.tensionBad > 1.05f && bench.tensionBad < 1.15f
+                && opp.tmultMax > 1f + FightModel.SideTension - 0.005f && same.tmultMax > 1f + FightModel.SideTension - 0.005f && none.tmultMax == 1f);
             float clr = Mathf.Min(none.clrMin, Mathf.Min(opp.clrMin, same.clrMin));
             SCheck($"the rod stays off the hat through the fights (min {N(clr, "0.0")} px: none {N(none.clrMin, "0.0")} / against {N(opp.clrMin, "0.0")} / with {N(same.clrMin, "0.0")}; kept off by tilting {N(none.tiltT + opp.tiltT + same.tiltT, "0.0")} s, max {N(Mathf.Max(none.tiltMax, Mathf.Max(opp.tiltMax, same.tiltMax)), "0.0")} deg)",
                 clr > 0f);
             SCheck($"shots of right / wrong side pressure taken (good {shotGood}, bad {shotBad})", shotGood && shotBad);
             yield return SteerFightGrid(ctl, sp, cm);
+        }
+
+        /// <summary>What side pressure does to the same run of the same fish, on the fight model (<see cref="SideBench"/>).</summary>
+        struct SideBenchResult
+        {
+            public float drainGood, drainBad, tensionGood, tensionBad, runNone, runBad, runTurned, turnAt, window;
+        }
+
+        /// <summary>
+        /// Side pressure measured on the fight model directly, paired: the fight's fish (species, size, the gear on, the
+        /// stage's power, seed 4242) is stepped at a fixed 1/60 s holding the rod (no winding, no jumps) until its first rolled
+        /// run; from that run's start one copy is leant against it (SideGood 1), one with it (SideBad 1), one not, and one is
+        /// turned (FightModel.Turn) after TurnTime. Everything before is identical, so the stamina drained and the mean
+        /// tension over the unleant run's length, and the run lengths, compare the same run: deterministic, no frames.
+        /// </summary>
+        SideBenchResult SideBench(FishingController ctl, FishSpecies sp, float cm)
+        {
+            const float dt = 1f / 60f;
+            const float turnAt = 0.7f;
+            float powerMult = ctl.Stage.Def.powerMult;
+            // mode 0 none, 1 against (good), 2 with (bad), 3 none but turned at turnAt
+            (float drain, float tension, float span, float runLen, float runAt) Run(int mode, float window)
+            {
+                var f = new FightModel(sp, cm, Game.I.Rod, Game.I.Reel, Game.I.Line, powerMult, 16f, 3f, 4242);
+                int runs = 0;
+                bool wasRun = true, turned = false;
+                float runT = 0f, drain = 0f, tension = 0f, span = 0f, runAt = -1f;
+                for (float t = 0f; t < 40f && f.Result == FightModel.Outcome.None; t += dt)
+                {
+                    bool run = f.State == FightModel.Phase.Run && !f.Exhausted;
+                    if (run && !wasRun && ++runs == 1)
+                    {
+                        runT = 0f;
+                        runAt = t;
+                    }
+                    bool target = run && runs == 1;
+                    f.SideGood = target && mode == 1 ? 1f : 0f;
+                    f.SideBad = target && mode == 2 ? 1f : 0f;
+                    if (target && mode == 3 && !turned && runT >= turnAt)
+                    {
+                        turned = true;
+                        f.Turn();
+                    }
+                    float s0 = f.Stamina;
+                    f.Step(dt, 0f, false);
+                    if (target)
+                    {
+                        runT += dt;
+                        if (runT <= window + 1e-4f)
+                        {
+                            drain += s0 - f.Stamina;
+                            tension += f.Tension * dt;
+                            span += dt;
+                        }
+                        if (f.State != FightModel.Phase.Run || f.Exhausted) return (drain, tension, span, runT, runAt);
+                    }
+                    wasRun = run;
+                }
+                return (drain, tension, span, -1f, runAt);
+            }
+            var probe = Run(0, 99f);
+            float w = Mathf.Max(0.1f, probe.runLen);
+            var none = Run(0, w);
+            var good = Run(1, w);
+            var bad = Run(2, w);
+            var turnedRun = Run(3, w);
+            var r = new SideBenchResult
+            {
+                drainGood = good.drain / Mathf.Max(1e-6f, none.drain),
+                drainBad = bad.drain / Mathf.Max(1e-6f, none.drain),
+                tensionGood = good.tension / Mathf.Max(1e-6f, none.tension),
+                tensionBad = bad.tension / Mathf.Max(1e-6f, none.tension),
+                runNone = none.runLen,
+                runBad = bad.runLen,
+                runTurned = turnedRun.runLen,
+                turnAt = turnAt,
+                window = w,
+            };
+            Log(string.Format(CI, "[SIDE] BENCH {0} {1:0}cm (fight model, seed 4242, dt 1/60, holding the rod): first rolled run at {2:0.00}s lasts {3:0.00}s; over it drain none {4:0.0000}/s against x{5:0.000} with x{6:0.000}; tension none {7:0.000} against x{8:0.000} with x{9:0.000}; leant with it the run lasts {10:0.00}s; turned after {11:0.00}s it lasts {12:0.00}s",
+                sp.id, cm, none.runAt, none.runLen, none.drain / Mathf.Max(1e-6f, none.span), r.drainGood, r.drainBad, none.tension / Mathf.Max(1e-6f, none.span),
+                r.tensionGood, r.tensionBad, bad.runLen, turnAt, turnedRun.runLen));
+            return r;
         }
 
         /// <summary>

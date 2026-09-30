@@ -173,6 +173,10 @@ namespace FishingKing
             ctl.EquipBait(b);
         }
 
+        /// <summary>
+        /// Back to the ready from wherever the rig is: wound in (snagged: 끊기), and a fight that ended in a catch has its
+        /// catch card closed (판매) and any dialog after it dismissed, so a scenario always goes on.
+        /// </summary>
         IEnumerator ToReady(FishingController ctl)
         {
             PointerInput.SimLeft = PointerInput.SimRight = false;
@@ -180,8 +184,21 @@ namespace FishingKing
             for (float w = 0f; w < 30f && ctl.State != FishingController.S.Ready; w += Time.deltaTime)
             {
                 if (ctl.State == FishingController.S.Waiting || ctl.State == FishingController.S.Snagged) ctl.Retrieve();   // (snagged: 끊기)
+                if (ctl.State == FishingController.S.Result && HasButton("판매"))
+                {
+                    yield return new WaitForSeconds(0.2f);
+                    Click("판매");
+                    Log("catch card closed (판매)");
+                    yield return new WaitForSeconds(0.6f);
+                }
+                if (Dialog.Open)
+                {
+                    Click("알겠어요");
+                    yield return new WaitForSeconds(0.4f);
+                }
                 yield return null;
             }
+            if (ctl.State != FishingController.S.Ready) Log($"not back to the ready after 30 s ({ctl.State})");
             yield return new WaitForSeconds(0.3f);
         }
 
@@ -325,7 +342,14 @@ namespace FishingKing
             yield return ToReady(ctl);
         }
 
-        /// <summary>2. The sea: approaches to a shrimp float at the flood's peak vs at high slack (120 s each, every approach let go).</summary>
+        /// <summary>
+        /// 2. The sea's tide on bites: a shrimp float soaked at the flood's peak and at high slack (60 s each, every approach
+        /// let go). The check is paired and deterministic: every 0.5 s, for each wandering 고등어 within the float's reach
+        /// (the game's own reach and depth tests), its chance to come per roll (<see cref="FishingController.WantsToApproach"/>'s
+        /// formula) is taken twice in the same frame, the tide set to the flood's peak and to high slack, nothing else
+        /// changed. The approaches the game rolled in each window are logged, but not checked: every let-go fish waits 3-6 s
+        /// to come again, so the counts saturate and flip between runs.
+        /// </summary>
         IEnumerator CurTide()
         {
             FishSpawner.OnlySpecies = GameDatabase.GetFish("mackerel");
@@ -337,6 +361,25 @@ namespace FishingKing
             yield return null;
             var counts = new Dictionary<string, int>();
             var rolls = new Dictionary<string, int>();
+            double pFlood = 0, pSlack = 0;
+            int samples = 0;
+            // the chance per roll of a wandering fish to come to the rig now (FishingController.WantsToApproach), -1 out of reach
+            float Chance(FishAgent f)
+            {
+                var tk = ctl.Tackle;
+                if (f == null || f.State != FishAgent.St.Wander || tk.State != Tackle.Mode.Water) return -1f;
+                var hook = tk.HookPos;
+                var bait = tk.Bait;
+                float q = ctl.Rhythm.Q;
+                float sense = bait.isLure ? 5f + 4f * q : 5f;
+                if (new Vector2(hook.x - f.Pos.x, hook.z - f.Pos.z).magnitude > sense || Mathf.Abs(f.Depth - tk.Depth) > 2.5f) return -1f;
+                float appeal = f.Sp.Appeal(bait);
+                if (appeal <= 0f) return -1f;
+                float activity = bait.isLure ? 0.15f + 1.25f * q : tk.RelSpeed < 0.4f ? 1f : 0.35f;
+                float m = ctl.BiteMult(f);
+                if (m <= 0f) return -1f;
+                return Mathf.Min(0.95f, appeal * Game.I.Line.stealth * ctl.Stage.Def.biteMult * activity * 0.45f * m);
+            }
             foreach (var (name, phase) in new[] { ("flood", 0.25f), ("slack", 0.5f) })
             {
                 GameClock.TidePhase = phase;
@@ -344,12 +387,13 @@ namespace FishingKing
                 var at = new Vector3(ctl.Angler.X, 0f, 14f);
                 ctl.DebugPlaceRig(at);
                 int a0 = ctl.Approaches, r0 = ctl.ApproachRolls;
-                float t = 0f, fixT = 0f;
+                float t = 0f, fixT = 0f, sampleT = 0f;
                 bool shot = false;
-                while (t < 120f)
+                while (t < 60f)
                 {
                     t += Time.deltaTime;
                     fixT += Time.deltaTime;
+                    sampleT -= Time.deltaTime;
                     if (!shot && t >= 3f)
                     {
                         shot = true;
@@ -369,21 +413,36 @@ namespace FishingKing
                         fixT = 0f;
                         ctl.Tackle.Surface = at;
                     }
+                    // the paired sample: the same fish, the same frame, only the tide changed
+                    if (sampleT <= 0f && ctl.State == FishingController.S.Waiting)
+                    {
+                        sampleT = 0.5f;
+                        foreach (var f in ctl.Spawner.Fish)
+                        {
+                            if (Chance(f) < 0f) continue;
+                            GameClock.TidePhase = 0.25f;
+                            float pf = Chance(f);
+                            GameClock.TidePhase = 0.5f;
+                            float ps = Chance(f);
+                            GameClock.TidePhase = phase;
+                            if (pf < 0f || ps < 0f) continue;
+                            pFlood += pf;
+                            pSlack += ps;
+                            samples++;
+                        }
+                    }
                     yield return null;
                 }
                 counts[name] = ctl.Approaches - a0;
                 rolls[name] = ctl.ApproachRolls - r0;
                 var tide = GameClock.Tide;
-                Log(string.Format(CIc, "[CUR] tide {0} (s {1:0.00}, bite x{2:0.00}): {3} approaches of {4} rolls in 120 s ({5:0.00} per roll)", name, tide.S, ctl.TideMult(),
+                Log(string.Format(CIc, "[CUR] tide {0} (s {1:0.00}, bite x{2:0.00}): {3} approaches of {4} rolls in 60 s ({5:0.00} per roll; statistical, not checked)", name, tide.S, ctl.TideMult(),
                     counts[name], rolls[name], counts[name] / (float)Mathf.Max(1, rolls[name])));
             }
-            float ratio = counts["flood"] / (float)Mathf.Max(1, counts["slack"]);
-            float rateF = counts["flood"] / (float)Mathf.Max(1, rolls["flood"]), rateS = counts["slack"] / (float)Mathf.Max(1, rolls["slack"]);
-            float rateRatio = rateF / Mathf.Max(1e-4f, rateS);
-            // (every approach is let go here, so each fish waits 3-6 s before it can come again: the counts saturate, the
-            // chance per roll shows the tide's factor itself)
-            CCheck(string.Format(CIc, "tide: a fish's chance to come per roll at the flood's peak / at high slack = {0:0.00} / {1:0.00} = x{2:0.00} (>= 1.5); approaches {3} / {4} = x{5:0.00} (more at the flood)",
-                rateF, rateS, rateRatio, counts["flood"], counts["slack"], ratio), rateRatio >= 1.5f && counts["flood"] > counts["slack"]);
+            float mF = samples > 0 ? (float)(pFlood / samples) : 0f, mS = samples > 0 ? (float)(pSlack / samples) : 0f;
+            CCheck(string.Format(CIc, "tide: a fish's chance to come per roll at the flood's peak / at high slack, the same fish in the same frame = {0:0.000} / {1:0.000} = x{2:0.00} (>= 1.5) over {3} samples; the game rolled {4} / {5} times (approaches {6} / {7})",
+                mF, mS, mF / Mathf.Max(1e-4f, mS), samples, rolls["flood"], rolls["slack"], counts["flood"], counts["slack"]),
+                samples >= 10 && mF >= 1.5f * mS && rolls["flood"] > 0 && rolls["slack"] > 0);
             // the flood never carries the float out of view (the sea's xLim is 90 m): it stops at the edge / the tetrapods
             GameClock.TidePhase = 0.25f;
             FishingController.NoBites = true;

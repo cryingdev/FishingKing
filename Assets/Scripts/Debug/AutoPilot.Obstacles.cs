@@ -13,10 +13,12 @@ namespace FishingKing
     /// (a bank shot), a spoon snagged in md13.5's skirt freed by a 톡, a crank snagged there freed by the sweep to the free
     /// side (after a wrong sweep shows the arrow), a spoon forced until the line breaks. The lake: a frog on a lily pad
     /// (sits, wound off the edge: the pad-drop window), a worm float on a pad (snagged, a 톡 frees it), a hooked bass that
-    /// runs for the boat (ignored: the line rubs and breaks; with side pressure against the run: pulled out), and the bites
-    /// near cover against open water. Then the swamp's aiming outlines and every stage with data, -fkobstacles show. Rolls
-    /// are seeded (Obstacles.Rnd). Shots: obst_aim, obst_bounce, obst_bankshot, obst_snag, obst_snag_free, obst_snag_arrow,
-    /// obst_pad, obst_pad_snag, obst_rub, obst_break, obst_pullout, obst_aim_swamp, obst_show_&lt;stage&gt;.
+    /// runs for the boat and is pulled out by side pressure against the run, and the bites near cover against open water.
+    /// The sea (high slack): a 감성돔 on PE 3호 ignored in the tetrapods: the line rubs until it wears through. Every fight
+    /// that ends in a catch has its card closed (ToReady), so the scenario always goes on. Then the swamp's aiming
+    /// outlines and every stage with data, -fkobstacles show. Rolls are seeded (Obstacles.Rnd). Shots: obst_aim,
+    /// obst_bounce, obst_bankshot, obst_snag, obst_snag_free, obst_snag_arrow, obst_pad, obst_pad_snag, obst_pullout,
+    /// obst_rub, obst_break (the sea), obst_aim_swamp, obst_show_&lt;stage&gt;.
     /// </summary>
     public partial class AutoPilot
     {
@@ -76,7 +78,7 @@ namespace FishingKing
             yield return ObSnagTok(ctl);
             yield return ObSnagSweep(ctl);
             yield return ObSnagBreak(ctl);
-            // the lake: pads, the bass and its cover, the bites
+            // the lake: pads, the bass pulled out of its cover, the bites
             FishSpawner.OnlySpecies = GameDatabase.GetFish("largemouth_bass");
             yield return GoStage("lake", 3f);
             ctl = FindAnyObjectByType<FishingController>();
@@ -84,10 +86,12 @@ namespace FishingKing
             else
             {
                 yield return ObPads(ctl);
-                yield return ObCoverFights(ctl);
+                yield return ObPullOut(ctl);
                 yield return ObBites(ctl);
             }
             FishSpawner.OnlySpecies = null;
+            // the sea: a fish ignored in the tetrapods wears PE through
+            yield return ObRubBreak();
             // the swamp's aiming outlines (its weed beds, root tangles and sunken logs)
             yield return GoStage("swamp", 3f);
             ctl = FindAnyObjectByType<FishingController>();
@@ -424,25 +428,27 @@ namespace FishingKing
                 $"the pad wobbled {wob.Wobbles - w0} time(s) at the landing, shifted in {shifted} frames, {wob.LastPixels} pad pixels cut from the front layer");
         }
 
-        // ------------------------------------------------------------------ 6 / 7. the bass and its cover
+        // ------------------------------------------------------------------ 6 / 7. a fish runs for its cover
         /// <summary>
-        /// A 32 cm bass hooked at (-6, 1.2 deep, 14) with its run forced to the boat (boat.cover); <paramref name="side"/>:
-        /// leant against the cover run (side pressure). Reels at 0.8 rev/s throughout; ignored, every new run is sent back
-        /// to the boat too (the fish keeps diving into it). Returns when the fight ends (or after 60 s).
+        /// A <paramref name="cm"/> cm <paramref name="fishId"/> hooked at <paramref name="at"/> (fight seed
+        /// <paramref name="seed"/>) with its run forced to <paramref name="cover"/>; <paramref name="side"/>: leant against
+        /// the cover run (side pressure), else ignored: every new run is sent back to the cover too (the fish keeps diving
+        /// into it). Reels at <paramref name="rps"/> rev/s throughout. The shot: at the pull-out (side), or once the abrasion
+        /// reaches <paramref name="shotAt"/> while the line rubs. Returns when the fight ends (or after 60 s; side: at the
+        /// pull-out).
         /// </summary>
-        IEnumerator BassFight(FishingController ctl, bool side, string shot, float shotAt)
+        IEnumerator CoverFight(FishingController ctl, string fishId, float cm, int seed, Vector3 at, string cover, bool side, float rps,
+            string shot, float shotAt, string check)
         {
             int pull0 = ctl.PullOuts;
             yield return ToReady(ctl);
-            SteerGear("rod_glass", "reel_basic", "line_nylon2");
-            EquipTest("bait_minnow", ctl);
             yield return null;
-            ctl.DebugPlaceRig(new Vector3(-6f, 0f, 14f));
+            ctl.DebugPlaceRig(new Vector3(at.x, 0f, at.z));
             yield return new WaitForSeconds(0.3f);
-            FishingController.DebugCover = "boat.cover";
-            if (!ctl.DebugHook(GameDatabase.GetFish("largemouth_bass"), 32f, 5151, new Vector3(-6f, -1.2f, 14f)))
+            FishingController.DebugCover = cover;
+            if (!ctl.DebugHook(GameDatabase.GetFish(fishId), cm, seed, at))
             {
-                OCheck(side ? "pullout" : "rub_break", false, $"no hook ({ctl.State})");
+                OCheck(check, false, $"no hook ({ctl.State})");
                 FishingController.DebugCover = null;
                 yield break;
             }
@@ -454,15 +460,15 @@ namespace FishingKing
             while (ctl.State == FishingController.S.Fighting && ctl.Fight == f && t < 60f)
             {
                 t += Time.deltaTime;
-                circleAng -= windSign * Time.deltaTime * 0.8f * Mathf.PI * 2f;
+                circleAng -= windSign * Time.deltaTime * rps * Mathf.PI * 2f;
                 PointerInput.SimDown = true;
                 PointerInput.SimPos = centre + new Vector2(Mathf.Cos(circleAng), Mathf.Sin(circleAng)) * r;
-                bool cover = f.CoverRun || f.CoverHold;
-                int lean = side && cover ? -ctl.FishRun : 0;
+                bool inCover = f.CoverRun || f.CoverHold;
+                int lean = side && inCover ? -ctl.FishRun : 0;
                 PointerInput.SimLeft = lean < 0;
                 PointerInput.SimRight = lean > 0;
-                // ignored: back to the boat whenever it is out of it
-                if (!side && !cover && FishingController.DebugCover == null) FishingController.DebugCover = "boat.cover";
+                // ignored: back to the cover whenever it is out of it
+                if (!side && !inCover && FishingController.DebugCover == null) FishingController.DebugCover = cover;
                 if (!shotDone && shot != null && (side ? ctl.PullOuts > pull0 : f.Abrasion >= shotAt && ctl.Rubbing))
                 {
                     shotDone = true;
@@ -477,29 +483,66 @@ namespace FishingKing
             FishingController.DebugCover = null;
         }
 
-        IEnumerator ObCoverFights(FishingController ctl)
+        /// <summary>
+        /// The lake: a 32 cm bass runs for the boat, leant against (side pressure): pulled out before the line wears through.
+        /// Wound at 0.3 rev/s, under the 0.5 rev/s that drags a holding fish out ("horsing it"), so only the side pressure
+        /// can pull it out; the way is read from the [OBST] pullout line.
+        /// </summary>
+        IEnumerator ObPullOut(FishingController ctl)
         {
-            // ignored: the run to the boat, the line rubbing on it until it breaks
-            int runs0 = ctl.CoverRuns, holds0 = ctl.CoverHolds;
-            // (shot early in the hold: the first-rub warning, the 쓸림 meter; then the break's message)
-            yield return BassFight(ctl, false, "obst_rub", 0.06f);
-            bool broke = ctl.State != FishingController.S.Fighting && ctl.LastSnapCause == FightModel.Cause.Abrasion;
-            if (broke) yield return NamedShot("obst_break");
-            OCheck("rub_break", ctl.CoverRuns > runs0 && ctl.RubbedThisFight && broke,
-                string.Format(CIb, "cover runs {0} ({1}), holds {2}, rubbed {3} on {4}, abrasion {5:0.00}, break cause {6} ({7})",
-                    ctl.CoverRuns - runs0, ctl.LastCover != null ? ctl.LastCover.id : "-", ctl.CoverHolds - holds0, ctl.RubbedThisFight, ctl.LastBreakName,
-                    ctl.LastAbrasion, ctl.LastSnapCause, ctl.State));
-            if (ctl.State == FishingController.S.Fighting) ctl.DebugRelease();
-            yield return new WaitForSeconds(2f);
-            // side pressure against the run: pulled out before the line wears through
-            int p0 = ctl.PullOuts;
-            yield return BassFight(ctl, true, "obst_pullout", 0f);
+            yield return ToReady(ctl);
+            SteerGear("rod_glass", "reel_basic", "line_nylon2");
+            EquipTest("bait_minnow", ctl);
+            string way = null;
+            Application.LogCallback grab = (msg, trace, type) =>
+            {
+                if (way == null && msg.StartsWith("[OBST] pullout ")) way = msg.Substring(15).Split(' ')[0];
+            };
+            Application.logMessageReceived += grab;
+            int p0 = ctl.PullOuts, runs0 = ctl.CoverRuns;
+            yield return CoverFight(ctl, "largemouth_bass", 32f, 5151, new Vector3(-6f, -1.2f, 14f), "boat.cover", true, 0.3f, "obst_pullout", 0f, "pullout");
+            Application.logMessageReceived -= grab;
             float a = ctl.Fight != null ? ctl.Fight.Abrasion : ctl.LastAbrasion;
-            OCheck("pullout", ctl.PullOuts > p0 && a < 0.6f,
-                string.Format(CIb, "pulled out {0} time(s) with the abrasion at {1:0.00} (state {2})", ctl.PullOuts - p0, a, ctl.State));
+            OCheck("pullout", ctl.CoverRuns > runs0 && ctl.PullOuts > p0 && way == "side" && a < 0.6f,
+                string.Format(CIb, "cover run to {0}, pulled out {1} time(s) by '{2}' with the abrasion at {3:0.00} (state {4})",
+                    ctl.LastCover != null ? ctl.LastCover.id : "-", ctl.PullOuts - p0, way ?? "-", a, ctl.State));
             if (ctl.State == FishingController.S.Fighting) ctl.DebugRelease();
             yield return new WaitForSeconds(1.5f);
             yield return ToReady(ctl);
+        }
+
+        /// <summary>
+        /// The sea at high slack (no current): a 50 cm 감성돔 on PE 3호 (tough 0.6: braid cuts on concrete, rough 1.3) runs
+        /// for tet32's cover among the tetrapods and is ignored (no side pressure, a light 0.3 rev/s wind that cannot horse
+        /// it out), sent back each run: the line rubs on the tetrapods until it wears through (cause Abrasion). (On the lake
+        /// the boat's hull, rough 0.6, no longer wears nylon through before the fish tires: the wear rate was halved.)
+        /// </summary>
+        IEnumerator ObRubBreak()
+        {
+            yield return GoStage("sea", 3f);
+            var ctl = FindAnyObjectByType<FishingController>();
+            if (ctl == null)
+            {
+                OCheck("rub_break", false, "no sea scene");
+                yield break;
+            }
+            var tideWas = GameClock.TidePhase;
+            GameClock.TidePhase = 0.5f;
+            yield return ToReady(ctl);
+            SteerGear("rod_carbon", "reel_highgear", "line_pe3");
+            EquipTest("bait_minnow", ctl);
+            int runs0 = ctl.CoverRuns, holds0 = ctl.CoverHolds, p0 = ctl.PullOuts;
+            yield return CoverFight(ctl, "black_porgy", 50f, 5151, new Vector3(4f, -2.5f, 12.5f), "tet32.cover", false, 0.3f, "obst_rub", 0.5f, "rub_break");
+            bool broke = ctl.State != FishingController.S.Fighting && ctl.LastSnapCause == FightModel.Cause.Abrasion;
+            if (broke) yield return NamedShot("obst_break");
+            OCheck("rub_break", ctl.CoverRuns > runs0 && ctl.RubbedThisFight && broke && ctl.PullOuts == p0,
+                string.Format(CIb, "{0} on {1}: cover runs {2} ({3}), holds {4}, rubbed {5} on {6}, abrasion {7:0.00}, break cause {8} ({9}), pulled out {10}",
+                    Game.I.Line.id, ctl.Stage.Def.id, ctl.CoverRuns - runs0, ctl.LastCover != null ? ctl.LastCover.id : "-", ctl.CoverHolds - holds0, ctl.RubbedThisFight,
+                    ctl.LastBreakName, ctl.LastAbrasion, ctl.LastSnapCause, ctl.State, ctl.PullOuts - p0));
+            if (ctl.State == FishingController.S.Fighting) ctl.DebugRelease();
+            yield return new WaitForSeconds(2f);
+            yield return ToReady(ctl);
+            GameClock.TidePhase = tideWas;
         }
 
         // ------------------------------------------------------------------ bites near cover > open water
@@ -517,6 +560,8 @@ namespace FishingKing
             var mult = new float[2];
             var appr = new int[2];
             var rolls = new int[2];
+            float pairCover = 0f, pairOpen = 0f;
+            int pairN = 0;
             for (int k = 0; k < 2; k++)
             {
                 var (name, at) = spots[k];
@@ -532,6 +577,22 @@ namespace FishingKing
                     n++;
                 }
                 mult[k] = n > 0 ? m / n : 0f;
+                // paired (deterministic): each bass in this same frame, the hook moved to the other spot and back
+                if (k == 0)
+                {
+                    var keep = ctl.Tackle.Surface;
+                    foreach (var f in ctl.Spawner.Fish)
+                    {
+                        ctl.Tackle.Surface = spots[0].Item2;
+                        float mc = ctl.BiteMult(f);
+                        ctl.Tackle.Surface = spots[1].Item2;
+                        float mo = ctl.BiteMult(f);
+                        ctl.Tackle.Surface = keep;
+                        pairCover += mc;
+                        pairOpen += mo;
+                        pairN++;
+                    }
+                }
                 int a0 = ctl.Approaches, r0 = ctl.ApproachRolls;
                 for (float t = 0f; t < 75f; t += Time.deltaTime)
                 {
@@ -551,10 +612,16 @@ namespace FishingKing
             }
             Obstacles.SnagMult = snagWas;
             FishingController.NoBites = true;
-            OCheck("bites_structure", mult[1] > 0f && mult[0] / mult[1] >= 1.3f,
-                string.Format(CIb, "bite mult in weedbed.cover {0:0.00} vs open water {1:0.00} (x{2:0.00})", mult[0], mult[1], mult[1] > 0f ? mult[0] / mult[1] : 0f));
-            OCheck("bites_observed", appr[0] > appr[1],
-                string.Format(CIb, "approaches near cover {0} ({1} rolls) vs open water {2} ({3} rolls) in 75 s each (statistical)", appr[0], rolls[0], appr[1], rolls[1]));
+            // (the same fish, the same frame, only the hook moved: the per-spot means above also mix in which fish are near the
+            // natural-entry bonus and how the float drifts, so they vary between runs)
+            float pc = pairN > 0 ? pairCover / pairN : 0f, po = pairN > 0 ? pairOpen / pairN : 0f;
+            OCheck("bites_structure", pairN > 0 && po > 0f && pc / po >= 1.3f,
+                string.Format(CIb, "bite mult with the hook in weedbed.cover {0:0.00} vs open water {1:0.00} (x{2:0.00}), the same {3} bass in the same frame (per-spot means {4:0.00} / {5:0.00})",
+                    pc, po, po > 0f ? pc / po : 0f, pairN, mult[0], mult[1]));
+            // the live rolls: the game rolled approaches at both spots and the bass came to the float by the cover; which spot
+            // got more in 75 s is statistical (logged: every let-go fish waits 3-6 s to come again, the counts saturate)
+            OCheck("bites_observed", rolls[0] > 0 && rolls[1] > 0 && appr[0] > 0,
+                string.Format(CIb, "approaches near cover {0} ({1} rolls) vs open water {2} ({3} rolls) in 75 s each (the comparison statistical, not checked)", appr[0], rolls[0], appr[1], rolls[1]));
             yield return ToReady(ctl);
         }
 

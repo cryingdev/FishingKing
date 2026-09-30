@@ -94,6 +94,8 @@ namespace FishingKing
             yield return new WaitForSeconds(0.12f);
         }
 
+        static int flickClockLogs;
+
         /// <summary>
         /// Flicks the (down) simulated pointer from where it is and lets go: speeds up in 40 ms to <paramref name="speed"/>
         /// screen heights per second along <paramref name="angle"/> (degrees from straight up, right +), holds that speed,
@@ -101,8 +103,8 @@ namespace FishingKing
         /// <paramref name="travel"/> screen heights. <paramref name="turnTo"/>: the direction swings to this angle between
         /// 35% and 60% of the way (the throw must follow the direction at the release, not the start). <paramref name="hold"/>:
         /// stays still this long before letting go; <paramref name="back"/>: then comes back down this far first. Otherwise
-        /// it lets go on the frame of the last move, still moving, as a finger does. Positions follow the unscaled clock, so
-        /// the pointer's speed does not depend on the frame rate.
+        /// it lets go on the frame of the last move, still moving, as a finger does. Positions follow the unscaled clock, fixed
+        /// at 1/60 s a frame while the stroke runs, so the pointer's speed does not depend on the frame rate or a slow frame.
         /// </summary>
         IEnumerator Flick(float speed, float angle, float travel = 0.25f, float turnTo = float.NaN, float hold = 0f, float back = 0f)
         {
@@ -127,30 +129,48 @@ namespace FishingKing
             }
             PointerInput.SimActive = true;
             var p = PointerInput.SimPos;
+            // The stroke runs on a fixed 1/60 s clock (Time.captureDeltaTime): the pointer's samples are taken when the frame
+            // polls, one frame after the position was set, so a slow frame in the middle of a stroke (a screenshot, a GC)
+            // used to read as a burst of speed (a 톡 at strength 1.00 instead of 0.39, the lure cycle spoiled at random).
+            float capWas = Time.captureDeltaTime;
+            Time.captureDeltaTime = 1f / 60f;
             float t0 = Time.unscaledTime, done = 0f;
-            while (true)
+            try
             {
-                float t = Mathf.Min(Time.unscaledTime - t0, T);
-                float s = S(t);
-                float a = float.IsNaN(turnTo) ? angle : Mathf.Lerp(angle, turnTo, Mathf.InverseLerp(0.35f, 0.6f, s / total));
-                float ar = a * Mathf.Deg2Rad;
-                p += new Vector2(Mathf.Sin(ar), Mathf.Cos(ar)) * (s - done);
-                done = s;
-                PointerInput.SimPos = p;
-                bool last = t >= T;
-                // the last position comes with the release (the finger lifts while moving), unless it holds / comes back
-                PointerInput.SimDown = !(last && hold <= 0f && back <= 0f);
-                if (last) break;
+                while (true)
+                {
+                    if (flickClockLogs < 2 && Time.unscaledTime > t0)
+                    {
+                        flickClockLogs++;
+                        Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "flick clock: unscaled dt {0:0.00000} s, dt {1:0.00000} s (fixed 1/60 while the stroke runs)", Time.unscaledDeltaTime, Time.deltaTime));
+                    }
+                    float t = Mathf.Min(Time.unscaledTime - t0, T);
+                    float s = S(t);
+                    float a = float.IsNaN(turnTo) ? angle : Mathf.Lerp(angle, turnTo, Mathf.InverseLerp(0.35f, 0.6f, s / total));
+                    float ar = a * Mathf.Deg2Rad;
+                    p += new Vector2(Mathf.Sin(ar), Mathf.Cos(ar)) * (s - done);
+                    done = s;
+                    PointerInput.SimPos = p;
+                    bool last = t >= T;
+                    // the last position comes with the release (the finger lifts while moving), unless it holds / comes back
+                    PointerInput.SimDown = !(last && hold <= 0f && back <= 0f);
+                    if (last) break;
+                    yield return null;
+                }
+                // (the release frame too: the lift's sample is taken on the next poll)
                 yield return null;
+            }
+            finally
+            {
+                Time.captureDeltaTime = capWas;
             }
             if (hold > 0f || back > 0f)
             {
-                yield return null;
                 if (hold > 0f) yield return new WaitForSecondsRealtime(hold);
                 if (back > 0f) yield return Move(p, p - new Vector2(0f, back * H), 0.12f, true);
                 PointerInput.SimDown = false;
+                yield return null;
             }
-            yield return null;
         }
 
         /// <summary>

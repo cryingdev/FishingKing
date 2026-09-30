@@ -12,9 +12,10 @@ namespace FishingKing
     /// -fklure all one lure of each action (spinner, minnow, popper, soft worm, metal jig) in turn. Per lure: cast, then
     /// 20 s of its ideal input (a steady lure's reel band midpoint; a cycle lure's flick count, gap and rest midpoints, or
     /// the frog's short wind runs), then 10 s of the opposite verb (flicks instead of winding, fast winding instead of
-    /// flicks). Logs "[LURE] t q strike depth onBottom" every 0.5 s and every bite, then checks
-    /// "[AUTO] CHECK q_good&gt;=0.7" and "q_bad&lt;=0.3". Bites are left to run out (no hook set); a fight that starts anyway is
-    /// fought out. The 톡s are short DOWNWARD pulls (<see cref="LureFlick"/>); first <see cref="LureDirectionCheck"/>
+    /// flicks). Logs "[LURE] t q strike depth onBottom" every 0.5 s and each scored cycle of a 톡 lure (count, gaps, rest),
+    /// then checks "[AUTO] CHECK q_good&gt;=0.7" and "q_bad&lt;=0.3". No fish engage while Q is measured (a bite stopped the
+    /// scripted cycle and spoiled its score at random); with -fklurebites they do: bites are left to run out (no hook set),
+    /// a fight that starts anyway is fought out. The 톡s are short DOWNWARD pulls (<see cref="LureFlick"/>); first <see cref="LureDirectionCheck"/>
     /// checks with the minnow that an upward swipe is no 톡 and a downward one is (and jerks the rod). With -fkshots it
     /// saves two shots of each lure moving in the water (and the rod at rest / at a jerk's peak); -fklureui adds the
     /// shop's lure tab and the bait picker.
@@ -80,11 +81,18 @@ namespace FishingKing
                 "lure {0} ({1}, work {2}, {3}): band {4:0.0}-{5:0.0} rev/s, flicks {6}-{7}, gap {8:0.00}-{9:0.00} s, rest {10:0.0}-{11:0.0} s",
                 b.id, b.action, b.work, b.buoyancy, b.reelBand.x, b.reelBand.y, b.flicks.x, b.flicks.y, b.gap.x, b.gap.y, b.rest.x, b.rest.y));
             int f0 = ctl.LureFollows, r0 = ctl.LureStrikeRolls, b0 = ctl.LureBites, t0 = ctl.LureTurned;
+            // Q is scored on the scripted input alone: a fish that bites (or is hooked) stops the script mid-cycle (hands off
+            // through the bite, a recast after a fight resets Q), which spoiled the next cycle's score at random. No fish
+            // engage while Q is measured, unless -fklurebites (the old behaviour: bites are left to run out).
+            bool bitesOn = Array.IndexOf(Environment.GetCommandLineArgs(), "-fklurebites") >= 0;
+            bool noBitesWas = FishingController.NoBites;
+            FishingController.NoBites = !bitesOn;
             var good = new List<float>();
             yield return LurePlay(ctl, b, true, 20f, good, shotsOn);
             int f1 = ctl.LureFollows, r1 = ctl.LureStrikeRolls, b1 = ctl.LureBites, t1 = ctl.LureTurned;
             var bad = new List<float>();
             yield return LurePlay(ctl, b, false, 10f, bad, false);
+            FishingController.NoBites = noBitesWas;
             PointerInput.SimDown = false;
             float qGood = good.Count > 0 ? good.Average() : -1f;
             float qBad = bad.Count > 0 ? bad[bad.Count - 1] : 1f;
@@ -240,6 +248,11 @@ namespace FishingKing
             var prev = ctl.State;
             var rh = ctl.Rhythm;
             string tag = good ? "good" : "bad";
+            // the 톡s as the rhythm saw them (waiting time), to log each scored cycle's flick count, gaps and rest
+            var flicks = new List<float>();
+            var strengths = new List<float>();
+            float bottomT = 0f, bottomRest = 0f;
+            int cyclesSeen = rh.Cycles;
             while (!clock.done)
             {
                 float dt = Time.deltaTime;
@@ -248,6 +261,50 @@ namespace FishingKing
                     if (prev != FishingController.S.Waiting && prev != FishingController.S.Biting) clock.castT = 0f; // a new cast
                     clock.t += dt;
                     clock.castT += dt;
+                    bool flickNow = ctl.LureIn.FlickNow;
+                    if (flickNow)
+                    {
+                        flicks.Add(clock.t);
+                        strengths.Add(ctl.LureIn.FlickStrength);
+                        bottomRest = bottomT;
+                        bottomT = 0f;
+                    }
+                    else if (ctl.Tackle.OnBottom) bottomT += dt;
+                    if (rh.Cycles < cyclesSeen)
+                    {
+                        // (a recast reset the rhythm)
+                        cyclesSeen = rh.Cycles;
+                        flicks.Clear();
+                        strengths.Clear();
+                        if (flickNow)
+                        {
+                            flicks.Add(clock.t);
+                            strengths.Add(ctl.LureIn.FlickStrength);
+                        }
+                    }
+                    else if (rh.Cycles > cyclesSeen)
+                    {
+                        // (scored at the next work's first 톡, this frame's: that 톡 starts the next cycle)
+                        var mine = flickNow && flicks.Count > 0 ? flicks.GetRange(0, flicks.Count - 1) : new List<float>(flicks);
+                        var power = flickNow && strengths.Count > 0 ? strengths.GetRange(0, strengths.Count - 1) : new List<float>(strengths);
+                        float onBottom = flickNow ? bottomRest : bottomT;
+                        var gaps = new List<string>();
+                        for (int i = 1; i < mine.Count; i++) gaps.Add((mine[i] - mine[i - 1]).ToString("0.000", System.Globalization.CultureInfo.InvariantCulture));
+                        float rest = mine.Count > 0 ? clock.t - mine[mine.Count - 1] : -1f;
+                        if (!b.IsSteady && b.work == Work.Flick)
+                            Log(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                                "[LURE] {0} {1} cycle {2} score {3:0.00}: {4} 톡 (want {5}-{6}), gaps [{7}] s (want {8:0.00}-{9:0.00}), rest {10:0.00} s (want {11:0.0}-{12:0.0}), on the bottom {13:0.00} s of it, strength max {14:0.00} (max {15:0.00}), q {16:0.00}",
+                                b.id, tag, rh.Cycles, rh.LastScore, mine.Count, b.flicks.x, b.flicks.y, string.Join(" ", gaps), b.gap.x, b.gap.y, rest, b.rest.x, b.rest.y,
+                                onBottom, power.Count > 0 ? power.Max() : 0f, b.maxStrength, rh.Q));
+                        cyclesSeen = rh.Cycles;
+                        flicks.Clear();
+                        strengths.Clear();
+                        if (flickNow)
+                        {
+                            flicks.Add(clock.t);
+                            strengths.Add(ctl.LureIn.FlickStrength);
+                        }
+                    }
                     logT -= dt;
                     if (logT <= 0f)
                     {
