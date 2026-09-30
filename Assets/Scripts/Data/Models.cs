@@ -401,6 +401,15 @@ namespace FishingKing
         public string gearLine = "더 튼튼한 줄";   // "이 녀석을 상대하려면 {gearLine}이 필요할 것 같다… (N kg 이상)"
         public Choreo choreo = new Choreo();
         public float camScale = 1f;               // x the camera's rest distance (huge fish)
+        /// <summary>
+        /// The nose-in's push-in (x or y 0 = none): the camera moves in on the hovering fish until its outline fills
+        /// noseFill of the window (x: its width, y: its height, whichever is reached first), the fish and the lure centred on
+        /// <see cref="noseFrame"/>, so the head, the lips and the bait read through the fake-out and the tell;
+        /// <see cref="noseCamTease"/> of the way in already in 흥분. The lunge ends on its usual framing.
+        /// </summary>
+        public Vector2 noseFill;
+        public float noseCamTease;
+        public Vector2 noseFrame = new Vector2(0.5f, 0.5f);
         /// <summary>A mood just entered is kept this long before the gauge can drop it back (0 = the hysteresis alone).</summary>
         public float moodHold;
 
@@ -468,6 +477,14 @@ namespace FishingKing
         public float lureDrag = 0.08f;            // m the lure is dragged per reel turn (floor sets)
         public float lureHop, lureFall;           // a flick's hop (m) and the fall (m/s) in this set (0 = by the lure)
         public string clear = "#04101a", abyss = "#03080c", fogOutline = "#1f5f70";
+        /// <summary>
+        /// The silhouette outside the lure light where abyss is the water itself (a daylight murk): the body in
+        /// <see cref="abyssNear"/> (a step darker than the water) with a <see cref="fogNear"/> contour while the fish is
+        /// within silFade.x m of the light, melting into abyss / fogOutline by silFade.y m (null = abyss / fogOutline:
+        /// no silhouette of its own).
+        /// </summary>
+        public string abyssNear, fogNear;
+        public Vector2 silFade;
         public float sunMix;                      // ActorToon _SunMix (0 = lit by the lure alone)
         public Vector3 keyDir = new Vector3(0.30f, 0.93f, 0.20f);   // the sun (towards the light, set frame)
         public float lightUp;                     // the light's centre this far above the lure (ice: the hole's column)

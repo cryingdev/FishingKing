@@ -314,6 +314,9 @@ namespace FishingKing
             sets["lake"] = new EncounterSetDef
             {
                 id = "lake", clear = "#1a3024", abyss = "#1a3024", fogOutline = "#3a5a3a", sunMix = 0.75f, lureDrag = 0.05f, lureHop = 0.1f,
+                // the carp's silhouette past the light: darker than the backdrop's greens with a pale contour, full within
+                // 5 m of the bait, gone into the water by 7.5 m
+                abyssNear = "#10221a", fogNear = "#5a7e4e", silFade = new Vector2(5.0f, 7.5f),
                 keyDir = new Vector3(0.30f, 0.93f, 0.20f),
                 rays = new[] { new RayDef("#f0ffc0", 0.14f, 150f, -20f), new RayDef("#f0ffc0", 0.14f, 232f, -44f) },
                 halo = "#fff0a0", haloGlow = 0f, haloPlain = 0f, haloBait = "bait_golden", haloBaitAlpha = 0.5f,
@@ -403,7 +406,11 @@ namespace FishingKing
             e.lightGlow = e.lightPlain = 3.6f;
             e.orbitFar = 2.2f;
             e.orbitNear = 1.1f;
-            e.noseDist = 0.4f;
+            e.noseDist = 0.3f;
+            // the tasting up close: the camera moves in until the carp fills about half the window
+            e.noseFill = new Vector2(0.52f, 0.78f);
+            e.noseFrame = new Vector2(0.5f, 0.55f);
+            e.noseCamTease = 0.35f;
             e.moods = new[]
             {
                 new MoodDef { name = "경계", prompt = "살살… 아주 천천히 끌어요", verb = Verb.Wind, lo = 0.1f, hi = 0.4f, gain = 8f,

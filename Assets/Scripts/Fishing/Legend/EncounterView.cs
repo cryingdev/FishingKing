@@ -74,7 +74,7 @@ namespace FishingKing
         LineRenderer line;
         Sprite[] lureFrames, silt;
         Sprite bubbleS, bubbleM;
-        Color eyeCore, eyeGlow, abyss, fogOutline, lineCol;
+        Color eyeCore, eyeGlow, abyss, fogOutline, abyssNear, fogNear, lineCol;
 
         // geometry (render-target pixels, origin bottom-left)
         Rect window, crop;
@@ -90,6 +90,10 @@ namespace FishingKing
         float f, followYaw, lungeK, restYaw, yawPx, horizon;
         Vector3 lungeCam, lungeAim;
         bool lungeInit;
+        float push, pushVel;                  // the nose-in's push-in (def.noseFill): 0 = the rest framing, 1 = in
+        Vector3 pushOff;                      // its framed point (from the lure) and camera distance
+        float pushDist;
+        bool pushHas;
 
         // the lure (set frame)
         Vector3 lure;
@@ -162,10 +166,13 @@ namespace FishingKing
         Vector3 DeepDir => cho.deepDir.normalized;
 
         // ================================================================== setup
+        /// <summary>Test hook (-fkenccm, EncProbe): the legend shown at this length whatever it rolled (0 = off).</summary>
+        public static float DebugCm;
+
         public static EncounterView Create(FishingController ctl, LegendEncounter enc, BaitDef bait, float cm)
         {
             var v = new GameObject("EncounterView").AddComponent<EncounterView>();
-            v.Init(ctl, enc, bait, cm);
+            v.Init(ctl, enc, bait, DebugCm > 0f ? DebugCm : cm);
             Current = v;
             return v;
         }
@@ -187,6 +194,8 @@ namespace FishingKing
             eyeGlow = Art.Hex(def.eyeGlow ?? def.eyeCore);
             abyss = Art.Hex(set.abyss);
             fogOutline = Art.Hex(set.fogOutline);
+            abyssNear = set.abyssNear != null ? Art.Hex(set.abyssNear) : abyss;
+            fogNear = set.fogNear != null ? Art.Hex(set.fogNear) : fogOutline;
             lineCol = stage.UnderwaterLine(Game.I.Line.color);
             lineCol = Color.Lerp(lineCol, Art.Hex(set.line), 0.5f);
             lineCol.a = 0.75f;
@@ -635,7 +644,22 @@ namespace FishingKing
         /// <summary>For the autopilot: the fish's distance from the camera (m), or -1.</summary>
         public float FishCamDist => fish != null ? Vector3.Distance(fPos, camPos) : -1f;
 
-        readonly List<Vector3> facePts = new List<Vector3>();
+        /// <summary>For the tests: the fish's distance from the lure (m), or -1.</summary>
+        public float FishLureDist => fish != null ? Vector3.Distance(fPos, lure) : -1f;
+
+        /// <summary>For the tests: the fish from the snout to the tail bone across the window (share of its width), or -1.</summary>
+        public float FishSpanK
+        {
+            get
+            {
+                if (fish == null || window.width <= 0f) return -1f;
+                var a = Proj(fish.Mouth - SetOrigin);
+                var b = Proj(fish.TailPos - SetOrigin);
+                return Mathf.Abs(a.x - b.x) / window.width;
+            }
+        }
+
+        readonly List<Vector3> facePts = new List<Vector3>(), framePts = new List<Vector3>();
 
         /// <summary>
         /// The legend's face this frame in render-target pixels, for the HUD to keep its text off: the eyes, the mouth and
@@ -1581,12 +1605,13 @@ namespace FishingKing
                 }
                 default:
                 {
-                    // the carp: a slow S-curve along the bottom, head slightly down
+                    // the carp: a slow S-curve along the bottom, head slightly down; wide enough (1.1 m) that it swims
+                    // across the view mid-way (4-5 m out) and its flank's silhouette shows, not only its head-on face
                     entry = lureFlat + deepFlat * def.orbitFar + new Vector3(0f, cho.orbitDepth, 0f);
                     var dir = entry - moodFrom;
                     var sd = Vector3.Cross(Vector3.up, dir.normalized);
                     e = Mathf.SmoothStep(0f, 1f, u);
-                    p = Vector3.Lerp(moodFrom, entry, e) + sd * (0.5f * Mathf.Sin(e * Mathf.PI * 2f));
+                    p = Vector3.Lerp(moodFrom, entry, e) + sd * (1.1f * Mathf.Sin(e * Mathf.PI * 2f));
                     tPitch = 8f;
                     break;
                 }
@@ -2065,14 +2090,72 @@ namespace FishingKing
             float dist = rest;
             if (ph == LegendEncounter.Phase.Approach) dist = Mathf.Lerp(rest, dolly, Mathf.SmoothStep(0f, 1f, enc.PhaseT / enc.PhaseLen));
             else if (ph > LegendEncounter.Phase.Approach) dist = dolly;
-            var basePos = track + CamRest.normalized * dist;
+            var restPos = track + CamRest.normalized * dist;
+            // the nose-in's push-in (the carp): in on the hovering fish's head and the bait, part of the way in 흥분
+            float pushWant = 0f;
+            bool nosing = ph == LegendEncounter.Phase.NoseIn || ph == LegendEncounter.Phase.Lunge;
+            if (def.noseFill.x > 0f && def.noseFill.y > 0f && fish != null && !topFlow)
+            {
+                if (nosing) pushWant = 1f;
+                else if (ph == LegendEncounter.Phase.Tease && enc.Mood == 2 && !enc.Leaving) pushWant = def.noseCamTease;
+            }
+            if (dt <= 0f) push = pushWant;
+            else push = Mathf.SmoothDamp(push, pushWant, ref pushVel, 0.18f, Mathf.Infinity, dt);
+            if (pushWant <= 0f && push < 0.001f) pushHas = false;
+            if (pushWant > 0f && (!pushHas || !nosing))
+            {
+                // the framing: the fish's outline (snout, tail tip, back and belly, the tail's lobes) filling noseFill of
+                // the window, it and the lure centred on noseFrame and kept inside; followed while the fish hovers, held
+                // from the nose-in on (the fake-out's dart in and back shows as the fish's own move)
+                var fwd = -CamRest.normalized;
+                var right = Vector3.Cross(Vector3.up, fwd).normalized;
+                var up = Vector3.Cross(fwd, right);
+                var F = fish.Forward;
+                var U = Vector3.Cross(F, Vector3.Cross(Vector3.up, F).normalized);
+                var root = SetOrigin + fPos;
+                var tip = root - F * (0.5f * fishScale);
+                framePts.Clear();
+                framePts.Add(fish.Mouth);
+                framePts.Add(fish.Mouth - U * (0.06f * fishScale));
+                framePts.Add(root + U * (0.17f * fishScale));
+                framePts.Add(root - U * (0.15f * fishScale));
+                framePts.Add(tip + U * (0.15f * fishScale));
+                framePts.Add(tip - U * (0.15f * fishScale));
+                float x0 = 1e9f, x1 = -1e9f, y0 = 1e9f, y1 = -1e9f;
+                foreach (var p in framePts)
+                {
+                    float px = Vector3.Dot(p - root, right), py = Vector3.Dot(p - root, up);
+                    x0 = Mathf.Min(x0, px); x1 = Mathf.Max(x1, px); y0 = Mathf.Min(y0, py); y1 = Mathf.Max(y1, py);
+                }
+                float d = f0 * Mathf.Max((x1 - x0) / (def.noseFill.x * window.width), (y1 - y0) / (def.noseFill.y * window.height));
+                // the lure too, and the whole of it inside 94 % of the window
+                var lw = SetOrigin + lure;
+                float lx = Vector3.Dot(lw - root, right), ly = Vector3.Dot(lw - root, up);
+                x0 = Mathf.Min(x0, lx); x1 = Mathf.Max(x1, lx); y0 = Mathf.Min(y0, ly); y1 = Mathf.Max(y1, ly);
+                d = Mathf.Max(0.3f, d, f0 * Mathf.Max((x1 - x0) / (0.94f * window.width), (y1 - y0) / (0.94f * window.height)));
+                var off = fPos + right * ((x0 + x1) * 0.5f) + up * ((y0 + y1) * 0.5f) - lure;
+                float k = !pushHas || dt <= 0f ? 1f : 1f - Mathf.Exp(-dt / 0.4f);
+                pushOff = Vector3.Lerp(pushOff, off, k);
+                pushDist = Mathf.Lerp(pushDist, d, k);
+                pushHas = true;
+            }
+            var basePos = restPos;
+            var aim = track;
+            var frameAt = set.frameAt;
+            if (push > 0.001f && pushHas)
+            {
+                var focus = track + pushOff;
+                basePos = Vector3.Lerp(restPos, focus + CamRest.normalized * pushDist, push);
+                aim = Vector3.Lerp(track, focus, push);
+                frameAt = Vector2.Lerp(set.frameAt, def.noseFrame, push);
+            }
             // yaw towards the fish, up to 6 degrees
             float follow = 0f;
             if (fish != null && (ph == LegendEncounter.Phase.Approach || ph == LegendEncounter.Phase.Tease || ph == LegendEncounter.Phase.NoseIn))
             {
                 var toFish = fPos - basePos;
                 var toLure = track - basePos;
-                follow = Mathf.Clamp(Mathf.DeltaAngle(HeadingOf(toLure), HeadingOf(toFish)) * 0.25f, -6f, 6f);
+                follow = Mathf.Clamp(Mathf.DeltaAngle(HeadingOf(toLure), HeadingOf(toFish)) * 0.25f, -6f, 6f) * (1f - push);
             }
             followYaw = dt <= 0f ? follow : Mathf.Lerp(followYaw, follow, 1f - Mathf.Exp(-dt / 0.5f));
             // the lunge: dollies onto the head, the focal length up 1.5x, the view centred on the bite
@@ -2090,16 +2173,16 @@ namespace FishingKing
                 lungeK = 1f - (1f - k) * (1f - k);
             }
             else lungeK = Mathf.MoveTowards(lungeK, 0f, dt * 3f);
-            var aim = track;
-            var near = lungeCam + (basePos - lungeCam).normalized * (1.3f * def.camScale) + new Vector3(0f, 0.04f, 0f);
+            // (the bite's framing from the rest position, as without a push-in)
+            var near = lungeCam + (restPos - lungeCam).normalized * (1.3f * def.camScale) + new Vector3(0f, 0.04f, 0f);
             camPos = Vector3.Lerp(basePos, near, lungeK);
-            aim = Vector3.Lerp(track, lungeCam + lungeAim, lungeK);
+            aim = Vector3.Lerp(aim, lungeCam + lungeAim, lungeK);
             f = f0 * Mathf.Lerp(1f, 1.5f, lungeK);
             pp = Vector2.Lerp(ppWin, new Vector2(w * 0.5f, h * 0.5f), lungeK);
             // the lure sits at the set's frame point in the window (the cave: 0.33 W, 0.30 H): the view turns right / up of it
             var to = aim - camPos;
             float yaw = HeadingOf(to), pitch = Mathf.Atan2(to.y, new Vector2(to.x, to.z).magnitude) * Mathf.Rad2Deg;
-            float offX = (0.5f - set.frameAt.x) * window.width * (1f - lungeK), offY = (0.5f - set.frameAt.y) * window.height * (1f - lungeK);
+            float offX = (0.5f - frameAt.x) * window.width * (1f - lungeK), offY = (0.5f - frameAt.y) * window.height * (1f - lungeK);
             yaw += Mathf.Atan2(offX, f) * Mathf.Rad2Deg + followYaw;
             pitch += Mathf.Atan2(offY, f) * Mathf.Rad2Deg;
             camRot = Quaternion.Euler(-pitch, yaw, 0f);
@@ -2137,7 +2220,14 @@ namespace FishingKing
             var lp = SetOrigin + (lureInMouth ? Mouth() : lure);
             if (set.rayAnchored) lp = SetOrigin + new Vector3(0f, LureRest + set.lightUp, 0f);
             else lp.y += set.lightUp;
-            fish.SetLight(new Vector4(lp.x, lp.y, lp.z, Mathf.Max(0.001f, R)), abyss, fogOutline, set.sunMix * pSun, set.keyDir);
+            // a daylight murk's silhouette: a step darker than the water near the light, melting into it further out (and
+            // as the light goes out when it turns away)
+            float sil = set.silFade.y > set.silFade.x
+                ? Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(set.silFade.x, set.silFade.y, Vector3.Distance(SetOrigin + fPos, lp))) : 1f;
+            if (ph == LegendEncounter.Phase.TurnAway) sil = Mathf.Max(sil, Mathf.Clamp01(enc.PhaseT / 0.7f));
+            else if (ph == LegendEncounter.Phase.Close) sil = 1f;
+            fish.SetLight(new Vector4(lp.x, lp.y, lp.z, Mathf.Max(0.001f, R)), Color.Lerp(abyssNear, abyss, sil),
+                Color.Lerp(fogNear, fogOutline, sil), set.sunMix * pSun, set.keyDir);
             // the silhouette's top rim comes in over the first second of the approach
             if (fishMat.HasProperty(RimStrengthId))
             {
@@ -2219,7 +2309,7 @@ namespace FishingKing
             int fr = (int)(lureAnimT * (moving ? 5f : 1.5f)) % 2;
             if (set.lureAt == LureAt.Surface) fr = popT < 0.2f ? 1 : ctl.LureIn.Winding ? fr : 0;
             lureSr.sprite = lureFrames[fr];
-            int scale = lungeK > 0.5f ? 2 : 1;
+            int scale = lungeK > 0.5f || push > 0.5f ? 2 : 1;
             lureSr.transform.localScale = new Vector3(scale, scale, 1f);
             lureSr.transform.rotation = Quaternion.Euler(0f, 0f, Mathf.Round(lureTilt / 5f) * 5f);
             Place(lureSr, lpx);
