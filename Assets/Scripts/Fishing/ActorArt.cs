@@ -30,7 +30,8 @@ namespace FishingKing
         }
 
         // hyb_character.RIM_SCALE: the sprites use a subtle share of each preset's rim strength
-        const float RimScale = 0.62f;
+        // (raised from the sprites' 0.62: at 1x the 3D figure read flatter than the sprites)
+        const float RimScale = 0.72f;
         // The sprites (lit by the lake preset) have no dark outline on the sun side (hyb_core.outer_outline, lit_steps 1):
         // the edge pixel is the rim pixel one step darker. Measured on the lake sprites: rim pixel -> edge pixel is about
         // -0.10 OKLab L (vest 9e9f65 -> 7a7e53, trousers 838286 -> 606877, hat ffcfa0 -> df9f74). Other stages take

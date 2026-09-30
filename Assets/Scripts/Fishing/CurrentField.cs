@@ -123,6 +123,9 @@ namespace FishingKing
         /// <summary>Game hours (for the slow swell of the stream, the ocean's veer).</summary>
         static float Hours => GameClock.Min / 60f;
 
+        // the sea's peak tidal flow (m/s, before the distance factor): 0.8 carried a float to the tetrapods in ~10 s
+        const float SeaTide = 0.65f;
+
         static float SS(float e0, float e1, float x)
         {
             float t = Mathf.Clamp01((x - e0) / (e1 - e0));
@@ -280,7 +283,7 @@ namespace FishingKing
                     if (t.S <= 0f) return Vector2.zero;
                     var d = t.R >= 0f ? new Vector2(-1f, -0.15f).normalized : new Vector2(1f, 0.1f).normalized;
                     float k = (0.6f + 0.6f * SS(4f, 40f, z)) * (Mathf.Abs(x) > 5f && z < 8f ? 0.5f : 1f);
-                    return 0.8f * t.S * k * Mult * d;
+                    return SeaTide * t.S * k * Mult * d;
                 }
                 case Kind.Ocean:
                 {

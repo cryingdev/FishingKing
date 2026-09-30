@@ -12,6 +12,8 @@ namespace FishingKing
     public partial class FishingController
     {
         static readonly CultureInfo CIo = CultureInfo.InvariantCulture;
+        // line wear per second on structure before roughness / tension / speed / toughness (0.22 cut PE 3호 on tetrapods in 2-10 s)
+        const float RubRate = 0.11f;
 
         /// <summary>Test hook (-fkauto obstacles): the next run of the hooked fish heads for this cover (its id), no roll.</summary>
         internal static string DebugCover;
@@ -929,7 +931,7 @@ namespace FishingKing
             }
             rubO = o;
             float rough = o.Mat.rough * o.roughK;
-            float rate = 0.22f * rough * (0.4f + 0.6f * Mathf.Clamp01(f.TensionRatio)) * (0.5f + 0.5f * Mathf.Clamp01(fishSpeed / 1.5f))
+            float rate = RubRate * rough * (0.4f + 0.6f * Mathf.Clamp01(f.TensionRatio)) * (0.5f + 0.5f * Mathf.Clamp01(fishSpeed / 1.5f))
                          / Mathf.Max(0.1f, Game.I.Line.tough) * (f.Giving ? 0.5f : 1f);
             f.Abrade(rate * dt);
             if (!rubTold)

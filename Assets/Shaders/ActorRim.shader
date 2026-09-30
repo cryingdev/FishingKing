@@ -129,7 +129,8 @@ Shader "FishingKing/ActorRim"
                 float s = _RimStrength;
                 float3 o;
                 o.x = max(lab.x + (rim.x - lab.x) * s * 0.75, lab.x + 0.05);
-                o.yz = lab.yz + (rim.yz - lab.yz) * s * 0.5;
+                // light, near-white parts (the straw hat) take more of the rim's warmth, as the sprites' hats snap to a warm tone
+                o.yz = lab.yz + (rim.yz - lab.yz) * s * lerp(0.5, 0.95, smoothstep(0.78, 0.9, lab.x));
                 return o;
             }
 

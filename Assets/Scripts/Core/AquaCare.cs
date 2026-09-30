@@ -65,6 +65,7 @@ namespace FishingKing
         public const float FullAt = 0.95f;            // at or above: full (does not eat, counts as 배불러요)
         public const float StartFullness = 0.6f;      // a fish just put in the tank (or migrated from an old save)
         public const float GrowthCap = 0.08f;         // +8 % length at most
+        public const float GrowthPricePremium = 1.6f; // value x (1 + this x the growth fraction) on top of the catch formula
         public const float GrowthTau = 2.3f;          // fed days
         public const float PelletFill = 0.2f;         // fullness per pellet eaten
         public const int PelletsPerPortion = 5;       // 1 portion = 1.0 fullness
@@ -245,7 +246,9 @@ namespace FishingKing
             {
                 // the catch-time formula at the grown size, kept in proportion to what the fish was worth when caught
                 float p0 = Mathf.Max(1, sp.Price(f.baseCm));
-                f.value = Mathf.Max(1, Mathf.RoundToInt(f.baseValue * sp.Price(cm) / p0));
+                // plus a keeper's premium for the growth itself (the formula alone gives only ~+10 % at +8 %): about +24 % at the cap
+                float premium = 1f + GrowthPricePremium * (r - 1f);
+                f.value = Mathf.Max(1, Mathf.RoundToInt(f.baseValue * sp.Price(cm) / p0 * premium));
             }
         }
 
