@@ -82,6 +82,17 @@ Builds\Windows\FishingKing.exe -fkfresh -fkrich -fkgear -fksave test -fkscene Fi
 
 ## 설계 문서
 
+구현 정리 (현재 코드 기준):
+
+- [전체 구조](Docs/architecture.md) — 씬 흐름, 픽셀 뷰·줌·입력, 낚시 상태 머신, 그리기 순서, 부분 3D, 발판 가림, 실행 순서
+- [낚시 플레이 시스템](Docs/fishing_gameplay.md) — 플릭 캐스팅, 입질·챔질, 파이트 모델, 스윕·사이드 프레셔, 원 그리기, 루어 입력, 캐스팅 후 줌, 걷기
+- [수족관](Docs/aquarium.md) — 먹이·생먹이, 배부름·성장·관람 수입, 청소, 장식, 수조 5단계, 오프라인 보정
+- [Blender 에셋 파이프라인](Docs/art_pipeline.md) — 스크립트별 역할, 하이브리드 스타일 규칙, 빌드·설치, Unity 임포터
+- [데이터 표](Docs/data_reference.md) — 스테이지·어종·장비·루어·수조·사료·장식, SaveData 필드와 마이그레이션
+- [변경 기록](CHANGELOG.md)
+
+사양서:
+
 - [루어와 전설어 조우](Docs/lures_legend_spec.md) · [전설어 확장](Docs/legends_rollout.md)
 - [시간대·물때·물살](Docs/time_currents_spec.md) · [장애물](Docs/obstacles_spec.md)
 
