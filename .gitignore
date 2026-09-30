@@ -1,0 +1,23 @@
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+/[Mm]emoryCaptures/
+*.csproj
+*.sln
+*.suo
+*.user
+*.pidb
+*.booproj
+.vs/
+.vscode/
+.idea/
+*.apk
+*.aab
+
+# Blender pipeline scratch output
+/Tools/Blender/_tmp/
+__pycache__/
