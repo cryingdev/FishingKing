@@ -48,6 +48,7 @@ namespace FishingKing
                 : new List<BaitDef> { Game.I.Bait };
             PointerInput.SimDpi = 0f;
             if (shotsOn && Array.IndexOf(argv, "-fklureui") >= 0) yield return LureUiShots(ctl);
+            if (ctl.Stage.L.IsIce) yield return LureIceDepth(ctl, shotsOn);
             yield return LureDirectionCheck(ctl, shotsOn);
             Log($"lure test on {ctl.Stage.Def.id}: {string.Join(", ", lures.Where(b => b != null).Select(b => b.id))} (rod {Game.I.Rod.id}, reel {Game.I.Reel.id} {Game.I.Reel.retrieve:0.00} m/rev)");
             foreach (var b in lures)
@@ -377,6 +378,74 @@ namespace FishingKing
                 n1, li.Flicks, li.FlickStrength, jerkMax));
             if (!downOk) lureFails++;
             Log($"CHECK {(downOk ? "PASS" : "FAIL")} downward pull is a 톡 and jerks the rod (peak {jerkMax:0.00})");
+            yield return BackToReady(ctl);
+        }
+
+        /// <summary>
+        /// The ice: a lure stops at the depth the drag let it down to. The jig let down part way rests there (not on the
+        /// bottom) and counts as down (OnBottom: its rhythm works there); a 톡 lifts it and it falls back to that depth; a full
+        /// drag lays it on the bottom, inside the sturgeon's bottom band. With -fkshots: lure_ice_mid / lure_ice_bottom.
+        /// </summary>
+        IEnumerator LureIceDepth(FishingController ctl, bool shotsOn)
+        {
+            var b = GameDatabase.GetItem<BaitDef>("bait_jig");
+            yield return BackToReady(ctl);
+            if (b == null) yield break;
+            if (!Game.I.Owns(b.id)) Game.Data.ownedItems.Add(b.id);
+            ctl.EquipBait(b);
+            yield return null;
+            var tk = ctl.Tackle;
+            // (let down, then still until the depth holds for 0.4 s)
+            IEnumerator Drop(float pull)
+            {
+                yield return WindUp(pull);
+                PointerInput.SimDown = false;
+                for (float w = 0f; w < 6f && ctl.State != FishingController.S.Waiting; w += Time.deltaTime) yield return null;
+                yield return Settle();
+            }
+            IEnumerator Settle()
+            {
+                float last = -1f, still = 0f;
+                for (float w = 0f; w < 8f && ctl.State == FishingController.S.Waiting && still < 0.4f; w += Time.deltaTime)
+                {
+                    still = Mathf.Abs(tk.Depth - last) < 1e-4f && !tk.Falling && !tk.Hopping ? still + Time.deltaTime : 0f;
+                    last = tk.Depth;
+                    yield return null;
+                }
+            }
+            yield return Drop(0.12f);
+            float aim = ctl.AimDepth, rest = tk.Depth, bottom = tk.Bottom;
+            bool onFloor = tk.OnBottom;
+            Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "[LURE] ice: let down to {0:0.00} m, rests at {1:0.00} m (bottom {2:0.00} m), on its floor {3}, {4}",
+                aim, rest, bottom, onFloor, ctl.State));
+            if (shotsOn) yield return LureShot(ctl, "lure_ice_mid");
+            bool ok = ctl.State == FishingController.S.Waiting && Mathf.Abs(rest - aim) <= 0.05f && rest < bottom - 1f && onFloor;
+            if (!ok) lureFails++;
+            Log($"CHECK {(ok ? "PASS" : "FAIL")} ice: the jig rests at the drag's depth {aim:0.00} m ({rest:0.00}), not on the bottom ({bottom:0.00})");
+            // a 톡 lifts it; it falls back to the drag's depth
+            float top = rest;
+            yield return LureFlick(1.0f, 0.10f);
+            for (float w = 0f; w < 0.5f; w += Time.deltaTime)
+            {
+                top = Mathf.Min(top, tk.Depth);
+                yield return null;
+            }
+            yield return Settle();
+            ok = ctl.State == FishingController.S.Waiting && top < rest - 0.3f && Mathf.Abs(tk.Depth - rest) <= 0.05f;
+            if (!ok) lureFails++;
+            Log($"CHECK {(ok ? "PASS" : "FAIL")} ice: a 톡 lifts the jig to {top:0.00} m and it falls back to {tk.Depth:0.00} m (the drag's {rest:0.00})");
+            // a full drag: on the bottom, in the sturgeon's band
+            yield return BackToReady(ctl);
+            yield return new WaitForSeconds(0.3f);
+            yield return Drop(0.32f);
+            float aim2 = ctl.AimDepth, d2 = tk.Depth, b2 = tk.Bottom;
+            var enc = GameDatabase.GetFish("sturgeon")?.encounter;
+            bool band = enc == null || (d2 >= enc.depthMin && d2 >= b2 - enc.bottomBand);
+            if (shotsOn) yield return LureShot(ctl, "lure_ice_bottom");
+            ok = ctl.State == FishingController.S.Waiting && d2 >= b2 - 0.02f && band;
+            if (!ok) lureFails++;
+            Log($"CHECK {(ok ? "PASS" : "FAIL")} ice: a full drag ({aim2:0.00} m) lays it on the bottom ({d2:0.00} of {b2:0.00} m), in the sturgeon's band {band}" +
+                (enc != null ? $" (>= {enc.depthMin:0.0} m, within {enc.bottomBand:0.0} m of the bottom)" : ""));
             yield return BackToReady(ctl);
         }
 

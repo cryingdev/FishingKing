@@ -40,9 +40,9 @@ namespace FishingKing
     /// <summary>
     /// Float + bait (natural baits) or lure. Lives in game space: <see cref="Surface"/> is the point
     /// on the water (y = 0) where the float sits / the line enters, <see cref="Depth"/> is the hook depth.
-    /// <para>A lure at rest follows its buoyancy (Docs/lures_legend_spec.md 1.3): a sinking one goes down to the bottom at
-    /// its sink speed (its fall speed after a flick or a stop), a suspending one only to its swim depth, a floating one
-    /// back up to the surface. Winding moves the rig to the shore and changes its depth by the lure's wind lift per metre
+    /// <para>A lure at rest follows its buoyancy (Docs/lures_legend_spec.md 1.3): a sinking one goes down to the bottom (through
+    /// the ice: to the depth the drag let it down to, <see cref="Floor"/>) at its sink speed (its fall speed after a flick or
+    /// a stop), a suspending one only to its swim depth, a floating one back up to the surface. Winding moves the rig to the shore and changes its depth by the lure's wind lift per metre
     /// (a negative lift dives it: the crankbait); a flick (<see cref="Twitch"/>) hops it, pulls it to the shore and darts it
     /// sideways, and starts the fall (<see cref="Falling"/> / <see cref="FallT"/>).</para>
     /// <para>With the rod swept to one side (the controller's rod sweep) a rig being wound in comes along a path bent towards
@@ -61,6 +61,7 @@ namespace FishingKing
         public Mode State { get; private set; } = Mode.Hidden;
         public Vector3 Surface;
         public float Depth;
+        /// <summary>The float's depth; through the ice the drag's depth, which a lure also stops at (<see cref="Floor"/>).</summary>
         public float FloatDepth = 2f;
         public BaitDef Bait { get; private set; }
         public bool UsesFloat => Bait != null && !Bait.isLure;
@@ -69,9 +70,9 @@ namespace FishingKing
         public Vector3 HookPos => new Vector3(Surface.x, -Depth, Surface.z);
 
         // ---- lure signals (read by the lure rhythm, the legend watch and the HUD)
-        /// <summary>The lure is on (or within 0.3 m of) the bottom.</summary>
+        /// <summary>The lure is on (or within 0.3 m of) the bottom (through the ice: of the depth it was let down to, <see cref="Floor"/>).</summary>
         public bool OnBottom { get; private set; }
-        /// <summary>True for the one frame the lure touches down on the bottom.</summary>
+        /// <summary>True for the one frame the lure touches down on the bottom (through the ice: comes down to <see cref="Floor"/>).</summary>
         public bool BottomTouch { get; private set; }
         /// <summary>Seconds since the lure last touched down on the bottom.</summary>
         public float SinceTouch { get; private set; } = 99f;
@@ -83,6 +84,21 @@ namespace FishingKing
         public bool Hopping => twitchLeft > 0f;
         /// <summary>The bottom under the rig (hook depth limit).</summary>
         public float Bottom => stage.L.DepthAt(Surface.z) - 0.25f;
+        /// <summary>
+        /// Where a sinking lure comes to rest: the bottom; through the ice the depth the drag let it down to
+        /// (<see cref="FloatDepth"/>), no deeper than the bottom, and on it within <see cref="IceFloorSnap"/> (the full drag
+        /// stops 5 cm short of it). Its lifts and falls and the bottom signals work around it.
+        /// </summary>
+        public float Floor
+        {
+            get
+            {
+                float b = Bottom;
+                if (!stage.L.IsIce || FloatDepth >= b - IceFloorSnap) return b;
+                return Mathf.Max(0.05f, FloatDepth);
+            }
+        }
+        const float IceFloorSnap = 0.1f;
 
         /// <summary>
         /// Point the fishing line is drawn to: the float, or a sunk lure itself (the angler's line then cuts the
@@ -254,23 +270,42 @@ namespace FishingKing
             Surface.y = 0f;
             // the water never carries it out of view or in behind the front layer (the sea's xLim is 90 m, the ocean's 120:
             // the tide would take a float off the screen in seconds): it stops against the edge and slides along it. A rig
-            // already outside (the rod sweep's drag, a cast at the edge) may only come back in.
+            // already outside (a cast at the edge) may only come back in. A float goes on in behind a midstream rock's
+            // painted top as long as it still shows over it (Open), up to the rock itself.
             var wf = stage.Water;
             if (wf != null)
             {
-                bool fromOpen = wf.DriftOpen(from.x, from.z);
+                bool fromOpen = Open(from);
                 // (and never into a prop standing in the water: it stops against it and slides along it)
-                bool Ok(Vector3 p) => (wf.DriftOpen(p.x, p.z) || (!fromOpen && Mathf.Abs(p.x) <= Mathf.Abs(from.x)))
+                bool Ok(Vector3 p) => (Open(p) || (!fromOpen && Mathf.Abs(p.x) <= Mathf.Abs(from.x))) && Mathf.Abs(p.x) <= L.xLim - 0.6f + 1e-3f
                                       && new Vector2(p.x - anchor.x, p.z - anchor.z).magnitude <= maxDist + 1e-3f && !Blocked(p);
-                // against a prop's face: the water carries it on round the prop's side, not pinned there for good (spec
-                // 4.9 "stops at it and swings round")
+                // against a prop's face (or a midstream rock's painted top that would hide the float): the water carries it
+                // on round the prop's side, not pinned there for good (spec 4.9 "stops at it and swings round")
                 if (!Ok(Surface) && Obst != null && !Obst.Empty)
                 {
                     var s2 = new Vector2(Surface.x, Surface.z);
                     var f2 = new Vector2(from.x, from.z);
                     var step = s2 - f2;
                     float sl = step.magnitude;
-                    if (Obst.BlockedAtSurface(s2, 0.05f, out var po) && sl > 1e-6f)
+                    var rock = UsesFloat && !Obst.BlockedAtSurface(s2, 0.05f) ? RockOver(Surface) : null;
+                    if (rock != null && sl > 1e-6f)
+                    {
+                        // held off by a midstream rock's painted top (on it would hide the float): it works out sideways at
+                        // its drift speed towards the rock's nearer side (kept while it goes round this rock, else the other),
+                        // on down with the water where it still shows
+                        int side = rock == driftRoundO && driftRound != 0 ? driftRound : from.x >= rock.C.x ? 1 : -1;
+                        for (int k = 0; k < 4; k++)
+                        {
+                            if (k == 2) side = -side;
+                            var round = new Vector3(from.x + side * sl, 0f, k % 2 == 0 ? Surface.z : from.z);
+                            if (!Ok(round)) continue;
+                            Surface = round;
+                            driftRound = side;
+                            driftRoundO = rock;
+                            break;
+                        }
+                    }
+                    else if (Obst.BlockedAtSurface(s2, 0.05f, out var po) && sl > 1e-6f)
                     {
                         // it slides along the face at half its drift speed until the way on is clear: towards the side it is
                         // already off the prop's middle (kept while it works its way round this prop), else the other
@@ -355,6 +390,64 @@ namespace FishingKing
         /// <summary>A plan point inside a prop standing in the water (+5 cm): no rig in the water goes there (spec 4.9).</summary>
         bool Blocked(Vector3 p) => !stage.L.IsIce && Obst != null && !Obst.Empty && Obst.BlockedAtSurface(new Vector2(p.x, p.z), 0.05f);
 
+        /// <summary>Pixel rows of a float's top that must still show over a midstream rock's painted top it drifts in behind.</summary>
+        const int RockPeekPx = 5;   // (4 rows and the float's 1 px bob)
+        /// <summary>Front-layer pixels this near a midstream rock's footprint (m) are its painted base and foam.</summary>
+        const float RockPaintM = 0.6f;
+
+        /// <summary>
+        /// Visible water the current or the rod sweep may take the rig to: in view and not behind the front layer
+        /// (<see cref="WaterFx.DriftOpen"/>); a float also on in behind a midstream rock's painted top, which hides the water
+        /// just beyond the rock, as long as <see cref="RockPeekPx"/> of it still show over the rock (so it drifts on up to
+        /// the rock itself, spec 4.9, and never out of sight behind it).
+        /// </summary>
+        bool Open(Vector3 p)
+        {
+            var wf = stage.Water;
+            if (wf == null || wf.DriftOpen(p.x, p.z)) return true;
+            return UsesFloat && RockOver(p) != null && Peeks(p);
+        }
+
+        /// <summary>
+        /// The midstream rock (an exported prop, Data/obstacles_stream.json) painted over the water at <paramref name="p"/>
+        /// (null: none, or out of view): within <see cref="RockPaintM"/> of its footprint (its painted base and foam), or
+        /// hidden from the camera by it (its 1 px outline reaches ~0.2 m past what the geometry hides, so the points 0.25 m
+        /// nearer the camera and 0.2 m nearer the rock count too).
+        /// </summary>
+        Obstacle RockOver(Vector3 p)
+        {
+            var wf = stage.Water;
+            if (wf == null || Obst == null || Obst.Empty || !wf.InView(p.x, p.z)) return null;
+            var xz = new Vector2(p.x, p.z);
+            var cam = P.CameraPos;
+            var q = new Vector3(p.x, 0f, p.z);
+            var toCam = new Vector3(cam.x - p.x, 0f, cam.z - p.z).normalized;
+            foreach (var s in Obst.Solids)
+            {
+                if (!s.Standing || !s.Has("midstream")) continue;
+                float d = Obstacles.Dist(s, xz);
+                if (d <= RockPaintM) return s;
+                if (d > 5f) continue;   // (the water a rock's top hides reaches ~3 m past it)
+                var toC = s.C - xz;
+                var toRock = new Vector3(toC.x, 0f, toC.y).normalized;
+                if (Obst.Occluded(q, cam, out var o) || Obst.Occluded(q + toCam * 0.25f, cam, out o) || Obst.Occluded(q + toRock * 0.2f, cam, out o))
+                    if (o == s) return s;
+            }
+            return null;
+        }
+
+        /// <summary>A float on the water at <paramref name="p"/> shows its top <see cref="RockPeekPx"/> pixel rows (drawn as <see cref="Render"/> places it).</summary>
+        bool Peeks(Vector3 p)
+        {
+            float h = floatSr.sprite.rect.height;
+            float s = P.ScaleAt(p, h, FloatMinPx);
+            var at = P.To2D(p);
+            float top = (0.25f * PixelView.PPU + 0.5f * h) * s;
+            for (int k = 0; k < RockPeekPx; k++)
+                if (stage.Water.FrontAt(at + new Vector2(0f, (top - 0.5f - k) / PixelView.PPU))) return false;
+            return true;
+        }
+
         int bendSide;
 
         /// <summary>
@@ -392,7 +485,8 @@ namespace FishingKing
         public void Hide()
         {
             State = Mode.Hidden;
-            OnPad = padLeft = null;   // (a pad left while retrieved must not drop the next cast "off" it)
+            OnPad = padLeft = padSlid = null;   // (a pad left while retrieved must not drop the next cast "off" it)
+            padSlideT = -1f;
             Snag = null;
             PerchO = null;
             sliding = ballistic = false;
@@ -436,7 +530,8 @@ namespace FishingKing
             Surface = PushOut(new Vector3(at.x, 0, at.z));
             Depth = 0;
             State = Mode.Water;
-            OnPad = padLeft = null;
+            OnPad = padLeft = padSlid = null;
+            padSlideT = -1f;
             Snag = null;
             PerchO = null;
             lastHook = HookPos;
@@ -494,7 +589,7 @@ namespace FishingKing
         /// </summary>
         public void Wind(float metres, Vector3 to, float sweepSin = 0f)
         {
-            if (State != Mode.Water || metres <= 0 || Snag != null) return;
+            if (State != Mode.Water || metres <= 0 || Snag != null || PadSliding) return;
             var flat = new Vector3(to.x - Surface.x, 0, to.z - Surface.z);
             float d = flat.magnitude;
             if (OnPad != null)
@@ -525,12 +620,13 @@ namespace FishingKing
 
         /// <summary>
         /// Moves the rig <paramref name="metres"/> sideways (+ = to the angler's right as he looks at it) across
-        /// <paramref name="toShore"/> (the unit direction from the rig to him), inside the stage's water.
+        /// <paramref name="toShore"/> (the unit direction from the rig to him), inside the stage's visible water.
         /// </summary>
         void Sideways(Vector3 toShore, float metres)
         {
             var right = new Vector3(-toShore.z, 0f, toShore.x);
             float x0 = Surface.x, z0 = Surface.z;
+            var from = new Vector3(x0, 0f, z0);
             Surface += right * metres;
             var L = stage.L;
             Surface.x = Mathf.Clamp(Surface.x, -L.xLim + 0.6f, L.xLim - 0.6f);
@@ -538,12 +634,18 @@ namespace FishingKing
             // never takes it onto the shore or brings it home; winding in may still take it lower)
             Surface.z = Mathf.Clamp(Surface.z, Mathf.Min(z0, L.zNear + SweepNearZ), Mathf.Max(z0, L.zFar - 1f));
             Surface.y = 0f;
-            if (Blocked(Surface))
+            // in the visible water, as the current's drift (StepCurrent): never out of view or in behind the front layer. A
+            // rig already out of view may only come back in; one behind the front layer (wound in under the pier) may go
+            // either way
+            var wf = stage.Water;
+            bool fromOpen = Open(from), fromInView = wf == null || wf.InView(x0, z0);
+            bool Ok(Vector3 p) => !Blocked(p) && (Open(p) || (!fromOpen && (fromInView || Mathf.Abs(p.x) <= Mathf.Abs(x0))));
+            if (!Ok(Surface))
             {
-                // against a prop in the water: it stops there and slides along it
+                // against a prop in the water or the edge of the visible water: it stops there and slides along it
                 var a = new Vector3(Surface.x, 0f, z0);
                 var b = new Vector3(x0, 0f, Surface.z);
-                Surface = !Blocked(a) ? a : !Blocked(b) ? b : new Vector3(x0, 0f, z0);
+                Surface = Ok(a) ? a : Ok(b) ? b : from;
             }
             SweepDrift += Surface.x - x0;
         }
@@ -582,10 +684,10 @@ namespace FishingKing
                 Surface = new Vector3(anchor.x, 0f, anchor.z) + back.normalized * r;
                 SweepDrift += Surface.x - x1;
             }
-            // round the circle towards the bank it goes no further in than SweepNearZ from the waterline: this sweep's
-            // drag ends there (it stays in the water)
+            // round the circle towards the bank it goes no further in than SweepNearZ from the waterline, nor back out of the
+            // visible water: this sweep's drag ends there (it stays in the water, in sight)
             float floor = stage.L.zNear + SweepNearZ;
-            if (Surface.z < floor && Surface.z < before.z)
+            if ((Surface.z < floor && Surface.z < before.z) || (!Open(Surface) && Open(before)))
             {
                 Surface = before;
                 SweepDrift = drift0;
@@ -623,7 +725,7 @@ namespace FishingKing
         /// </summary>
         public void Twitch(float strength, Vector3 shore, float sweepSin = 0f, float currentMult = 1f)
         {
-            if (State != Mode.Water || UsesFloat || Snag != null) return;
+            if (State != Mode.Water || UsesFloat || Snag != null || PadSliding) return;
             var b = Bait;
             if (OnPad != null)
             {
@@ -930,6 +1032,51 @@ namespace FishingKing
 
         public void ClearPad() => OnPad = null;
 
+        // ---- a lure sliding off a pad (spec 5.2)
+        /// <summary>A lure that does not sit on a pad slides off it over this long (s).</summary>
+        public const float PadSlideTime = 0.25f;
+        float padSlideT = -1f;
+        Vector3 padSlideFrom, padSlideTo;
+        Obstacle padSlid;
+        /// <summary>Sliding off a pad now (drawn on it; no drift, no winding, no sinking).</summary>
+        public bool PadSliding => padSlideT >= 0f;
+
+        /// <summary>
+        /// A lure that landed on a lily pad and does not sit on it: it slides from where it came down to
+        /// <paramref name="edge"/> (the edge towards him) over <see cref="PadSlideTime"/>, gathering speed, drawn on the pad;
+        /// then it is in the water there (<see cref="TakePadSlid"/>).
+        /// </summary>
+        public void SlideOffPad(Obstacle pad, Vector3 edge)
+        {
+            OnPad = pad;
+            padSlideFrom = Surface;
+            padSlideTo = new Vector3(edge.x, 0f, edge.z);
+            padSlideT = 0f;
+            padSlid = null;
+            Depth = 0.05f;
+        }
+
+        /// <summary>It came off the pad's edge into the water since the last call: the pad, else null.</summary>
+        public Obstacle TakePadSlid()
+        {
+            var p = padSlid;
+            padSlid = null;
+            return p;
+        }
+
+        void UpdatePadSlide(float dt)
+        {
+            padSlideT += dt / PadSlideTime;
+            float k = Mathf.Clamp01(padSlideT);
+            Surface = Vector3.Lerp(padSlideFrom, padSlideTo, k * k);
+            Depth = 0.05f;
+            if (k < 1f) return;
+            padSlideT = -1f;
+            padSlid = OnPad;
+            OnPad = null;
+            Depth = 0f;   // (in the water from the film, as a cast comes in)
+        }
+
         void CheckPadLeave()
         {
             if (OnPad == null || Obst == null) return;
@@ -987,7 +1134,8 @@ namespace FishingKing
                     if (Depth < target) Depth = Mathf.Min(target, Depth + Bait.sinkSpeed * dt);
                     else if (Depth > target) Depth = Mathf.Max(target, Depth - dt);
                 }
-                else UpdateLure(dt, bottom);
+                else if (padSlideT >= 0f) UpdatePadSlide(dt);
+                else UpdateLure(dt, Floor);   // (through the ice it rests at the drag's depth)
             }
             if (Time.frameCount - currentFrame > 1) FreeDrift = Vector2.zero;   // (the current is not stepped outside waiting / retrieving)
             if (State == Mode.Water || State == Mode.Held)
@@ -1072,8 +1220,8 @@ namespace FishingKing
                 touched = true;
                 BottomTouch = true;
                 SinceTouch = 0f;
-                // a puff of silt and a soft "톡"
-                Fx.Puff(Snap(P.To2D(P.Apparent(HookPos))), stage.UnderwaterTint(Depth, 0.8f), 4, 0.5f, OrderUnder, 0.25f);
+                // a puff of silt (none where the ice rig stops in open water) and a soft "톡"
+                if (bottom >= Bottom - 0.01f) Fx.Puff(Snap(P.To2D(P.Apparent(HookPos))), stage.UnderwaterTint(Depth, 0.8f), 4, 0.5f, OrderUnder, 0.25f);
                 Sfx.Play(Sfx.Nibble, 0.22f, 1.4f);
             }
             else if (Depth < bottom - 0.3f) touched = false;

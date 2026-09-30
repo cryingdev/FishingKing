@@ -87,6 +87,8 @@ namespace FishingKing
                 if (!clearOnly && !arrowOnly) yield return SteerFights(ctl);
                 // the side-pressure arrow over the line's entry, with a float rig and a lure (AutoPilot.SideArrow.cs)
                 if (!clearOnly) yield return SteerArrow(ctl);
+                // the float swept at the edge of the visible water (last: the fights above keep their rolls)
+                if (!clearOnly && !fightsOnly && !arrowOnly) yield return SteerEdge(ctl);
             }
             FishingController.NoBites = false;
             PointerInput.SimLeft = PointerInput.SimRight = false;
@@ -539,6 +541,9 @@ namespace FishingKing
                     yield return null;
                 }
             }
+            // (no wind while it is dragged: the lake's gusts would carry it out along the line)
+            float windWas = CurrentField.Mult;
+            CurrentField.Mult = 0f;
             // slide right: the float comes over slowly, at most ~1.5 m
             yield return SimSlide(0.40f, 0.66f, 0.55f, 0.25f);
             float d0 = tk.SweepDrift, x0 = tk.Surface.x, tStart = Time.time;
@@ -567,6 +572,7 @@ namespace FishingKing
             float dL = tk.SweepDrift - d0;
             Log(string.Format(CI, "[STEER] float left: drift {0:+0.00;-0.00} m in 7 s, distance {1:0.00} m ({2})", dL, Dist(), SweepState(ctl)));
             SCheck($"float swept left drags left {N(dL, "+0.00;-0.00")} m (a new sweep: up to {N(Tackle.SweepDragMax, "0.0")} m again)", dL < -1.2f && dL >= -Tackle.SweepDragMax - 0.05f);
+            CurrentField.Mult = windWas;
             // 회수 with the rod still swept left: the retrieve bends left too
             d0 = tk.SweepDrift;
             var sR = tk.Surface;
@@ -617,6 +623,101 @@ namespace FishingKing
             SCheck($"a float swept round towards the bank stays in the water (min z {N(minZ)} >= {N(floorZ)}; waterline {N(L.zNear)}) and is not taken home ({ctl.State})",
                 n0.z <= L.zNear + 0.75f && minZ >= floorZ - 0.01f && ctl.State == FishingController.S.Waiting && tk.Surface.x - n0.x > 0.2f);
             yield return BackToReady(ctl);
+        }
+
+        /// <summary>
+        /// 3b. The edge of the visible water: a float 0.6 m inside the left edge of the view 24 m out (there the edge lies
+        /// inside the rod's yaw limit, so a sweep that way still drags; within the line's reach) swept left for 25 s (the
+        /// sweep's full 1.5 m, unbounded) stops at the edge and never leaves the visible water; the 회수 bent that way leaves
+        /// it no more than unswept. Shot float_edge_&lt;stage&gt; ("[STEER] edgeshot" logs the float on screen).
+        /// </summary>
+        IEnumerator SteerEdge(FishingController ctl)
+        {
+            // (a fight before may have ended in a catch: sell it)
+            while (ctl.State == FishingController.S.Landing) yield return null;
+            if (ctl.State == FishingController.S.Result)
+            {
+                for (float w = 0f; w < 4f && !HasButton("판매"); w += Time.deltaTime) yield return null;
+                yield return new WaitForSeconds(0.2f);
+                Click("판매");
+                yield return new WaitForSeconds(0.6f);
+            }
+            yield return BackToReady(ctl);
+            yield return new WaitForSeconds(0.3f);
+            var b = GameDatabase.GetItem<BaitDef>("bait_paste");
+            Game.I.AddBait(b.id, 99);
+            ctl.EquipBait(b);
+            float ax = ctl.Angler.X;
+            ctl.Angler.DebugPlace(ctl.Angler.Range.x);
+            yield return null;
+            var tk = ctl.Tackle;
+            var wf = ctl.Stage.Water;
+            var L = ctl.Stage.L;
+            const float z = 24f;
+            float xe = ctl.Angler.X;
+            while (xe > -L.xLim && wf.DriftOpen(xe - 0.05f, z)) xe -= 0.05f;
+            var at = new Vector3(xe + 0.6f, 0f, z);
+            if (!ctl.DebugPlaceRig(at))
+            {
+                SCheck($"float placed by the edge ({ctl.State})", false);
+                yield break;
+            }
+            // (no wind: the drag alone)
+            float mult = CurrentField.Mult;
+            CurrentField.Mult = 0f;
+            yield return new WaitForSeconds(1f);
+            float d0 = tk.SweepDrift, x0 = tk.Surface.x, minX = x0;
+            int out0 = 0, frames = 0;
+            yield return SimSlide(0.72f, 0.30f, 0.55f, 0.35f);
+            Caption("찌 · 화면 가장자리 쪽으로 밀기 (가장자리에서 멈춤)");
+            for (float t = 0f; t < 25f && ctl.State == FishingController.S.Waiting; t += Time.deltaTime)
+            {
+                frames++;
+                minX = Mathf.Min(minX, tk.Surface.x);
+                if (!wf.DriftOpen(tk.Surface.x, tk.Surface.z)) out0++;
+                yield return null;
+            }
+            float drift = d0 - tk.SweepDrift;
+            if (PixelView.Current != null)
+            {
+                var s = PixelView.Current.WorldToScreen(ctl.Stage.P.To2D(tk.Surface));
+                Log(string.Format(CI, "[STEER] edgeshot float_edge_{0}.png {1:0} {2:0} edge x {3:0.00}", ctl.Stage.Def.id, s.x, Screen.height - s.y, xe));
+            }
+            yield return Shot($"float_edge_{ctl.Stage.Def.id}");
+            Log(string.Format(CI, "[STEER] edge: visible edge x {0:0.00} at z {1:0.0}; float x {2:0.00} -> {3:0.00} (leftmost {4:0.00}), swept {5:0.00} m left, out of the visible water {6} of {7} frames ({8})",
+                xe, z, x0, tk.Surface.x, minX, drift, out0, frames, SweepState(ctl)));
+            SCheck($"float swept at the edge stops there: {N(drift)} m left (< {N(Tackle.SweepDragMax, "0.0")}), {N(minX - xe)} m from the edge at most, out of the visible water {out0} of {frames} frames",
+                ctl.State == FishingController.S.Waiting && drift > 0.2f && drift < Tackle.SweepDragMax - 0.3f && minX - xe <= 0.3f && out0 == 0);
+            // 회수 with the rod still swept left: the bend takes it no further out of the visible water than the same 회수
+            // unswept from the same spot (the straight way in may pass behind the painted reeds along the edge)
+            int out1 = 0, frames1 = 0, out2 = 0;
+            IEnumerator Home(bool swept)
+            {
+                int n = 0, outN = 0;
+                var from = tk.Surface;
+                ctl.Retrieve();
+                for (float w = 0f; w < 2f && ctl.State == FishingController.S.Retrieving && tk.Surface.z > L.zNear + 3f; w += Time.deltaTime)
+                {
+                    n++;
+                    if (!wf.DriftOpen(tk.Surface.x, tk.Surface.z)) outN++;
+                    yield return null;
+                }
+                Log(string.Format(CI, "[STEER] edge 회수 {0} from ({1:0.00}, {2:0.00}): out of the visible water {3} of {4} frames, drift {5:+0.00;-0.00} m ({6})",
+                    swept ? "swept" : "unswept", from.x, from.z, outN, n, tk.SweepDrift, SweepState(ctl)));
+                if (swept) { out1 = outN; frames1 = n; }
+                else out2 = outN;
+            }
+            var rest = tk.Surface;
+            yield return Home(true);
+            yield return BackToReady(ctl);
+            ctl.DebugPlaceRig(rest);
+            yield return new WaitForSeconds(0.5f);
+            yield return Home(false);
+            SCheck($"the 회수 retrieve bent to the edge's side leaves the visible water no more than unswept (out {out1} of {frames1} frames; unswept {out2})", frames1 > 0 && out1 <= out2);
+            CurrentField.Mult = mult;
+            Caption(null);
+            yield return BackToReady(ctl);
+            ctl.Angler.DebugPlace(ax);
         }
 
         // ------------------------------------------------------------------ 4. rod-to-hat clearance at the sweep extremes

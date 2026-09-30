@@ -51,6 +51,8 @@ namespace FishingKing
         SpriteRenderer backA, backB, frontA, frontB;
         /// <summary>The front layer (the outgoing period's; the occlusion watch reads where it is drawn).</summary>
         internal SpriteRenderer FrontA => frontA;
+        /// <summary>The back layer (the outgoing period's; the pad wobble reads the water under a pad from it).</summary>
+        internal SpriteRenderer BackA => backA;
         readonly Sprite[] backs = new Sprite[4], fronts = new Sprite[4];
         Material dissolve;
         static readonly int F16Id = Shader.PropertyToID("_F16");

@@ -363,7 +363,65 @@ namespace FishingKing
             }
             OCheck("pad_snag", padSnag && ctl.State == FishingController.S.Waiting && ctl.LastFreeWay == "tok" && ctl.Tackle.State == Tackle.Mode.Water,
                 $"worm on {pad2.id}: pad snag {padSnag}, freed by '{ctl.LastFreeWay}' after {tries} 톡, rig in the water {ctl.Tackle.State == Tackle.Mode.Water}");
+            yield return ObPadSlide(ctl, pad);
             yield return ToReady(ctl);
+        }
+
+        /// <summary>
+        /// A soft worm cast onto a pad: the pad wobbles (2 frames of a 1 px shift of the pad cut from the front layer) and the
+        /// worm slides off its edge over Tackle.PadSlideTime (0.25 s), not at once. Shots obst_pad_wobble, obst_pad_slide
+        /// ("[OBST] padshot" logs the pad on screen).
+        /// </summary>
+        IEnumerator ObPadSlide(FishingController ctl, Obstacle pad)
+        {
+            yield return ToReady(ctl);
+            EquipTest("bait_softworm", ctl);
+            yield return null;
+            var tk = ctl.Tackle;
+            var wob = ctl.PadWobbleFx;
+            var obs = ctl.Stage.Obstacles;
+            int w0 = wob.Wobbles, shifted = 0, between = 0;
+            float t0 = Time.time, took = -1f;
+            bool wobShot = false, slideShot = false;
+            var c = new Vector3(pad.x, 0f, pad.z);
+            if (PixelView.Current != null)
+            {
+                var s = PixelView.Current.WorldToScreen(ctl.Stage.P.To2D(c));
+                Debug.Log(string.Format(CIb, "[OBST] padshot {0} {1:0} {2:0}", pad.id, s.x, Screen.height - s.y));
+            }
+            ctl.DebugPlaceRig(c);
+            bool slid0 = tk.PadSliding;
+            var from = tk.Surface;
+            for (float w = 0f; w < 1f && ctl.State == FishingController.S.Waiting; w += Time.deltaTime)
+            {
+                if (wob.ShiftNow != Vector2Int.zero) shifted++;
+                if (tk.PadSliding)
+                {
+                    float u = (tk.Surface - from).magnitude;
+                    if (u > 0.01f) between++;
+                }
+                else if (took < 0f) took = Time.time - t0;
+                if (!wobShot && wob.ShiftNow != Vector2Int.zero)
+                {
+                    wobShot = true;
+                    yield return NamedShot("obst_pad_wobble");
+                    continue;
+                }
+                if (!slideShot && tk.PadSliding && Time.time - t0 >= 0.15f)
+                {
+                    slideShot = true;
+                    yield return NamedShot("obst_pad_slide");
+                    continue;
+                }
+                yield return null;
+            }
+            var e = tk.Surface;
+            bool off = !obs.Inside(pad, new Vector2(e.x, e.z)) && tk.State == Tackle.Mode.Water && tk.OnPad == null;
+            OCheck("pad_slide", slid0 && took >= 0.2f && took <= 0.34f && between >= 3 && off,
+                string.Format(CIb, "soft worm on {0}: slides off over {1:0.00} s (want ~{2:0.00}), {3} frames on the way, off the pad at ({4:0.00}, {5:0.00}) {6}",
+                    pad.id, took, Tackle.PadSlideTime, between, e.x, e.z, off));
+            OCheck("pad_wobble", wob.Wobbles > w0 && shifted >= 2 && wob.LastPixels >= 20,
+                $"the pad wobbled {wob.Wobbles - w0} time(s) at the landing, shifted in {shifted} frames, {wob.LastPixels} pad pixels cut from the front layer");
         }
 
         // ------------------------------------------------------------------ 6 / 7. the bass and its cover

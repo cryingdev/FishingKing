@@ -297,7 +297,8 @@ namespace FishingKing
         }
 
         // ------------------------------------------------------------------ water mask
-        static Color32[] ReadTexture(Texture2D tex)
+        /// <summary>A texture's pixels (rows from the bottom), through a blit: the stage art is not readable.</summary>
+        internal static Color32[] ReadTexture(Texture2D tex)
         {
             int w = tex.width, h = tex.height;
             var rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.Default);
@@ -556,10 +557,6 @@ namespace FishingKing
         }
 
         /// <summary>
-        /// Whether the moving water may carry a rig to (x, z) (Tackle.StepCurrent): in view (6 px inside its sides and top)
-        /// and not behind the front layer (the stream's rocks, the tetrapods, the boat). True without a water mask.
-        /// </summary>
-        /// <summary>
         /// A water point hidden behind the painted front layer (a bank, a rock, the deck): Docs/obstacles_spec.md 4.5, a
         /// landing there perches on the bank. Every pixel within <paramref name="rPx"/> of it must be front (a small stamp on
         /// the water, a lily flower or a speck of duckweed, is no bank). Off the canvas (or without a mask): false.
@@ -579,14 +576,35 @@ namespace FishingKing
             return true;
         }
 
+        /// <summary>
+        /// Whether the moving water (or the rod sweep) may carry a rig to (x, z) (Tackle.StepCurrent, Tackle.Sideways): in
+        /// view (<see cref="InView"/>) and not behind the front layer (the stream's rocks, the tetrapods, the boat). True
+        /// without a water mask.
+        /// </summary>
         public bool DriftOpen(float x, float z)
+        {
+            if (mask == null) return true;
+            if (!InView(x, z)) return false;
+            Proj(x, 0, z, out float cf, out float rf, out _);
+            return (mask[Mathf.FloorToInt(rf) * W + Mathf.FloorToInt(cf)] & MFront) == 0;
+        }
+
+        /// <summary>The water point (x, z) is in view: 6 px inside the pixel view's sides and top, above its bottom. True without a water mask.</summary>
+        public bool InView(float x, float z)
         {
             if (mask == null) return true;
             Proj(x, 0, z, out float cf, out float rf, out _);
             int c = Mathf.FloorToInt(cf), r = Mathf.FloorToInt(rf);
             const int M = 6;
-            if (c < vx0 + M || c >= vx1 - M || r < vy0 || r >= vy1 - M) return false;
-            return (mask[r * W + c] & MFront) == 0;
+            return c >= vx0 + M && c < vx1 - M && r >= vy0 && r < vy1 - M;
+        }
+
+        /// <summary>The front layer covers this point of the pixel scene (scene units; false off the canvas or without a mask).</summary>
+        public bool FrontAt(Vector2 scene)
+        {
+            if (mask == null) return false;
+            int c = Mathf.FloorToInt(halfW + scene.x * PixelView.PPU), r = Mathf.FloorToInt(halfH + scene.y * PixelView.PPU);
+            return c >= 0 && c < W && r >= 0 && r < H && (mask[r * W + c] & MFront) != 0;
         }
 
         bool RandomWaterPoint(float zMin, float zMax, float bias, out float x, out float z)

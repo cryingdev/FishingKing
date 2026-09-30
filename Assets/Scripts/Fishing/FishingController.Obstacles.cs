@@ -21,6 +21,10 @@ namespace FishingKing
         Obstacles Obst => Stage.Obstacles;
         ObstacleOverlay overlay;
         public ObstacleOverlay Overlay => overlay;
+        PadWobble padWobble;
+        /// <summary>The lily pads' wobble (for the tests).</summary>
+        public PadWobble PadWobbleFx => padWobble;
+        float padWobbleT = -99f;
 
         // ---- counters for the test autopilot
         public int ObstContacts { get; private set; }
@@ -82,7 +86,15 @@ namespace FishingKing
         void InitObstacles()
         {
             overlay = ObstacleOverlay.Create(this);
+            padWobble = PadWobble.Create(Stage);
             Tackle.Contact += OnContact;
+        }
+
+        /// <summary>The pad wobbles (spec 5.1): a lure landing on it, crossing it, dropping off it, a strike through it.</summary>
+        void WobblePad(Obstacle pad)
+        {
+            padWobbleT = Time.time;
+            padWobble.Wobble(pad);
         }
 
         static float Plan(Vector3 a, Vector3 b) => new Vector2(a.x - b.x, a.z - b.z).magnitude;
@@ -175,6 +187,7 @@ namespace FishingKing
             var pad = l.pad;
             var b = Tackle.Bait;
             var p2 = (Vector2)Snap(P.To2D(l.at));
+            WobblePad(pad);
             if (!b.isLure)
             {
                 Tackle.Depth = 0f;
@@ -191,9 +204,16 @@ namespace FishingKing
                 Obstacles.Say($"pad {b.id} sits on {pad.id}");
                 return;
             }
-            // the others slide off the edge nearest him ("툭"); 20 % catch the pad (the soft worm never)
-            var edge = PadEdge(pad, l.at);
-            Tackle.Surface = edge;
+            // the others slide off the edge nearest him over 0.25 s (PadSlid: "툭" as it drops in)
+            Tackle.SlideOffPad(pad, PadEdge(pad, l.at));
+            Obstacles.Say($"pad {b.id} slides on {pad.id}");
+        }
+
+        /// <summary>A lure slid off a pad's edge into the water ("툭", a 2 px ripple): 20 % catch the pad (the soft worm never).</summary>
+        void PadSlid(Obstacle pad)
+        {
+            var b = Tackle.Bait;
+            var edge = Tackle.Surface;
             hud.LureFeedback("툭", UIKit.Cream, 0.6f);
             var e2 = P.To2D(edge);
             Fx.Ripple(e2, Mathf.Clamp(P.PixelsPerMetre(edge) * 0.4f / 64f, 0.05f, 0.25f), P.Foreshorten(edge) * 1.6f + 0.15f, new Color(1, 1, 1, 0.6f), 0.5f);
@@ -221,13 +241,23 @@ namespace FishingKing
             SnagAt(pad, new Vector3(s.x, -Mathf.Max(0f, Tackle.Depth), s.z), true, "pad");
         }
 
-        /// <summary>The frog on a pad: dropped off the edge (퐁, the strike window), the pad strike after 1.5 s still.</summary>
+        /// <summary>
+        /// The frog on a pad: dropped off the edge (퐁, the strike window), the pad strike after 1.5 s still; a lure that slid
+        /// off a pad; the pad's wobble under a 톡's hop and the crawl.
+        /// </summary>
         void PadTick(float dt)
         {
             var tk = Tackle;
+            var slid = tk.TakePadSlid();
+            if (slid != null)
+            {
+                PadSlid(slid);
+                return;
+            }
             var left = tk.TakePadLeft();
             if (left != null)
             {
+                WobblePad(left);
                 PadDrops++;
                 var s = tk.Surface;
                 var s2 = P.To2D(s);
@@ -240,6 +270,8 @@ namespace FishingKing
                 if (tk.Bait.id == "bait_popper" && Obstacles.Roll() < 0.3f) SnagPad(left);
                 return;
             }
+            if (tk.OnPad != null && !tk.PadSliding && (LureIn.FlickNow || (LureIn.Winding && Time.time - padWobbleT >= PadWobble.CrawlGap)))
+                WobblePad(tk.OnPad);
             if (tk.OnPad == null || tk.Bait.id != "bait_frog" || LureIn.PauseT < 1.5f) return;
             padStrikeT -= dt;
             if (padStrikeT > 0f) return;
@@ -256,6 +288,7 @@ namespace FishingKing
                 if (Random.value >= chance) continue;
                 PadStrikes++;
                 var s2 = P.To2D(tk.Surface);
+                WobblePad(tk.OnPad);
                 f.ForceBite();
                 Fx.Splash(s2, Mathf.Clamp(P.PixelsPerMetre(tk.Surface) / 25f, 0.4f, 1.1f), Stage.WaterTint, 12, P.DepthOf(tk.Surface));
                 Fx.Ripple(s2, Mathf.Clamp(P.PixelsPerMetre(tk.Surface) * 1.6f / 64f, 0.12f, 0.8f), P.Foreshorten(tk.Surface) * 1.6f + 0.15f, Color.white, 0.8f);

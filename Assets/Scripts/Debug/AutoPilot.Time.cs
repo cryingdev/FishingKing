@@ -155,6 +155,7 @@ namespace FishingKing
             yield return CurTide();
             yield return CurHang();
             yield return CurFight();
+            yield return CurRock();   // (last, on the stream the fight left: the checks above keep their rolls)
             FishingController.NoBites = false;
             PointerInput.SimLeft = PointerInput.SimRight = false;
             PointerInput.SimDown = false;
@@ -242,6 +243,85 @@ namespace FishingKing
             Log(string.Format(CIc, "[CUR] mend: bow {0:+0.00;-0.00} -> {1:+0.00;-0.00} in 0.5 s, the sweep dragged it {2:0.00} m, mends {3}", bow0, bow1, dragged, ctl.Mends - mends0));
             CCheck(string.Format(CIc, "mend: the belly drops >= 70 % within 0.5 s ({0:+0.00;-0.00} -> {1:+0.00;-0.00}) and the sweep moves the float <= 0.15 m ({2:0.00})", bow0, bow1, dragged),
                 ctl.Mends > mends0 && Mathf.Abs(bow0) >= 0.5f && Mathf.Abs(bow1) <= 0.3f * Mathf.Abs(bow0) && dragged <= 0.151f);
+            yield return ToReady(ctl);
+        }
+
+        /// <summary>
+        /// 1b. The stream: a float let go 4.5 m upstream of the midstream rock md25.0 (a little off its middle towards the lane)
+        /// drifts in behind its painted top right up to its footprint (within 0.15 m), goes round it and stays in sight: fewer
+        /// than 3 of the float's pixel rows clear of the front layer for at most 0.5 s, in sight at the end. Shots cur_rock_near,
+        /// cur_rock_after ("[CUR] rockshot" logs the float on screen).
+        /// </summary>
+        IEnumerator CurRock()
+        {
+            var ctl = FindAnyObjectByType<FishingController>();
+            var rock = ctl != null ? ctl.Stage.Obstacles.Get("md25.0") : null;
+            if (rock == null) { CCheck("md25.0 on the stream", false); yield break; }
+            yield return ToReady(ctl);
+            FishingController.NoBites = true;
+            SteerGear("rod_carbon", "reel_highgear", null);   // (the line reaches past the rock: the fight's glass rod casts short)
+            EquipTest("bait_worm", ctl);
+            yield return null;
+            var tk = ctl.Tackle;
+            var wf = ctl.Stage.Water;
+            var at = new Vector3(rock.x - 1.0f, 0f, rock.z + 4.5f);
+            CCheck(string.Format(CIc, "float placed at ({0:0.00}, {1:0.00}) upstream of md25.0", at.x, at.z), ctl.DebugPlaceRig(at));
+            float minD = 99f, hiddenT = 0f, hiddenMax = 0f, t = 0f, nearT = -1f, logT = 0f;
+            bool nearShot = false;
+            var nearAt = Vector3.zero;
+            // the float as drawn (under the front layer): at least 3 of its pixel rows clear of it
+            bool Shows()
+            {
+                var b = tk.FloatR.bounds;
+                int rows = Mathf.RoundToInt(b.size.y * PixelView.PPU), clear = 0;
+                for (int k = 0; k < rows; k++)
+                    if (!wf.FrontAt(new Vector2(b.center.x, b.max.y - (k + 0.5f) / PixelView.PPU))) clear++;
+                return clear >= 3;
+            }
+            void LogShot(string name)
+            {
+                var s = PixelView.Current != null ? PixelView.Current.WorldToScreen(tk.FloatR.bounds.center) : Vector2.zero;
+                Log(string.Format(CIc, "[CUR] rockshot {0}.png {1:0} {2:0} at ({3:0.00}, {4:0.00}) {5:0.00} m from md25.0",
+                    name, s.x, Screen.height - s.y, tk.Surface.x, tk.Surface.z, Obstacles.Dist(rock, new Vector2(tk.Surface.x, tk.Surface.z))));
+            }
+            while (t < 60f && ctl.State == FishingController.S.Waiting && tk.State == Tackle.Mode.Water)
+            {
+                float dt = Time.deltaTime;
+                t += dt;
+                var s = tk.Surface;
+                float d = Obstacles.Dist(rock, new Vector2(s.x, s.z));
+                if (d < minD)
+                {
+                    minD = d;
+                    nearAt = s;
+                }
+                bool shows = Shows();
+                hiddenT = shows ? 0f : hiddenT + dt;
+                hiddenMax = Mathf.Max(hiddenMax, hiddenT);
+                if ((logT -= dt) <= 0f)
+                {
+                    logT = 1f;
+                    Log(string.Format(CIc, "[CUR] rock t {0:0.0}s at ({1:0.00}, {2:0.00}) {3:0.00} m from md25.0, open {4}, shows {5}",
+                        t, s.x, s.z, d, wf.DriftOpen(s.x, s.z), shows));
+                }
+                if (d <= 0.15f && nearT < 0f) nearT = t;
+                if (!nearShot && nearT >= 0f && t >= nearT + 0.3f)
+                {
+                    nearShot = true;
+                    LogShot("cur_rock_near");
+                    yield return NamedShot("cur_rock_near");
+                    continue;
+                }
+                // (on past the rock, or 6 s after it came up to it)
+                if (nearT >= 0f && (t >= nearT + 6f || s.z < rock.z - rock.R - 0.5f)) break;
+                yield return null;
+            }
+            var e = tk.Surface;
+            bool endShows = tk.State == Tackle.Mode.Water && Shows();
+            LogShot("cur_rock_after");
+            yield return NamedShot("cur_rock_after");
+            CCheck(string.Format(CIc, "rock: the float drifts up to md25.0's footprint ({0:0.00} m at ({1:0.00}, {2:0.00}), <= 0.15) and on round it in sight (top hidden at most {3:0.00} s, <= 0.5; at the end ({4:0.00}, {5:0.00}) shows {6}) in {7:0.0} s",
+                minD, nearAt.x, nearAt.z, hiddenMax, e.x, e.z, endShows, t), minD <= 0.15f && hiddenMax <= 0.5f && endShows);
             yield return ToReady(ctl);
         }
 
