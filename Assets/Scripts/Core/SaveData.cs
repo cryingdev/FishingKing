@@ -1,0 +1,183 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using UnityEngine;
+
+namespace FishingKing
+{
+    [Serializable]
+    public class CaughtFish
+    {
+        public string uid;
+        public string speciesId;
+        public float sizeCm;
+        public float weightKg;
+        public int value;
+        public string stageId;
+        public long caughtAt; // unix seconds
+        // aquarium care (AquaCare): size / weight / value when put in the tank, when it was put in, the last real-time
+        // update, fed days accrued (growth), fullness 0..1 and the premium share of what is in its stomach
+        public float baseCm, baseKg;
+        public int baseValue;
+        public long addedAt, careAt;
+        public float fedDays, fullness, premiumShare;
+
+        public FishSpecies Species => GameDatabase.GetFish(speciesId);
+    }
+
+    [Serializable]
+    public class BaitCount
+    {
+        public string id;
+        public int count;
+    }
+
+    [Serializable]
+    public class SpeciesRecord
+    {
+        public string id;
+        public int caught;
+        public float bestCm;
+    }
+
+    /// <summary>A legend met through its underwater encounter: times seen (reached the approach), failed, and the pity
+    /// bonus on the next encounter's starting interest (rises by the legend's pityStep per fail, reset when it is landed).</summary>
+    [Serializable]
+    public class LegendRecord
+    {
+        public string id;
+        public int seen, fails, pity;
+    }
+
+    [Serializable]
+    public class SaveData
+    {
+        public int version = 1;
+        public int coins = 300;
+        public int level = 1;
+        public int xp;
+        public List<string> ownedItems = new List<string>();
+        public List<BaitCount> baits = new List<BaitCount>();
+        public string rod = GameDatabase.StarterRod;
+        public string reel = GameDatabase.StarterReel;
+        public string line = GameDatabase.StarterLine;
+        public string bait = GameDatabase.StarterBait;
+        public int tankLevel;
+        public List<CaughtFish> aquarium = new List<CaughtFish>();
+        public long aquariumCollectedAt;
+        public int aquariumBank;
+        public double aquaCarry;                                     // the income's fraction of a coin (AquaCare)
+        public int aquaVer;                                          // 0 = a save from before feeding (AquaCare.Ensure migrates it)
+        public List<FeedStock> feed = new List<FeedStock>();         // feed bags owned (AquaCare)
+        public bool feedTornOnce;                                    // a bag has been torn open once: the scissors hint stops looping
+        public TankCare tank = new TankCare();                       // the tank's dirt, tools and decorations (AquaTank)
+        public int capVer;                                           // 0 = a save from before the 칸 capacity (AquaCare.Ensure logs its fit)
+        public List<string> unlockedStages = new List<string> { "lake" };
+        public List<SpeciesRecord> records = new List<SpeciesRecord>();
+        public List<LegendRecord> legends = new List<LegendRecord>();
+        public string lastStage = "lake";
+        public bool soundOn = true;
+        public bool reelRing = true;     // the circle + direction arrows shown while drawing reel circles
+        public bool reelReverse;         // counter-clockwise winds in (default: clockwise)
+        public int zoomMode;             // 캐스팅 후 줌인 (ZoomMode): 0 1.25배 (default; older saves), 1 끔, 2 1.5배, 3 액티브
+        public int totalCaught;
+        public int totalEarned;
+        public bool tutorialDone;
+        public bool sweepHint;           // the rod sweep's one-time hint (first rig in the water) was shown
+        public bool sideHint;            // side pressure's one-time hint (first long run in a fight) was shown
+        // the game clock (Docs/time_currents_spec.md 1, 13): game minutes since 00:00 and the game day; runs only on a stage
+        public float clockMin = 600f;    // 10:00
+        public int clockDay = 1;
+        public bool timeHint;            // the first period change's hint was shown
+        public bool tideHint;            // the sea's tide hint was shown
+        public bool driftHint;           // the stream drift hint was shown
+        public bool mendHint;            // the mending hint was shown
+
+        public static SaveData NewGame()
+        {
+            var d = new SaveData();
+            d.ownedItems.AddRange(new[] { GameDatabase.StarterRod, GameDatabase.StarterReel, GameDatabase.StarterLine, GameDatabase.StarterBait, "tank_0" });
+            d.baits.Add(new BaitCount { id = "bait_worm", count = 10 });
+            d.aquariumCollectedAt = SaveSystem.Now;
+            return d;
+        }
+    }
+
+    public static class SaveSystem
+    {
+        static string PathFile
+        {
+            get
+            {
+                // -fksave <name> keeps test runs away from the real save
+                var args = Environment.GetCommandLineArgs();
+                int i = Array.IndexOf(args, "-fksave");
+                string name = i >= 0 && i + 1 < args.Length ? args[i + 1] : "fishingking_save";
+                return System.IO.Path.Combine(Application.persistentDataPath, name + ".json");
+            }
+        }
+
+        public static long Now => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        public static SaveData Load()
+        {
+            try
+            {
+                if (File.Exists(PathFile))
+                {
+                    var d = JsonUtility.FromJson<SaveData>(File.ReadAllText(PathFile));
+                    if (d != null) return Sanitize(d);
+                }
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[FishingKing] Could not read save, starting fresh: " + e.Message);
+            }
+            return SaveData.NewGame();
+        }
+
+        public static void Save(SaveData d)
+        {
+            try
+            {
+                string tmp = PathFile + ".tmp";
+                File.WriteAllText(tmp, JsonUtility.ToJson(d));
+                if (File.Exists(PathFile)) File.Delete(PathFile);
+                File.Move(tmp, PathFile);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[FishingKing] Save failed: " + e.Message);
+            }
+        }
+
+        public static void Delete()
+        {
+            if (File.Exists(PathFile)) File.Delete(PathFile);
+        }
+
+        static SaveData Sanitize(SaveData d)
+        {
+            d.ownedItems ??= new List<string>();
+            d.baits ??= new List<BaitCount>();
+            d.aquarium ??= new List<CaughtFish>();
+            d.records ??= new List<SpeciesRecord>();
+            d.legends ??= new List<LegendRecord>();
+            d.unlockedStages ??= new List<string>();
+            foreach (var id in new[] { GameDatabase.StarterRod, GameDatabase.StarterReel, GameDatabase.StarterLine, GameDatabase.StarterBait, "tank_0" })
+                if (!d.ownedItems.Contains(id)) d.ownedItems.Add(id);
+            if (!d.unlockedStages.Contains("lake")) d.unlockedStages.Add("lake");
+            if (GameDatabase.GetItem<RodDef>(d.rod) == null) d.rod = GameDatabase.StarterRod;
+            if (GameDatabase.GetItem<ReelDef>(d.reel) == null) d.reel = GameDatabase.StarterReel;
+            if (GameDatabase.GetItem<LineDef>(d.line) == null) d.line = GameDatabase.StarterLine;
+            if (GameDatabase.GetItem<BaitDef>(d.bait) == null) d.bait = GameDatabase.StarterBait;
+            d.aquarium.RemoveAll(f => f == null || GameDatabase.GetFish(f.speciesId) == null);
+            if (d.aquariumCollectedAt <= 0) d.aquariumCollectedAt = Now;
+            d.level = Mathf.Max(1, d.level);
+            d.clockMin = float.IsNaN(d.clockMin) || float.IsInfinity(d.clockMin) ? 600f : Mathf.Clamp(d.clockMin, 0f, 1439.99f);
+            d.clockDay = Mathf.Max(1, d.clockDay);
+            if (d.zoomMode < 0 || d.zoomMode > 3) d.zoomMode = 0;
+            return d;
+        }
+    }
+}

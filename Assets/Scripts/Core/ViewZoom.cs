@@ -1,0 +1,460 @@
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace FishingKing
+{
+    /// <summary>
+    /// 설정 → 캐스팅 후 줌인 (<see cref="SaveData.zoomMode"/>; 0 is the default, so a save from before the setting reads
+    /// 1.25배): <see cref="Off"/> never zooms; <see cref="X125"/> zooms in once the cast lands (the whole-pixel step nearest
+    /// 1.25x); <see cref="X150"/> the same with the step nearest 1.5x (falling back to the largest step that keeps the rod tip
+    /// and the rig / fish in frame); <see cref="Active"/> stays at 1x while he waits and zooms in quickly (1.25x) as a bite
+    /// starts, through the fight it hooks.
+    /// </summary>
+    public enum ZoomMode { X125 = 0, Off = 1, X150 = 2, Active = 3 }
+
+    /// <summary>
+    /// The pixel view's zoom and pan (one per <see cref="PixelView"/>). The world is always rendered whole into the low-res
+    /// target; the zoom only changes which part of it the full-screen display shows (the display's UV crop), so everything
+    /// drawn in the pixel view (stage layers, actor layers, water, arrows, outlines, the encounter window) zooms together and
+    /// the HUD canvases never do. Every screen / world mapping goes through <see cref="UV"/>
+    /// (<see cref="PixelView.ScreenToWorld"/>, <see cref="PixelView.WorldToScreen"/>).
+    /// <para>Pixel exact at rest: the step is the whole number of screen pixels per game pixel nearest to the zoom asked for
+    /// (<see cref="StepAim"/>: <see cref="Aim"/> 1.25x by default, 1080p: 4 -> 5; 1440p: 5.33 -> 7; <see cref="AimWide"/>
+    /// 1.5x, 1080p: 4 -> 6) times the base scale, per axis, and the crop's origin is snapped to whole screen pixels, so every
+    /// game pixel is exactly n x n screen pixels. Only while easing (<see cref="EaseTime"/>, smoothstep) does it pass
+    /// through fractional scales. Asked for more than <see cref="Aim"/>, the step is the largest one (down to
+    /// <see cref="Aim"/>'s) whose frame holds every must-see point: it steps down in <see cref="StepDownTime"/> when they
+    /// outgrow it and back up once the larger step has held them (with room to spare) for <see cref="StepUpHold"/>.</para>
+    /// <para>The pan: <see cref="Director"/> says each frame whether to zoom (<see cref="Want"/>), where to look
+    /// (<see cref="Focus"/>, followed with its own smoothing) and which points must stay in frame (<see cref="Keep"/>). The
+    /// pan is held at the full step, clamped so the crop never leaves the render target (which lies inside the 640x400 stage
+    /// image: no empty borders); the zoom pivots on it, so every in-between crop contains the final one.</para>
+    /// </summary>
+    [DefaultExecutionOrder(950)] // after the actors' LateUpdates (rod tip, fish, float), before the encounter HUD (1100)
+    public class ViewZoom : MonoBehaviour
+    {
+        /// <summary>The zoom asked for by default, 1.25배 (the nearest whole-pixel step is used).</summary>
+        public const float Aim = 1.25f;
+        /// <summary>The wide zoom, 1.5배 (the nearest whole-pixel step, or a smaller one down to <see cref="Aim"/>'s that holds the must-see points).</summary>
+        public const float AimWide = 1.5f;
+        /// <summary>Seconds for a full zoom in or out.</summary>
+        public const float EaseTime = 0.6f;
+        /// <summary>Seconds: how fast a must-see point outside its margin pulls the pan along.</summary>
+        public const float KeepTau = 0.08f;
+        /// <summary>Seconds for a step down (the must-see points outgrew the frame at the larger step).</summary>
+        public const float StepDownTime = 0.35f;
+        /// <summary>Seconds the larger step must hold every must-see point (with room to spare) before it is taken again.</summary>
+        public const float StepUpHold = 1f;
+        const float FitSlack = 3f, FitSlackUp = 12f;   // game px of room a step must leave to be kept / to be taken again
+
+        /// <summary>Called every frame before the zoom moves (the fishing controller): calls <see cref="Want"/>, <see cref="Focus"/>, <see cref="Keep"/>.</summary>
+        public System.Action<ViewZoom> Director;
+
+        /// <summary>Screen pixels along the top covered by the HUD (the fight strip): must-see points are kept below it.</summary>
+        public float TopInsetPx;
+
+        /// <summary>The zoom asked for (set by the director every frame; <see cref="Aim"/> unless it says otherwise).</summary>
+        public float StepAim = Aim;
+
+        PixelView pv;
+        float level, from, to, easeT, easeLen = EaseTime, easeFull = EaseTime;
+        Vector2 panF;                 // the crop's centre at the full step (render-target px)
+        bool jumpPan, hasFocus, held;
+        Vector2 focusPx;
+        float focusTau = 0.5f;
+        readonly List<Vector3> keeps = new List<Vector3>();   // render-target px + margin
+        readonly List<Vector3> softKeeps = new List<Vector3>();   // ... only steering where the view settles
+        Rect uv = new Rect(0f, 0f, 1f, 1f), crop;
+        Vector2 zoomNow = Vector2.one, stepZoom = Vector2.one, baseScale = Vector2.one, scaleNow = Vector2.one;
+        Vector2Int stepPx = Vector2Int.one;
+        Vector2 stepNow = Vector2.one, stepFrom = Vector2.one;   // the full zoom shown (easing from one step to another)
+        float stepT, stepLen = StepDownTime, upT;
+        bool stepEasing;
+        int lastTop;
+
+        internal void Init(PixelView v)
+        {
+            pv = v;
+            crop = v.Target != null ? new Rect(0f, 0f, v.Target.width, v.Target.height) : new Rect(0f, 0f, PixelView.BaseWidth, PixelView.BaseHeight);
+        }
+
+        // ------------------------------------------------------------------ state
+        /// <summary>0 = 1x .. 1 = the step (eased).</summary>
+        public float Level => level;
+        /// <summary>The zoom asked for is in (it may still be easing).</summary>
+        public bool ZoomedIn => to >= 1f;
+        public bool Easing => level != to;
+        /// <summary>Zoom factor now per axis (1 = the whole target).</summary>
+        public Vector2 Zoom => zoomNow;
+        /// <summary>The zoom factor of the step per axis (1.25 at 1080p; 1.5 asked wide).</summary>
+        public Vector2 StepZoom => stepZoom;
+        /// <summary>Whole screen pixels per game pixel at the step.</summary>
+        public Vector2Int StepPx => stepPx;
+        /// <summary>Easing from one step to another (a step down to fit, back up, or the setting changed).</summary>
+        public bool StepEasing => stepEasing;
+        /// <summary>The whole screen pixels per game pixel (vertical) the zoom asked for comes to (before any step down to fit).</summary>
+        public int StepPxAsked => TopStep;
+        /// <summary>The largest step (vertical whole px) whose frame held last frame's must-see points, a little room around each (the step asked for when there were none; one less than the smallest allowed when not even that one did).</summary>
+        public int FitStep { get; private set; }
+        /// <summary>Screen pixels per game pixel at 1x.</summary>
+        public Vector2 BaseScale => baseScale;
+        /// <summary>Screen pixels per game pixel now.</summary>
+        public Vector2 ScaleNow => scaleNow;
+        /// <summary>The display's crop of the render target (UV, 0..1), as drawn this frame.</summary>
+        public Rect UV => uv;
+        /// <summary>The crop in render-target pixels (bottom-left origin).</summary>
+        public Rect CropPx => crop;
+        /// <summary>The crop's centre (render-target px) and where it settles at the full step.</summary>
+        public Vector2 PanPx => crop.center;
+        public Vector2 PanTargetPx => panF;
+
+        /// <summary>At the step, whole screen pixels per game pixel and the crop's origin on whole screen pixels.</summary>
+        public bool PixelExact
+        {
+            get
+            {
+                if (level < 1f || stepEasing) return false;
+                float sx = scaleNow.x, sy = scaleNow.y;
+                return Mathf.Abs(sx - Mathf.Round(sx)) < 1e-3f && Mathf.Abs(sy - Mathf.Round(sy)) < 1e-3f
+                       && Mathf.Abs(crop.x * sx - Mathf.Round(crop.x * sx)) < 1e-2f && Mathf.Abs(crop.y * sy - Mathf.Round(crop.y * sy)) < 1e-2f;
+            }
+        }
+
+        /// <summary>A pixel-view world point -> render-target pixels (the unshaken camera).</summary>
+        public Vector2 WorldToPx(Vector2 world)
+        {
+            var rt = pv != null ? pv.Target : null;
+            float w = rt != null ? rt.width : PixelView.BaseWidth, h = rt != null ? rt.height : PixelView.BaseHeight;
+            var c = pv != null ? pv.BaseCenter : Vector2.zero;
+            return (world - c) * PixelView.PPU + new Vector2(w * 0.5f, h * 0.5f);
+        }
+
+        // ------------------------------------------------------------------ the director's calls (every frame)
+        /// <summary>
+        /// Zoom in to the step (true) or out to 1x, easing over <paramref name="time"/> s for the whole way (a part of the
+        /// way: that part of it). Asked again for the same way with a shorter time while it eases, the rest of the ease
+        /// plays that much faster (winding up to cast hurries a zoom-out along); a longer time never slows it.
+        /// </summary>
+        public void Want(bool zoomIn, float time = EaseTime)
+        {
+            float t = zoomIn ? 1f : 0f;
+            time = Mathf.Max(0.01f, time);
+            if (t == to)
+            {
+                if (level != to && time < easeFull - 1e-4f)
+                {
+                    // (the same curve, sped up from here: no jump, no restart)
+                    float k = time / easeFull;
+                    easeT *= k;
+                    easeLen *= k;
+                    easeFull = time;
+                }
+                return;
+            }
+            if (zoomIn && level <= 0f) jumpPan = true;   // from 1x: straight towards this frame's focus
+            from = level;
+            to = t;
+            easeT = 0f;
+            easeFull = time;
+            easeLen = Mathf.Max(0.05f, time * Mathf.Abs(to - from));
+        }
+
+        /// <summary>Where to look (pixel-view world), followed with this smoothing time (s).</summary>
+        public void Focus(Vector2 world, float tau)
+        {
+            hasFocus = true;
+            focusPx = WorldToPx(world);
+            focusTau = Mathf.Max(1e-3f, tau);
+        }
+
+        /// <summary>
+        /// A point that must stay in frame this frame, at least <paramref name="marginPx"/> game pixels inside it (or up to
+        /// the render target's edge when it lies nearer that). <paramref name="soft"/>: it only steers where the view settles
+        /// (followed at the focus's pace, and only when it fits with the others), never pulls it along fast.
+        /// </summary>
+        public void Keep(Vector2 world, float marginPx, bool soft = false)
+        {
+            var p = WorldToPx(world);
+            (soft ? softKeeps : keeps).Add(new Vector3(p.x, p.y, Mathf.Max(0f, marginPx)));
+        }
+
+        /// <summary>
+        /// Every must-see point asked for so far this frame (the soft ones too) fits in one frame at the step (asked for
+        /// more than <see cref="Aim"/>: at the smallest step it may step down to).
+        /// </summary>
+        public bool KeepsFit
+        {
+            get
+            {
+                if (pv == null || pv.Target == null) return true;
+                return FitsAt(FloorStep, 0f);
+            }
+        }
+
+        // ------------------------------------------------------------------ test hooks
+        /// <summary>Test: show this level now and ignore the director until <see cref="Release"/>.</summary>
+        internal void Hold(float lvl)
+        {
+            held = true;
+            level = from = to = Mathf.Clamp01(lvl);
+            stepNow = stepZoom;
+            stepEasing = false;
+            Apply();
+        }
+
+        internal void Release() => held = false;
+
+        // ------------------------------------------------------------------ per frame
+        void LateUpdate()
+        {
+            if (pv == null || pv.Target == null) return;
+            Bases();
+            if (Director != null && Director.Target is Object o && o == null) Director = null;
+            if (!held && Director != null) Director(this);
+            float dt = Time.deltaTime;
+            if (!held) ChooseStep(dt);
+            if (!held && level != to)
+            {
+                easeT += dt;
+                float f = Mathf.Clamp01(easeT / easeLen);
+                level = f >= 1f ? to : Mathf.Lerp(from, to, f * f * (3f - 2f * f));
+            }
+            if (!held && stepEasing)
+            {
+                stepT += dt;
+                float f = Mathf.Clamp01(stepT / stepLen);
+                stepEasing = f < 1f;
+                stepNow = stepEasing ? Vector2.Lerp(stepFrom, stepZoom, f * f * (3f - 2f * f)) : stepZoom;
+            }
+            // the pan, at the full step
+            float W = pv.Target.width, H = pv.Target.height;
+            var half = HalfAtStep;
+            float topIn = TopInAtStep;
+            if (hasFocus)
+            {
+                var tgt = Constrain(Clamp(focusPx, half, W, H), half, topIn, true);
+                panF = jumpPan ? tgt : Vector2.Lerp(panF, tgt, 1f - Mathf.Exp(-dt / focusTau));
+                jumpPan = false;
+            }
+            if (keeps.Count > 0) panF = Vector2.Lerp(panF, Constrain(panF, half, topIn, false), 1f - Mathf.Exp(-dt / KeepTau));
+            panF = Clamp(panF, half, W, H);
+            hasFocus = false;
+            keeps.Clear();
+            softKeeps.Clear();
+            Apply();
+        }
+
+        /// <summary>Half the crop at the full step shown (render-target px; the step while none is easing).</summary>
+        Vector2 HalfAtStep => new Vector2(pv.Target.width / stepNow.x, pv.Target.height / stepNow.y) * 0.5f;
+
+        /// <summary>The HUD's top inset in render-target px at the full step shown.</summary>
+        float TopInAtStep => TopInsetPx / Mathf.Max(1f, stepNow.y * baseScale.y);
+
+        /// <summary>
+        /// The base scale for this screen and target, and the step's whole pixels per axis (the vertical one chosen by
+        /// <see cref="ChooseStep"/>; the horizontal one nearest to the same zoom).
+        /// </summary>
+        void Bases()
+        {
+            float W = pv.Target.width, H = pv.Target.height;
+            baseScale = new Vector2(Mathf.Max(1, Screen.width) / W, Mathf.Max(1, Screen.height) / H);
+            if (stepPx == Vector2Int.one) SetStep(TopStep, 0f);
+            else
+            {
+                // (the screen may have changed: the same vertical step, its zoom and the horizontal one again)
+                stepPx = StepAt(stepPx.y);
+                stepZoom = new Vector2(stepPx.x / baseScale.x, stepPx.y / baseScale.y);
+                if (!stepEasing) stepNow = stepZoom;
+            }
+        }
+
+        Vector2Int StepAt(int ny) => new Vector2Int(StepOf(baseScale.x, ny / baseScale.y), ny);
+
+        /// <summary>Goes to the step with <paramref name="ny"/> whole screen px per game px, easing over <paramref name="time"/> s (0: at once).</summary>
+        void SetStep(int ny, float time)
+        {
+            var n = StepAt(ny);
+            if (n == stepPx && (time > 0f || !stepEasing)) return;
+            stepPx = n;
+            stepZoom = new Vector2(n.x / baseScale.x, n.y / baseScale.y);
+            if (time <= 0f || level <= 0f)
+            {
+                stepNow = stepZoom;
+                stepEasing = false;
+                return;
+            }
+            stepFrom = stepNow;
+            stepT = 0f;
+            stepLen = time;
+            stepEasing = true;
+        }
+
+        /// <summary>
+        /// The step for this frame: the one asked for (<see cref="StepAim"/>); asked for more than <see cref="Aim"/>, the
+        /// largest step down to <see cref="Aim"/>'s whose frame holds this frame's must-see points (with a little room). At
+        /// 1x it is taken at once (the zoom-in goes straight for it); zoomed, a step down eases in
+        /// <see cref="StepDownTime"/>, a step back up waits until the larger one has held them with room to spare for
+        /// <see cref="StepUpHold"/> (a changed setting: at once) and eases in <see cref="EaseTime"/>; zooming out it stays.
+        /// </summary>
+        void ChooseStep(float dt)
+        {
+            int top = TopStep, floor = FloorStep;
+            bool asked = top != lastTop;
+            lastTop = top;
+            int cur = stepPx.y, n = top, fit = top;
+            bool atOne = level <= 0f;
+            if (keeps.Count + softKeeps.Count > 0)
+            {
+                while (fit > floor && !FitsAt(fit, FitSlack)) fit--;
+                n = Mathf.Min(fit, cur);
+                // (a larger step than the one shown only with room to spare)
+                for (int k = top; k > cur; k--)
+                    if (k <= fit && FitsAt(k, FitSlackUp))
+                    {
+                        n = k;
+                        break;
+                    }
+                if (atOne) n = fit;
+            }
+            FitStep = fit == floor && keeps.Count + softKeeps.Count > 0 && !FitsAt(floor, FitSlack) ? floor - 1 : fit;
+            if (atOne)
+            {
+                upT = 0f;
+                SetStep(n, 0f);
+                return;
+            }
+            if (to <= 0f)
+            {
+                upT = 0f;
+                return;
+            }
+            if (n < cur)
+            {
+                upT = 0f;
+                SetStep(n, asked ? EaseTime : StepDownTime);
+            }
+            else if (n > cur)
+            {
+                upT += dt;
+                if (asked || upT >= StepUpHold)
+                {
+                    upT = 0f;
+                    SetStep(n, EaseTime);
+                }
+            }
+            else upT = 0f;
+        }
+
+        /// <summary>This frame's must-see points (the soft ones too) fit in one frame at the step of <paramref name="ny"/> whole px, each with <paramref name="slack"/> game px more room.</summary>
+        bool FitsAt(int ny, float slack)
+        {
+            var n = StepAt(ny);
+            var half = new Vector2(pv.Target.width * baseScale.x / n.x, pv.Target.height * baseScale.y / n.y) * 0.5f;
+            return Range(half, TopInsetPx / Mathf.Max(1, ny), true, true, out _, out _, slack);
+        }
+
+        /// <summary>The step asked for (vertical whole px): nearest to <see cref="StepAim"/>; more than <see cref="Aim"/> asked, at least one more than Aim's (4:3 1080p: 3 x 1.5 = 4.5 -> 5, not 4).</summary>
+        int TopStep
+        {
+            get
+            {
+                int t = StepOf(baseScale.y, StepAim);
+                return StepAim > Aim + 1e-3f ? Mathf.Max(t, StepOf(baseScale.y, Aim) + 1) : t;
+            }
+        }
+
+        /// <summary>The smallest step it may step down to (Aim's, or the one asked for when that is less).</summary>
+        int FloorStep => Mathf.Min(TopStep, StepOf(baseScale.y, Aim));
+
+        /// <summary>The whole number of screen pixels per game pixel nearest to <paramref name="s"/> x <paramref name="z"/> (always more than 1x).</summary>
+        static int StepOf(float s, float z) => Mathf.Max(Mathf.RoundToInt(s * z), Mathf.FloorToInt(s + 1e-3f) + 1);
+
+        static Vector2 Clamp(Vector2 c, Vector2 half, float W, float H) =>
+            new Vector2(Mathf.Clamp(c.x, half.x, Mathf.Max(half.x, W - half.x)), Mathf.Clamp(c.y, half.y, Mathf.Max(half.y, H - half.y)));
+
+        /// <summary>
+        /// The pan nearest <paramref name="c"/> that has every must-see point inside its margins (the top also below the
+        /// HUD); <paramref name="withSoft"/>: the soft ones too, when they fit with the others.
+        /// </summary>
+        Vector2 Constrain(Vector2 c, Vector2 half, float topIn, bool withSoft)
+        {
+            // (the soft ones only when a frame on the target holds them with the others)
+            withSoft &= softKeeps.Count > 0 && Range(half, topIn, true, true, out _, out _);
+            if (keeps.Count == 0 && !withSoft) return c;
+            // (the full margins even at the target's edge: the pan goes for the edge and the clamp stops it there exactly)
+            Range(half, topIn, withSoft, false, out var lo, out var hi);
+            c.x = lo.x <= hi.x ? Mathf.Clamp(c.x, lo.x, hi.x) : (lo.x + hi.x) * 0.5f;
+            c.y = lo.y <= hi.y ? Mathf.Clamp(c.y, lo.y, hi.y) : (lo.y + hi.y) * 0.5f;
+            return c;
+        }
+
+        /// <summary>
+        /// The pans (the crop's centre at the step, per axis lo..hi) that keep the must-see points inside their margins (the
+        /// top also below the HUD); false when there is none. <paramref name="onTarget"/>: only pans keeping the crop on the
+        /// target, and no margin asked past the target's edge (where the crop stops): whether a frame can hold them.
+        /// <paramref name="slack"/>: that much more room around each point (whether a step holds them with room to spare).
+        /// </summary>
+        bool Range(Vector2 half, float topIn, bool withSoft, bool onTarget, out Vector2 lo, out Vector2 hi, float slack = 0f)
+        {
+            float W = pv.Target.width, H = pv.Target.height;
+            lo = onTarget ? half : new Vector2(float.MinValue, float.MinValue);
+            hi = onTarget ? new Vector2(Mathf.Max(half.x, W - half.x), Mathf.Max(half.y, H - half.y)) : new Vector2(float.MaxValue, float.MaxValue);
+            topIn = Mathf.Min(topIn, half.y * 0.5f);
+            Narrow(keeps, half, topIn, onTarget, W, H, slack, ref lo, ref hi);
+            if (withSoft) Narrow(softKeeps, half, topIn, onTarget, W, H, slack, ref lo, ref hi);
+            return lo.x <= hi.x + 1e-3f && lo.y <= hi.y + 1e-3f;
+        }
+
+        static void Narrow(List<Vector3> ks, Vector2 half, float topIn, bool onTarget, float W, float H, float slack, ref Vector2 lo, ref Vector2 hi)
+        {
+            foreach (var k in ks)
+            {
+                float mx = Mathf.Min(k.z, half.x * 0.8f) + slack, my = Mathf.Min(k.z, half.y * 0.4f) + slack;
+                float left = mx, right = mx, below = my, above = my + topIn;
+                if (onTarget)
+                {
+                    left = Mathf.Clamp(left, 0f, k.x);
+                    right = Mathf.Clamp(right, 0f, W - k.x);
+                    below = Mathf.Clamp(below, 0f, k.y);
+                    above = Mathf.Clamp(above, 0f, H - k.y);
+                }
+                lo.x = Mathf.Max(lo.x, k.x + right - half.x);
+                hi.x = Mathf.Min(hi.x, k.x - left + half.x);
+                lo.y = Mathf.Max(lo.y, k.y + above - half.y);
+                hi.y = Mathf.Min(hi.y, k.y - below + half.y);
+            }
+        }
+
+        /// <summary>The crop for this level and pan, onto the display.</summary>
+        void Apply()
+        {
+            if (pv == null || pv.Target == null) return;
+            if (stepPx == Vector2Int.one) Bases();
+            float W = pv.Target.width, H = pv.Target.height;
+            float zx = 1f + level * (stepNow.x - 1f), zy = 1f + level * (stepNow.y - 1f);
+            zoomNow = new Vector2(zx, zy);
+            var size = new Vector2(W / zx, H / zy);
+            var C = new Vector2(W, H) * 0.5f;
+            // the zoom pivots on the pan: offset from the centre grows as (1 - 1/z), reaching the pan at the full step
+            float kx = stepNow.x > 1f ? (1f - 1f / zx) / (1f - 1f / stepNow.x) : 0f;
+            float ky = stepNow.y > 1f ? (1f - 1f / zy) / (1f - 1f / stepNow.y) : 0f;
+            var c = C + new Vector2((panF.x - C.x) * kx, (panF.y - C.y) * ky);
+            var o = new Vector2(Mathf.Clamp(c.x - size.x * 0.5f, 0f, W - size.x), Mathf.Clamp(c.y - size.y * 0.5f, 0f, H - size.y));
+            if (level >= 1f && !stepEasing)
+            {
+                // at rest: the crop's origin on whole screen pixels (every game pixel n x n)
+                int sw = Mathf.Max(1, Screen.width), sh = Mathf.Max(1, Screen.height);
+                int ox = Mathf.Clamp(Mathf.RoundToInt(o.x * stepPx.x), 0, Mathf.Max(0, Mathf.RoundToInt(W * stepPx.x) - sw));
+                int oy = Mathf.Clamp(Mathf.RoundToInt(o.y * stepPx.y), 0, Mathf.Max(0, Mathf.RoundToInt(H * stepPx.y) - sh));
+                o = new Vector2(ox / (float)stepPx.x, oy / (float)stepPx.y);
+                size = new Vector2(sw / (float)stepPx.x, sh / (float)stepPx.y);
+            }
+            crop = new Rect(o, size);
+            var r = new Rect(o.x / W, o.y / H, size.x / W, size.y / H);
+            if (level <= 0f) r = new Rect(0f, 0f, 1f, 1f);
+            uv = r;
+            scaleNow = new Vector2(Mathf.Max(1, Screen.width) / size.x, Mathf.Max(1, Screen.height) / size.y);
+            pv.SetDisplayUV(uv);
+        }
+    }
+}
