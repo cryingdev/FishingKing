@@ -1,0 +1,14 @@
+{
+ "panel_wood": 14,
+ "panel_dark": 9,
+ "panel_paper": 8,
+ "btn_green": 9,
+ "btn_blue": 9,
+ "btn_red": 9,
+ "btn_yellow": 9,
+ "btn_grey": 9,
+ "slot": 7,
+ "bar_bg": 4,
+ "bar_fill": 4,
+ "badge": 5
+}

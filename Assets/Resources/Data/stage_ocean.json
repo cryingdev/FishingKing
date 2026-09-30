@@ -1,0 +1,28 @@
+{
+ "id": "ocean",
+ "standH": 1.7,
+ "widthPx": 640,
+ "heightPx": 400,
+ "ppu": 16,
+ "camBack": 10.5,
+ "camUp": 4.75,
+ "pitch": 12.0,
+ "focalPx": 520.0,
+ "depthZ": [
+  0,
+  100
+ ],
+ "depthV": [
+  18,
+  20
+ ],
+ "mode": "boat",
+ "zNear": 1.6,
+ "zFar": 900,
+ "xLim": 120,
+ "waterTint": "#2c5c8a",
+ "waterDeep": "#081c34",
+ "ambient": "day",
+ "clouds": false,
+ "birds": true
+}

@@ -1,0 +1,34 @@
+{
+ "id": "stream",
+ "standH": 1.4,
+ "widthPx": 640,
+ "heightPx": 400,
+ "ppu": 16,
+ "camBack": 10.5,
+ "camUp": 4.75,
+ "pitch": 12.0,
+ "focalPx": 520.0,
+ "depthZ": [
+  0,
+  10,
+  30,
+  60,
+  118
+ ],
+ "depthV": [
+  1.0,
+  2.5,
+  4.2,
+  4.8,
+  3
+ ],
+ "mode": "shore",
+ "zNear": 1.8,
+ "zFar": 118,
+ "xLim": 7.5,
+ "waterTint": "#3e7a78",
+ "waterDeep": "#0c2a2c",
+ "ambient": "day",
+ "clouds": false,
+ "birds": true
+}

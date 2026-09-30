@@ -1,0 +1,242 @@
+{
+ "reel_basic_body": {
+  "ramp": [
+   "#1c1d21",
+   "#3a3a40",
+   "#535258"
+  ],
+  "outline": "#272639"
+ },
+ "reel_basic_knob": {
+  "ramp": [
+   "#2a2a2a",
+   "#3e3e3e",
+   "#545454"
+  ],
+  "outline": "#272639"
+ },
+ "reel_basic_spool": {
+  "ramp": [
+   "#676a73",
+   "#8a8e96",
+   "#a7a9b1"
+  ],
+  "outline": "#454952"
+ },
+ "reel_basic_line": {
+  "ramp": [
+   "#c1c9c9",
+   "#e8f0f0",
+   "#f6fdfd"
+  ],
+  "outline": "#9ba3a3"
+ },
+ "reel_basic_wire": {
+  "ramp": [
+   "#aaaeb6",
+   "#d0d4dc",
+   "#eff1f9"
+  ],
+  "outline": "#868992"
+ },
+ "reel_light_body": {
+  "ramp": [
+   "#c1c3c7",
+   "#e8eaee",
+   "#fafcff"
+  ],
+  "outline": "#9b9da2"
+ },
+ "reel_light_knob": {
+  "ramp": [
+   "#2d4fb0",
+   "#3a7ad0",
+   "#6994e7"
+  ],
+  "outline": "#1c2e7d"
+ },
+ "reel_light_spool": {
+  "ramp": [
+   "#2d4fb0",
+   "#3a7ad0",
+   "#6994e7"
+  ],
+  "outline": "#1c2e7d"
+ },
+ "reel_light_line": {
+  "ramp": [
+   "#b2c4d3",
+   "#d8ecf8",
+   "#ecffff"
+  ],
+  "outline": "#8f9daf"
+ },
+ "reel_light_wire": {
+  "ramp": [
+   "#aaaeb6",
+   "#d0d4dc",
+   "#eff1f9"
+  ],
+  "outline": "#868992"
+ },
+ "reel_highgear_body": {
+  "ramp": [
+   "#949aa3",
+   "#b8c0c8",
+   "#d5dde4"
+  ],
+  "outline": "#727680"
+ },
+ "reel_highgear_knob": {
+  "ramp": [
+   "#1c1c1c",
+   "#2f2f2f",
+   "#444444"
+  ],
+  "outline": "#272639"
+ },
+ "reel_highgear_spool": {
+  "ramp": [
+   "#ac002c",
+   "#d23a3a",
+   "#ea644e"
+  ],
+  "outline": "#840023"
+ },
+ "reel_highgear_line": {
+  "ramp": [
+   "#d5bc74",
+   "#f0e8a0",
+   "#fffdbc"
+  ],
+  "outline": "#b8924b"
+ },
+ "reel_highgear_wire": {
+  "ramp": [
+   "#aaaeb6",
+   "#d0d4dc",
+   "#eff1f9"
+  ],
+  "outline": "#868992"
+ },
+ "reel_baitcast_body": {
+  "ramp": [
+   "#0c2a21",
+   "#2a4a3a",
+   "#476250"
+  ],
+  "outline": "#272639"
+ },
+ "reel_baitcast_knob": {
+  "ramp": [
+   "#c08200",
+   "#d8b040",
+   "#f9cb70"
+  ],
+  "outline": "#a35600"
+ },
+ "reel_baitcast_plate": {
+  "ramp": [
+   "#a2a6aa",
+   "#c8ccd0",
+   "#e6e9ed"
+  ],
+  "outline": "#7d8286"
+ },
+ "reel_baitcast_line": {
+  "ramp": [
+   "#d0c36f",
+   "#e8f0a0",
+   "#ffffb8"
+  ],
+  "outline": "#b69840"
+ },
+ "reel_baitcast_star": {
+  "ramp": [
+   "#c08200",
+   "#d8b040",
+   "#f9cb70"
+  ],
+  "outline": "#a35600"
+ },
+ "reel_electric_body": {
+  "ramp": [
+   "#b9bbbf",
+   "#e0e2e6",
+   "#fafcff"
+  ],
+  "outline": "#94969a"
+ },
+ "reel_electric_knob": {
+  "ramp": [
+   "#ac002c",
+   "#d23a3a",
+   "#ea644e"
+  ],
+  "outline": "#840023"
+ },
+ "reel_electric_plate": {
+  "ramp": [
+   "#2a2a30",
+   "#3f3e44",
+   "#55545a"
+  ],
+  "outline": "#272639"
+ },
+ "reel_electric_lcd_glow": {
+  "ramp": [
+   "#00dc79",
+   "#6aff8a",
+   "#adffa2"
+  ],
+  "outline": "#00b96d"
+ },
+ "reel_poseidon_body": {
+  "ramp": [
+   "#ca8500",
+   "#e2b432",
+   "#ffcf6a"
+  ],
+  "outline": "#ad5900"
+ },
+ "reel_poseidon_knob": {
+  "ramp": [
+   "#e5c373",
+   "#fff0a0",
+   "#fffbb5"
+  ],
+  "outline": "#c89849"
+ },
+ "reel_poseidon_spool": {
+  "ramp": [
+   "#009298",
+   "#2ab8b0",
+   "#67d3c4"
+  ],
+  "outline": "#006d7f"
+ },
+ "reel_poseidon_line": {
+  "ramp": [
+   "#93d1d0",
+   "#bff8f0",
+   "#d6fffd"
+  ],
+  "outline": "#68abb2"
+ },
+ "reel_poseidon_wire": {
+  "ramp": [
+   "#aaaeb6",
+   "#d0d4dc",
+   "#eff1f9"
+  ],
+  "outline": "#868992"
+ },
+ "reel_poseidon_gem_glow": {
+  "ramp": [
+   "#00d6e7",
+   "#5affff",
+   "#8fffff"
+  ],
+  "outline": "#00add0"
+ }
+}

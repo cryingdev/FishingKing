@@ -1,0 +1,32 @@
+{
+ "id": "sea",
+ "standH": 3.0,
+ "widthPx": 640,
+ "heightPx": 400,
+ "ppu": 16,
+ "camBack": 10.5,
+ "camUp": 4.75,
+ "pitch": 12.0,
+ "focalPx": 520.0,
+ "depthZ": [
+  0,
+  10,
+  30,
+  60
+ ],
+ "depthV": [
+  3,
+  6,
+  10,
+  12
+ ],
+ "mode": "shore",
+ "zNear": 3.6,
+ "zFar": 600,
+ "xLim": 90,
+ "waterTint": "#2c7aa4",
+ "waterDeep": "#0a2a40",
+ "ambient": "day",
+ "clouds": false,
+ "birds": true
+}

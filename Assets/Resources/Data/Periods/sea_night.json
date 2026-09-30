@@ -1,0 +1,50 @@
+{
+ "stage": "sea",
+ "period": "night",
+ "native": false,
+ "waterTint": "#2a3856",
+ "waterDeep": "#060c1c",
+ "rimCol": "#c4d4ff",
+ "rimStrength": 0.3,
+ "rimDirs": [
+  -1.0,
+  0.0,
+  1.0,
+  -1.0,
+  1.0,
+  0.8,
+  0.0,
+  1.0,
+  0.5
+ ],
+ "keyDir": [
+  -0.55,
+  0.81,
+  0.2
+ ],
+ "keyCol": "#c8d4f0",
+ "skyHorizon": "#34405e",
+ "skyZenith": "#0c1226",
+ "actorTint": "#8e9ac0",
+ "glintCol": "#c8d4f0",
+ "glintDensity": 0.3,
+ "fxAlpha": 0.7,
+ "birds": false,
+ "fireflies": false,
+ "lights": [
+  {
+   "x": 120.6,
+   "y": 72.4,
+   "col": "#ffe8a0",
+   "r": 6.0,
+   "blink": "flash2"
+  },
+  {
+   "x": 482.2,
+   "y": 144.8,
+   "col": "#ff5a4a",
+   "r": 3.0,
+   "blink": "flash1"
+  }
+ ]
+}

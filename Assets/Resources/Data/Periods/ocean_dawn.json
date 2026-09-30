@@ -1,0 +1,35 @@
+{
+ "stage": "ocean",
+ "period": "dawn",
+ "native": true,
+ "waterTint": "#2c5c8a",
+ "waterDeep": "#081c34",
+ "rimCol": "#ffd8b0",
+ "rimStrength": 0.5,
+ "rimDirs": [
+  -1.0,
+  0.0,
+  1.0,
+  -1.0,
+  1.0,
+  0.85,
+  0.0,
+  1.0,
+  0.55
+ ],
+ "keyDir": [
+  -0.62,
+  0.72,
+  0.3
+ ],
+ "keyCol": "#ffdcb0",
+ "skyHorizon": "#ffca92",
+ "skyZenith": "#3868b0",
+ "actorTint": "#ffffff",
+ "glintCol": "#ffffff",
+ "glintDensity": 1.0,
+ "fxAlpha": 1.0,
+ "birds": true,
+ "fireflies": false,
+ "lights": []
+}

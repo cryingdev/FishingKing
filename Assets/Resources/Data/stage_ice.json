@@ -1,0 +1,36 @@
+{
+ "id": "ice",
+ "standH": 0.25,
+ "widthPx": 640,
+ "heightPx": 400,
+ "ppu": 16,
+ "camBack": 10.5,
+ "camUp": 4.75,
+ "pitch": 12.0,
+ "focalPx": 520.0,
+ "depthZ": [
+  0,
+  10,
+  30,
+  85
+ ],
+ "depthV": [
+  4,
+  6,
+  8,
+  4
+ ],
+ "mode": "ice",
+ "zNear": 0.8,
+ "zFar": 85,
+ "xLim": 35,
+ "waterTint": "#6480b0",
+ "waterDeep": "#142040",
+ "ambient": "snow",
+ "clouds": false,
+ "snow": true,
+ "holeX": 1.9,
+ "holeZ": 3.0,
+ "holeR": 0.62,
+ "iceY": 0.2
+}

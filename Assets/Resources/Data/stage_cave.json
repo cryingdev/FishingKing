@@ -1,0 +1,32 @@
+{
+ "id": "cave",
+ "standH": 1.2,
+ "widthPx": 640,
+ "heightPx": 400,
+ "ppu": 16,
+ "camBack": 10.5,
+ "camUp": 4.75,
+ "pitch": 12.0,
+ "focalPx": 520.0,
+ "depthZ": [
+  0,
+  10,
+  30,
+  100
+ ],
+ "depthV": [
+  2,
+  5,
+  8,
+  9
+ ],
+ "mode": "shore",
+ "zNear": 1.6,
+ "zFar": 100,
+ "xLim": 14,
+ "waterTint": "#275463",
+ "waterDeep": "#04101a",
+ "ambient": "cave",
+ "clouds": false,
+ "sparkles": true
+}

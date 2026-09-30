@@ -1,0 +1,43 @@
+{
+ "stage": "cave",
+ "period": "night",
+ "native": false,
+ "waterTint": "#275463",
+ "waterDeep": "#04101a",
+ "rimCol": "#86dcff",
+ "rimStrength": 0.45,
+ "rimDirs": [
+  0.0,
+  1.0,
+  1.0,
+  -1.0,
+  1.0,
+  0.8,
+  1.0,
+  1.0,
+  0.8
+ ],
+ "keyDir": [
+  0.0,
+  0.95,
+  0.3
+ ],
+ "keyCol": "#a8e0f0",
+ "skyHorizon": "#1e1830",
+ "skyZenith": "#0c0a14",
+ "actorTint": "#dce4f0",
+ "glintCol": "#c8e8f0",
+ "glintDensity": 0.6,
+ "fxAlpha": 0.85,
+ "birds": false,
+ "fireflies": false,
+ "lights": [
+  {
+   "x": 250.0,
+   "y": 275.0,
+   "col": "#ffc860",
+   "r": 4.0,
+   "blink": "flicker"
+  }
+ ]
+}

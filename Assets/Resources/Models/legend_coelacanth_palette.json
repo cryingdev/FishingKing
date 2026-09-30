@@ -1,0 +1,81 @@
+{
+ "coel_back": {
+  "ramp": [
+   "#1c2744",
+   "#27375a",
+   "#35466b"
+  ],
+  "outline": "#0b1322"
+ },
+ "coel_side": {
+  "ramp": [
+   "#27375a",
+   "#35466b",
+   "#4d628a"
+  ],
+  "outline": "#0b1322"
+ },
+ "coel_belly": {
+  "ramp": [
+   "#35466b",
+   "#465a7c",
+   "#5d7396"
+  ],
+  "outline": "#0b1322"
+ },
+ "coel_fin": {
+  "ramp": [
+   "#18223c",
+   "#27375a",
+   "#3a4d74"
+  ],
+  "outline": "#0b1322"
+ },
+ "coel_spots": {
+  "ramp": [
+   "#8e9ab4",
+   "#c2cadb",
+   "#e4eaf4"
+  ],
+  "outline": "#0b1322"
+ },
+ "coel_mouth": {
+  "ramp": [
+   "#3a1a2a",
+   "#6a2f44",
+   "#8e4a5e"
+  ],
+  "outline": "#0b1322"
+ },
+ "coel_teeth": {
+  "ramp": [
+   "#a8a090",
+   "#d0c8b4",
+   "#e8e0cc"
+  ],
+  "outline": "#0b1322"
+ },
+ "coel_eye_ring": {
+  "ramp": [
+   "#05080c",
+   "#0a0e14",
+   "#1a2230"
+  ],
+  "outline": "#0b1322"
+ },
+ "coel_eye_glow": {
+  "ramp": [
+   "#6ea060",
+   "#b8ff8a",
+   "#f0ffd8"
+  ],
+  "outline": "#0b1322"
+ },
+ "_lureLight": {
+  "abyss": "#03080c",
+  "fogOutline": "#1f5f70",
+  "eyeCore": "#f0ffd8",
+  "eyeGlow": "#b8ff8a",
+  "frameLine": "#6affea"
+ }
+}

@@ -1,0 +1,32 @@
+{
+ "stage": "swamp",
+ "period": "day",
+ "native": false,
+ "waterTint": "#4a563e",
+ "waterDeep": "#141e12",
+ "rimCol": "#e8e0b8",
+ "rimStrength": 0.15,
+ "rimDirs": [
+  0.0,
+  1.0,
+  1.0,
+  -1.0,
+  1.0,
+  0.6
+ ],
+ "keyDir": [
+  -0.3,
+  0.9,
+  0.3
+ ],
+ "keyCol": "#f0e8c8",
+ "skyHorizon": "#c8c8a4",
+ "skyZenith": "#66807c",
+ "actorTint": "#ffffff",
+ "glintCol": "#ffffff",
+ "glintDensity": 1.0,
+ "fxAlpha": 1.0,
+ "birds": false,
+ "fireflies": false,
+ "lights": []
+}

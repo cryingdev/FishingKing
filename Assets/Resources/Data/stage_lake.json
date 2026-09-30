@@ -1,0 +1,36 @@
+{
+ "id": "lake",
+ "standH": 1.0,
+ "widthPx": 640,
+ "heightPx": 400,
+ "ppu": 16,
+ "camBack": 10.5,
+ "camUp": 4.75,
+ "pitch": 12.0,
+ "focalPx": 520.0,
+ "depthZ": [
+  0,
+  8,
+  20,
+  40,
+  140,
+  176
+ ],
+ "depthV": [
+  1.2,
+  3,
+  6,
+  8,
+  6,
+  1
+ ],
+ "mode": "shore",
+ "zNear": 1.2,
+ "zFar": 176,
+ "xLim": 90,
+ "waterTint": "#456a8a",
+ "waterDeep": "#10283a",
+ "ambient": "day",
+ "clouds": false,
+ "birds": true
+}

@@ -1,0 +1,9 @@
+{
+ "swimMinX": -12.6,
+ "swimMaxX": 12.6,
+ "swimMinY": -2.6,
+ "swimMaxY": 4.4,
+ "surfaceY": 5.2,
+ "waterTop": "#98c8b9",
+ "waterDeep": "#427288"
+}

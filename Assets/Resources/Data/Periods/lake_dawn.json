@@ -1,0 +1,32 @@
+{
+ "stage": "lake",
+ "period": "dawn",
+ "native": false,
+ "waterTint": "#4e6684",
+ "waterDeep": "#12243a",
+ "rimCol": "#ffe4dc",
+ "rimStrength": 0.18,
+ "rimDirs": [
+  0.0,
+  1.0,
+  1.0,
+  -1.0,
+  1.0,
+  0.6
+ ],
+ "keyDir": [
+  -0.3,
+  0.52,
+  -0.8
+ ],
+ "keyCol": "#ffd8c8",
+ "skyHorizon": "#9ea4c0",
+ "skyZenith": "#5076b2",
+ "actorTint": "#e8e2ee",
+ "glintCol": "#ffe6e0",
+ "glintDensity": 0.6,
+ "fxAlpha": 0.9,
+ "birds": true,
+ "fireflies": false,
+ "lights": []
+}

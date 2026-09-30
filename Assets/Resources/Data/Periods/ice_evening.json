@@ -1,0 +1,35 @@
+{
+ "stage": "ice",
+ "period": "evening",
+ "native": true,
+ "waterTint": "#6480b0",
+ "waterDeep": "#142040",
+ "rimCol": "#ffc8d0",
+ "rimStrength": 0.3,
+ "rimDirs": [
+  -1.0,
+  0.0,
+  1.0,
+  -1.0,
+  1.0,
+  0.8,
+  0.0,
+  1.0,
+  0.4
+ ],
+ "keyDir": [
+  -0.3,
+  0.9,
+  0.3
+ ],
+ "keyCol": "#cad6f2",
+ "skyHorizon": "#d6a8b2",
+ "skyZenith": "#1c2656",
+ "actorTint": "#ffffff",
+ "glintCol": "#ffffff",
+ "glintDensity": 1.0,
+ "fxAlpha": 1.0,
+ "birds": false,
+ "fireflies": false,
+ "lights": []
+}
