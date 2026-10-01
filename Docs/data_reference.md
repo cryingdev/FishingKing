@@ -387,7 +387,7 @@
 
 ### 3.5 루어 (`BaitDef`, `isLure` = true)
 
-루어는 한 번 사면 계속 쓰고, 줄이 끊어지면 잃습니다(`Game.LoseTackle`). 모두 `packSize` 1, `rareBoost` 1입니다.
+루어는 한 번 사면 계속 쓰고, 줄이 끊어지면 잃습니다(`Game.LoseLure`; 물고기가 털고 간 루어는 감아서 회수). 모두 `packSize` 1, `rareBoost` 1입니다.
 액션 이름·아이콘·색은 `LureInfo`(`감기` `act_steady` `#6ab8ff` · `저킹` `act_twitch` `#6ad06a` · `수면` `act_top` `#ffd24a` ·
 `바닥` `act_bottom` `#b8865a` · `수직` `act_vertical` `#b58aff`)에 있습니다. 필드 의미(`Models.cs` `BaitDef` 주석):
 
