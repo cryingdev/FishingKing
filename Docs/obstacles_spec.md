@@ -39,8 +39,8 @@ no unrequested polish or QA rounds — one capture set (section 14).
    stay until pulled free (톡 / sweep; winding tears the bait off). The line never breaks on a pad.
 5. **Snags "밑걸림!"** (section 6): the hook catches in snag / weed zones by chance (rig type x zone x depth x speed).
    It frees with the rod sweep to the free side (the side arrow shows it after a miss) or a 톡 (a slack line first
-   helps). Winding against it builds tension until the line breaks and a lure is lost; the `회수` button becomes `끊기`
-   (cut the line). The frog is weedless over weeds, reeds and pads; the soft worm nearly so.
+   helps). Winding against it builds tension until the line breaks on the hook's side (a lure is lost; a float rig's
+   float is wound in with the bare hook); the `회수` button becomes `끊기` (cut the line). The frog is weedless over weeds, reeds and pads; the soft worm nearly so.
 6. **Cover fights** (section 7): 23 cover-seeking species (table 7.1, incl. 큰입배스, 가물치, 강꼬치고기, 피라루쿠) may
    turn a run towards their cover. While the line rubs on abrasive structure (or the fish grinds it on a rock's base) an
    **abrasion meter** fills by the structure, the tension, the fish's motion and the line; a scuffed line is weaker
@@ -438,7 +438,8 @@ A float rig landing in a pad footprint always catches the pad: `S.Snagged` with 
 - a 톡: `p = 0.6 + 0.3 x strength`;
 - a sweep either side held >= 50 % for 0.5 s: free;
 - winding: after 0.8 m of wind it comes free — a lure with nothing lost, a natural bait **with its bait torn off**
-  (`Game.I.ConsumeBait()`, flash `미끼가 연잎에 뜯겼어요`, the rig is retrieved: `S.Retrieving`);
+  (`Game.I.ConsumeBait()`, flash `미끼가 연잎에 뜯겼어요`, the rig is retrieved with the bare hook: `Tackle.TakeBait`,
+  `S.Retrieving`; a bare hook takes no fish);
 - the tension never breaks the line on a pad (6.6 does not apply).
 
 A freed rig drops into the water at the pad's edge nearest the angler.
@@ -527,11 +528,26 @@ Each frame the hook moved `d` metres (ground distance of `HookPos`, drift includ
 Winding while snagged builds the snag tension ratio `r`: `dr/dt = 0.9 x revs/s` while winding; `-1.2/s` while not (to a
 floor of 0.12 on moving water / 0.05 still); `-1.5/s` while giving line. `r >= 0.6`: the strip's word
 `팽팽해요! 감지 마세요!` (blinking red) and `Sfx.Warn` as in the fight (faster over 0.85). `r >= 1` for the rod's
-`BreakGrace` (0.3 + 0.6 flex s) -> **the line breaks**: `Sfx.Snap`, shake, `Game.I.LoseTackle()` (a lure is lost, a
-natural bait used up), flash `밑걸림으로 줄이 끊어졌다!` + `  (루어를 잃었다)` (`UIKit.Bad`, 2 s), `S.Ready`. The reel's
-drag does not save it (the hand is on the spool against a snag). Soft snags follow the same rule except pads (5.3).
+`BreakGrace` (0.3 + 0.6 flex s) -> **the line breaks**: `Sfx.Snap`, shake, flash `밑걸림으로 줄이 끊어졌다!`
+(`UIKit.Bad`, 2 s). The reel's drag does not save it (the hand is on the spool against a snag). Soft snags follow the
+same rule except pads (5.3).
 
-The **`회수` button reads `끊기`** while snagged: a tap cuts the line at once (`줄을 끊었어요` + the lure-lost note).
+The **`회수` button reads `끊기`** while snagged: a tap cuts the line at once (`줄을 끊었어요`, 1.6 s); the rest is the
+same as a forced break.
+
+**Where it parts: on the hook's side** (the snag holds the hook; `FishingController.SnagBreak`, `SnagLoss`):
+
+- a **lure** is lost (`Game.I.LoseLure`: off the owned list, the paste equipped if it was on); the rig is gone
+  (`Tackle.Hide`), the line's freed end whips from its water entry back to the rod tip (`LineSnap.Home`, ~0.42 s; no
+  bait dangles at the tip until it is home), `S.Ready`;
+- a **float rig keeps its float**: the bait still on the hook is used up once (`Game.I.ConsumeBait`; a bare hook loses
+  nothing more), `Tackle.LetGoSnag` leaves the float where it lies (off a pad's edge for a pad snag) with the bare hook
+  (`Tackle.TakeBait`, `World/hook_bare_w`) sprung up to 0.4 of the snag's depth (`LineSnap.Recoil`: the line under the
+  float whips back from the snag point with the hook on its end), and after 0.7 s it is wound in **spent** (`S.Retrieving`,
+  `SpentRetrieve`: no snag rolls, no fish engage, until `FinishRetrieve`);
+- the **loss toast** (`Toast.ShowItems` under the flash, 3.2 s, title `잃어버린 채비`) lists what went with item icons:
+  the lure (gold, with its price at >= 5,000 coins; gold with the eye `icon_eye` when it is a legend's key), the bait
+  `×1`. Nothing lost (a bare hook cut free): no toast.
 
 ### 6.7 Weedless
 
@@ -654,6 +670,30 @@ A new `LineDef.tough` field (GameDatabase). Worked example, rock, tension 0.7, t
 Effects: `FightModel.LineLimit = line.strength x (1 - 0.45 A)` (the break test, the HUD's red zone and the drag mark
 follow it); at `A >= 1` the result is `Snapped` at once with the cause `Abrasion` (`FightModel.SnapCause`).
 
+**Where a fight's break parts the line** (`FishingController.LineBroke`, FishingController.Breaks.cs): the tension parts
+it at its weakest point, the knot at the hook; worn through, it parts where it rubbed (the last rub point, kept by
+`FightObstacles`); the spool emptied, it is all gone. A float rig's float sits on the line its depth up from the hook
+(`Tackle.FloatAt`: pulled under along a taut line longer than that, riding the surface at the line's entry otherwise),
+so a rub **above the float** is one further from the hook along the line than the float (`RubAboveFloat`: rub-to-mouth
+> float-to-mouth + 0.05 m; a riding float has everything under the water below it). **Through the ice** the same
+rule: the rim's contact is the hole's lower edge, right under the line's entry — a float still riding in the hole is
+above it (it parts below: the float comes up the hole), a float drawn under the ice along the line by a fish running
+wide is below it (it parts above: the float is lost under the ice).
+
+| parted | a float rig | a lure |
+|---|---|---|
+| at the hook (the tension; a rub below the float) | the float stays where it was (`Tackle.LetGo`), wound in spent with the bare hook after 0.7 s; the line under it whips back with the hook (`LineSnap.Recoil`) | lost |
+| above the float (the spool; a rub above it) | the whole rig lost: hidden at once, `S.Ready`; the line's end whips back to the rod tip (`LineSnap.Home`) | lost |
+
+The eaten bait was paid for at the hook set (`SetHook` / a legend's hook set: `Game.I.ConsumeBait`), so a fight's
+break takes nothing more of it (`Game.I.LoseLure` only takes a lure). The loss toast (6.6) lists the lure and the float
+if lost; a float rig parted at the hook lost nothing more (no toast). A fish that **shakes the hook** (`FishEscaped`, no
+break) leaves the rig on the line: a float rig's float (`LetGo`, the bare hook) and a lure (`Tackle.LetGoLure`: where it
+came out of the fish's mouth, through the ice at the hole at that depth) are wound in spent from there; nothing lost,
+no snap, no toast. A spent retrieve (`SpentRetrieve`, set by FishOff and the snag's break, cleared by `FinishRetrieve`)
+makes no snag rolls and no fish engage it; the snag rolls' last point (`snagPrevOk`) is reset at the hook set, at
+FishOff and at the snag's break, so no stale jump is counted.
+
 ### 7.6 Side pressure and the arrow pull it out
 
 The cover run and the hold keep `SideActive` (a run to one side): the arrow over the line's entry points away from the
@@ -676,7 +716,7 @@ cover (`-FishRun`), unchanged states. Against it:
 | rubbing | `줄이 쓸리는 중!` | phase label, `UIKit.Bad`, blinking |
 | A >= 0.6 (once) | `줄이 버티지 못해요! 빨리 빼내요!` | flash, `UIKit.Bad`, 1.2 s |
 | pulled out | `커버에서 끌어냈다!` | flash, `UIKit.Gold`, 0.9 s |
-| the break | `줄이 {name}에 쓸려 끊어졌다!` + `  (루어를 잃었다)` | flash, `UIKit.Bad`, 2 s (replaces `줄이 끊어졌다!`) |
+| the break | `줄이 {name}에 쓸려 끊어졌다!` | flash, `UIKit.Bad`, 2 s (replaces `줄이 끊어졌다!`); what went in the loss toast (6.6) |
 
 ### 7.8 What stays as it is
 
@@ -757,8 +797,9 @@ the reef and the weed mat show in the open water in front of it).
 | snag tension >= 0.6 | `팽팽해요! 감지 마세요!` | strip phase label, `UIKit.Bad`, blinking |
 | freed | `빠졌다!` | flash, `UIKit.Gold`, 0.9 s |
 | a crank deflection | `딱!` | `LureFeedback`, `UIKit.Sky`, 0.6 s |
-| broken by forcing | `밑걸림으로 줄이 끊어졌다!` (+ `  (루어를 잃었다)`) | flash, `UIKit.Bad`, 2 s |
-| cut with 끊기 | `줄을 끊었어요` (+ `  (루어를 잃었다)`) | flash, `UIKit.Bad`, 1.6 s |
+| broken by forcing | `밑걸림으로 줄이 끊어졌다!` | flash, `UIKit.Bad`, 2 s |
+| cut with 끊기 | `줄을 끊었어요` | flash, `UIKit.Bad`, 1.6 s |
+| what a parted line took | `잃어버린 채비` + item icons: `{lure}` (gold, `({price}코인)` at >= 5,000; gold + `icon_eye` for a legend's key), `{bait} ×n`, `찌` | `Toast.ShowItems`, 70 under the top toast spot (under the flash), 3.2 s; none when nothing was lost |
 
 New strings are checked with `Tools/font_coverage.py` (README).
 

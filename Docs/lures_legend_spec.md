@@ -648,6 +648,10 @@ Perfect play takes about 12 s of Tease, plus 7.3 s of intro and about 1.5 s of b
 3. `BeginFight(agent, perfect)`, refactored out of `SetHook()`, builds the `FightModel` exactly as `SetHook` does today. If the hook was perfect it then sets `Fight.Stamina = 0.85f` and calls `Fight.Hold(0.5f)`: for 0.5 s, `Step` keeps tension at 0 and the line fixed, so the player can get a finger ready to circle.
 4. A surface boil at the lure spot (`JumpSplash(pos, 1.2)`, `view.Shake(0.2, 0.3)`) and the flash "실러캔스가 걸렸다! 원을 그려 감아요!".
 5. The coelacanth has jump 0, so the fight stays deep. The fight, landing, catch card and aquarium flow are unchanged.
+   A parted line in a legend's fight is an ordinary fight's break (Docs/obstacles_spec.md 7.5): the key lure is lost
+   and the loss toast shows it highlighted (gold with the legend eye); a natural key (the golden carp's 황금 떡밥) was
+   eaten at the hook set, once, and the break takes no more of it. A fish that shakes the hook keeps the lure: it is
+   wound in from where it came out of the mouth.
 6. The spawner is unpaused and the cooldown is set to `coolFight` (180 s), whatever the outcome.
 
 ### 2.11 Fail, cooldown, pity, rewards, save
