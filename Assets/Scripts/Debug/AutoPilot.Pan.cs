@@ -12,16 +12,20 @@ namespace FishingKing
     /// </code>
     /// On the sea (any stage given with -fkstage works; the sea is the default), per mode (1.25배 and 끔, or the one
     /// -fkzoommode names): a fish hooked out on the right is held on a scripted run (the fight model stands still) out past
-    /// the home frame's right edge to near the art's edge, a fast dash, back in, then the same out past the left edge,
+    /// the home frame's right edge (90 px past it: the shots), on to near the art's edge, a fast dash past it, back in, then
+    /// the same out past the left edge,
     /// back in and landed (끔: let go). Every frame: the fish and the rod tip in the view (the fish wherever the bounds can
-    /// show it; frames with it beyond the art itself are counted apart), the crop in the bounds and its UV on the target,
-    /// pixel exact at rest when zoomed, the camera on whole px, and the view's movement per frame (game px) and per 0.25 s;
+    /// show it; frames with it beyond the art itself are counted apart; zoomed, a run too far from the rod tip for one
+    /// zoomed frame eases out to 1x: counted too), the crop in the bounds and its UV on the target, pixel exact at rest
+    /// when zoomed, the camera on whole px, and the view's movement per frame (game px: no more than 6 px, or than the
+    /// frame's own time allows at 400 px/s) and per 0.25 s;
     /// then the view home (the camera and the 1x pan back to zero, at 1x) within <see cref="PanHomeMax"/> s of the fight's
     /// end. At the far point the same moment is shot with the overscan off (the old clamp at the home frame's edge: the
     /// fish out of view) and on (followed): pan_&lt;mode&gt;_before / _after. Then a natural fight (the fight model running,
     /// wound in like the fish scenario) hooked far out on the right, the same per-frame checks; and the alignment: with
     /// the camera panned and time frozen, the render target must equal the home one shifted by the pan (stage layers,
-    /// actor layers, the front layer's occlusion, the obstacle outlines, the water: everything moves together).
+    /// actor layers, the front layer's occlusion, the obstacle outlines, the water effects held as drawn: everything
+    /// moves together).
     /// [PAN] CHECK lines; ends with "pan test done: N failed".
     /// </summary>
     public partial class AutoPilot
@@ -29,8 +33,13 @@ namespace FishingKing
         int panFails;
         /// <summary>Seconds the view may take to be home again after a fight ends far out (the zoom-out, the 1x pan back).</summary>
         const float PanHomeMax = 2.0f;
-        /// <summary>Game px the view may move in one frame (and px/s over 0.25 s) while following.</summary>
+        /// <summary>Game px the view may move in one frame (more only in a long frame, at up to <see cref="PanFrameSpeed"/>), and px/s over 0.25 s, while following.</summary>
         const float PanStepMax = 6f, PanSpeedMax = 320f;
+        /// <summary>Game px/s: a frame's step over its own time (a frame hitch moves the view farther in that frame, not a jump).</summary>
+        const float PanFrameSpeed = 400f;
+
+        /// <summary>A step of the view this frame bigger than a few px and than the frame's time allows.</summary>
+        static bool PanJump(float step, float dt) => step > Mathf.Max(PanStepMax, PanFrameSpeed * dt);
 
         void PCheck(string name, bool ok, string numbers)
         {
@@ -40,15 +49,15 @@ namespace FishingKing
 
         class PanStats
         {
-            public int frames, beyondHome, beyondArt, outFish, outTip, border, inexact, offWhole, maxSide;
+            public int frames, beyondHome, beyondArt, outFish, outTip, border, inexact, offWhole, maxSide, jumps, zoomedOut;
             public float maxStep, maxSpeed, maxCam, maxOver;
             public Vector2 lastCentre;
             public bool has;
             public readonly System.Collections.Generic.Queue<Vector3> trail = new System.Collections.Generic.Queue<Vector3>();
 
             public override string ToString() => string.Format(CIp,
-                "{0} frames: the fish beyond the home frame {1} (by up to {2:0} px, the camera panned up to {3:0} px), beyond the art {4}; the fish out of view {5}, the rod tip out {6}; crop off the bounds / the target {7}, not pixel exact at rest {8}, camera off whole px {9}; the view's steps up to {10:0.0} px a frame, {11:0} px/s",
-                frames, beyondHome, maxOver, maxCam, beyondArt, outFish, outTip, border, inexact, offWhole, maxStep, maxSpeed);
+                "{0} frames: the fish beyond the home frame {1} (by up to {2:0} px, the camera panned up to {3:0} px), beyond the art {4}; the fish out of view {5}, the rod tip out {6}; crop off the bounds / the target {7}, not pixel exact at rest {8}, camera off whole px {9}; the view's steps up to {10:0.0} px a frame ({12} jumps), {11:0} px/s; zoomed out (the fish too far from the rod tip for a zoomed frame) {13} frames",
+                frames, beyondHome, maxOver, maxCam, beyondArt, outFish, outTip, border, inexact, offWhole, maxStep, maxSpeed, jumps, zoomedOut);
         }
 
         /// <summary>One frame's sample (read at its end): the fish, the rod tip, the crop, the camera.</summary>
@@ -78,7 +87,13 @@ namespace FishingKing
             float cx = cam.x * PixelView.PPU, cy = cam.y * PixelView.PPU;
             if (Mathf.Abs(cx - Mathf.Round(cx)) > 1e-3f || Mathf.Abs(cy - Mathf.Round(cy)) > 1e-3f) st.offWhole++;
             var c = z.CropPx.center;
-            if (st.has) st.maxStep = Mathf.Max(st.maxStep, (c - st.lastCentre).magnitude);
+            if (st.has)
+            {
+                float step = (c - st.lastCentre).magnitude;
+                st.maxStep = Mathf.Max(st.maxStep, step);
+                if (PanJump(step, Time.deltaTime)) st.jumps++;
+            }
+            if (FishingController.ZoomSetting != ZoomMode.Off && !z.ZoomedIn) st.zoomedOut++;
             st.lastCentre = c;
             st.has = true;
             st.maxSpeed = Mathf.Max(st.maxSpeed, TrailSpeed(st.trail, c));
@@ -131,6 +146,10 @@ namespace FishingKing
             }
             ctl.Watch?.DebugLurk(null);
             FishingController.NoBites = true;
+            // (no snags: a float wound in after a fish lets go far out would catch in the tetrapod field out there, and
+            // the view would rightly go out to it instead of home; snags are -fkauto obstacles' business)
+            float snagWas = Obstacles.SnagMult;
+            Obstacles.SnagMult = 0f;
             var L = ctl.Stage.L;
             var rt = PixelView.Current.Target;
             Log(string.Format(CIp, "[PAN] {0}: screen {1}x{2}, target {3}x{4}, art {5}, overscan {6} px each side, bounds {7}",
@@ -147,6 +166,7 @@ namespace FishingKing
 
             FishingController.NoBites = false;
             Obstacles.Show = false;
+            Obstacles.SnagMult = snagWas;
             Time.timeScale = 1f;
             PointerInput.SimDown = false;
             PointerInput.SimActive = false;
@@ -221,9 +241,12 @@ namespace FishingKing
                 }
             }
 
+            // the shots: 90 px past the home frame's right edge (the farthest the measured sea runs went), where a 1.25x
+            // frame still holds the fish beside the rod tip
+            float xShot = XForPx(ctl, W + 90f, Y, Z);
             yield return Stay(x0, 0.5f);
-            yield return Move(x0, xR, 5f);           // a run out past the right edge (5 m/s)
-            yield return Stay(xR, 1.2f);
+            yield return Move(x0, xShot, 5f);        // a run out past the right edge (5 m/s)
+            yield return Stay(xShot, 1.2f);
             if (ctl.State == FishingController.S.Fighting)
             {
                 // the same moment without the overscan (the old clamp at the home frame's edge) and with it
@@ -239,6 +262,8 @@ namespace FishingKing
                 st.has = false;
                 st.trail.Clear();
             }
+            yield return Move(xShot, xR, 5f);        // on out to near the art's edge (zoomed: too far from the tip, out to 1x)
+            yield return Stay(xR, 1.2f);
             yield return Move(xR, xEdge, 12f);       // a dash on past the art's edge (12 m/s)
             yield return Stay(xEdge, 0.6f);
             yield return Move(xEdge, x0, 6f);        // back in
@@ -251,8 +276,9 @@ namespace FishingKing
                 $"the run reached past the home frame and the art: {st}");
             PCheck(tag + "_in_view", st.frames > 200 && st.outFish == 0 && st.outTip == 0, st.ToString());
             PCheck(tag + "_whole_px", st.border == 0 && st.inexact == 0 && st.offWhole == 0, st.ToString());
-            PCheck(tag + "_smooth", st.maxStep <= PanStepMax && st.maxSpeed <= PanSpeedMax,
-                string.Format(CIp, "steps up to {0:0.0} px a frame (<= {1}), {2:0} px/s over 0.25 s (<= {3})", st.maxStep, PanStepMax, st.maxSpeed, PanSpeedMax));
+            PCheck(tag + "_smooth", st.jumps == 0 && st.maxSpeed <= PanSpeedMax,
+                string.Format(CIp, "steps up to {0:0.0} px a frame, {1} of them more than {2} px and more than the frame's time allows at {3} px/s; {4:0} px/s over 0.25 s (<= {5})",
+                    st.maxStep, st.jumps, PanStepMax, PanFrameSpeed, st.maxSpeed, PanSpeedMax));
 
             // the end of the fight from out on the right: landed (끔: let go); the view home after it
             yield return Move(x0, xR, 6f);
@@ -262,19 +288,21 @@ namespace FishingKing
             if (mode == ZoomMode.Off) ctl.DebugRelease();
             else ctl.DebugLand();
             ctl.DebugFishHold = null;
-            int maxStepBack = 0;
+            int maxStepBack = 0, jumpsBack = 0;
             var lastCam = z.CamPan;
             while (Time.time - t0 < 6f)
             {
                 yield return new WaitForEndOfFrame();
-                maxStepBack = Mathf.Max(maxStepBack, Mathf.Abs(z.CamPan.x - lastCam.x));
+                int sb = Mathf.Abs(z.CamPan.x - lastCam.x);
+                maxStepBack = Mathf.Max(maxStepBack, sb);
+                if (PanJump(sb, Time.deltaTime)) jumpsBack++;
                 lastCam = z.CamPan;
                 if (homeAt < 0f && z.AtHome && z.Level <= 0f) homeAt = Time.time - t0;
                 if (HasButton("판매") || (mode == ZoomMode.Off && ctl.State == FishingController.S.Ready && homeAt >= 0f)) break;
             }
-            PCheck(tag + "_home", camOut > 0f && homeAt >= 0f && homeAt <= PanHomeMax && maxStepBack <= PanStepMax,
-                string.Format(CIp, "panned {0:0} px when the fight ended ({1}), home (1x, camera and 1x pan at 0) {2:0.00} s later, the camera's steps back up to {3} px a frame; now {4}",
-                    camOut, mode == ZoomMode.Off ? "let go" : "landed", homeAt, maxStepBack, ZDesc(z)));
+            PCheck(tag + "_home", camOut > 0f && homeAt >= 0f && homeAt <= PanHomeMax && jumpsBack == 0,
+                string.Format(CIp, "panned {0:0} px when the fight ended ({1}), home (1x, camera and 1x pan at 0) {2:0.00} s later, the camera's steps back up to {3} px a frame ({4} jumps); now {5}",
+                    camOut, mode == ZoomMode.Off ? "let go" : "landed", homeAt, maxStepBack, jumpsBack, ZDesc(z)));
             if (HasButton("판매"))
             {
                 PCheck(tag + "_card_home", z.AtHome && z.Level == 0f && z.UV == new Rect(0f, 0f, 1f, 1f), ZDesc(z));
@@ -322,7 +350,7 @@ namespace FishingKing
             PointerInput.SimDown = false;
             PCheck("natural_in_view", st.frames > 120 && st.outFish == 0 && st.outTip == 0 && st.border == 0 && st.inexact == 0 && st.offWhole == 0,
                 $"(the fight ended {ctl.State} after {Z2(t)} s) {st}");
-            PCheck("natural_smooth", st.maxStep <= PanStepMax && st.maxSpeed <= PanSpeedMax, st.ToString());
+            PCheck("natural_smooth", st.jumps == 0 && st.maxSpeed <= PanSpeedMax, st.ToString());
             Log($"[PAN] natural: the fish went past the home frame in {st.beyondHome} of {st.frames} frames (shot {shot})");
             if (ctl.State == FishingController.S.Fighting) ctl.DebugRelease();
             float t0 = Time.time, homeAt = -1f;
@@ -365,6 +393,11 @@ namespace FishingKing
             float ts = Time.timeScale;
             Time.timeScale = 0f;
             CurrentField.DebugFreeze = true;
+            // (the water's effects held as drawn: they recycle what leaves the view even with time frozen, so the camera
+            // jumping home would respawn the strip it leaves into the overlap; their sprites stay put in the world)
+            var wfx = ctl.Stage.Water;
+            bool wfxOn = wfx != null && wfx.enabled;
+            if (wfx != null) wfx.enabled = false;
             yield return null;
             yield return new WaitForEndOfFrame();
             if ((Time.frameCount & 1) != 0) yield return new WaitForEndOfFrame();
@@ -380,6 +413,7 @@ namespace FishingKing
             if ((Time.frameCount & 1) != 0) yield return new WaitForEndOfFrame();
             var a2 = GrabRT();
             z.Release();
+            if (wfx != null) wfx.enabled = wfxOn;
             Time.timeScale = ts;
             CurrentField.DebugFreeze = false;
             if (a == null || home == null || a2 == null || pan.x == 0)

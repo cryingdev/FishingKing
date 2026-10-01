@@ -27,11 +27,16 @@ namespace FishingKing
     /// <para>Beyond the home frame (every mode): the stage art is wider than the render target (<see cref="ViewZoom.ArtPx"/>),
     /// so a fish running out past the 1x frame's side (the sea, the ocean, a wide run on the lake), or a rig cast or
     /// drifted there, is followed onto it: zoomed, the crop's pan simply goes on past the old edge (the camera moves by
-    /// whole px under it); at 1x (끔 all the time, 액티브 while he waits, any mode while the zoom eases) the view itself pans,
-    /// only as far as keeps the rod tip and the rig / fish their margins inside, accelerating gently and easing back home
-    /// once they are back in the home frame or the fight is over (the landing, the catch card, the ready: always home; a
-    /// wind-up hurries it home). 끔 pans too: it means "no zoom", and a fish off the screen is never wanted; the pan only
-    /// starts past the home frame, so as long as the fish stays in it 끔 looks exactly as before.</para>
+    /// whole px under it), and a run so far out that no zoomed frame holds the fish beside the rod tip (the sea's 800 px
+    /// art lets it get ~400 px from the tip; a 1.25x frame is 384 wide) eases out to 1x until they have fitted again
+    /// with room to spare for 1 s; at 1x (끔 all the time, 액티브 while he waits, any mode while the zoom eases) the view
+    /// itself pans, only as far as keeps the rod tip and the rig / fish their margins inside, accelerating gently and
+    /// easing back home once they are back in the home frame or the fight is over (the landing, the catch card, the
+    /// ready: always home, briskly, before the card; a wind-up hurries it home). 끔 pans too: it means "no zoom", and a
+    /// fish off the screen is never wanted; the view only
+    /// moves once the fish (or the float) comes within its margin (+ <see cref="ViewZoom.OneLead"/>: ~30 px) of the home
+    /// frame's side, so a fight that stays inside it looks exactly as before. Vertically the view stays put (a fish below
+    /// the home frame is under the stand, hidden by the front layer).</para>
     /// </summary>
     public partial class FishingController
     {
@@ -47,6 +52,10 @@ namespace FishingKing
         public const float ZoomBiteIn = 0.35f;
         const float ZoomBiteTau = 0.25f;   // s: 액티브, the framing settles on the float / lure through the bite
         int zoomCue;                       // the cue being framed: 0 none, 1 panned into the frame, -1 too far (out to 1x)
+        const float ZoomApartSlack = 12f;  // game px of room the fish and the rod tip must fit with to zoom back in ...
+        const float ZoomApartBack = 1f;    // ... for this long (s)
+        bool zoomApart;                    // a run out over the overscan too far from the rod tip for a zoomed frame: at 1x
+        float zoomApartT;
 
         /// <summary>설정 → 캐스팅 후 줌인 now.</summary>
         public static ZoomMode ZoomSetting => Game.I != null && Game.Data != null ? (ZoomMode)Game.Data.zoomMode : ZoomMode.X125;
@@ -99,6 +108,11 @@ namespace FishingKing
             z.StepAim = mode == ZoomMode.X150 ? ViewZoom.AimWide : ViewZoom.Aim;
             // (액티브: a snag stays at the zoom it found)
             bool zoomIn = (ZoomWanted || (active && State == S.Snagged && z.ZoomedIn)) && Angler != null && Tackle != null;
+            if (State != S.Fighting)
+            {
+                zoomApart = false;
+                zoomApartT = 0f;
+            }
             if (!zoomIn)
             {
                 zoomCue = 0;
@@ -117,10 +131,22 @@ namespace FishingKing
             z.Keep(tip, ZoomTipMargin);
             if (State == S.Fighting && Hooked != null)
             {
-                z.Want(true);
                 var fish = Fish2D(Hooked);
                 z.Focus(Vector2.Lerp(tip, fish, 0.5f), ZoomFightTau);
                 z.Keep(fish, ZoomFishMargin);
+                // a run out over the overscan so far that no zoomed frame holds the fish beside the rod tip: out to 1x
+                // (its view pans to hold both), back in once they have fitted with room to spare for a moment
+                if (!z.KeepsFitAcross())
+                {
+                    zoomApart = true;
+                    zoomApartT = 0f;
+                }
+                else if (zoomApart)
+                {
+                    zoomApartT = z.KeepsFitAcross(ZoomApartSlack) ? zoomApartT + Time.deltaTime : 0f;
+                    if (zoomApartT >= ZoomApartBack) zoomApart = false;
+                }
+                z.Want(!zoomApart);
                 return;
             }
             var rig = RigShown2D;

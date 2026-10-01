@@ -15,7 +15,7 @@ namespace FishingKing
     /// with a 20 % fill, snag #60e0ff dashed, weed #a8f070 dashed, pad #70f0a0, cover #ff70d8 dashed with a 7 px cross at the
     /// hold point, rim #ffffff), over the front layer.</item>
     /// </list>
-    /// Both are static 640x400 point-filtered textures placed like the stage's layers (centred on the scene origin, 16 px
+    /// Both are static canvas-sized (widthPx x heightPx: 640x400, the sea's 800x400) point-filtered textures placed like the stage's layers (centred on the scene origin, 16 px
     /// per unit); the aim one is rebuilt only when he has walked or changed rods since it was drawn.
     /// </summary>
     public class ObstacleOverlay : MonoBehaviour

@@ -64,6 +64,8 @@ namespace FishingKing
         public const float OneTau = 0.25f;
         /// <summary>Game px / s: the 1x pan's top speed (3 px a frame at 60 fps) and its acceleration.</summary>
         public const float OneMaxSpeed = 180f, OneAccel = 700f;
+        /// <summary>Game px / s: the 1x pan's top speed and acceleration back home once nothing is kept in frame (the fight is over: home before the catch card).</summary>
+        public const float OneReturnSpeed = 320f, OneReturnAccel = 1400f;
         /// <summary>Game px / s: the 1x pan's top speed back home while <see cref="HurryHome"/> (a wind-up: casting is from the home view).</summary>
         public const float OneHurrySpeed = 600f;
 
@@ -256,6 +258,22 @@ namespace FishingKing
             }
         }
 
+        /// <summary>
+        /// The must-see points asked for so far this frame fit side by side (across, with <paramref name="slack"/> game px
+        /// more room each) in one frame at the smallest step it may take. Across only: a fish below the home frame is under
+        /// the stand (hidden by the front layer), but one run out over the overscan can lie farther from the rod tip than
+        /// a zoomed frame is wide (the director then eases out to 1x, whose view pans to hold them both).
+        /// </summary>
+        public bool KeepsFitAcross(float slack = 0f)
+        {
+            if (pv == null || pv.Target == null) return true;
+            int ny = FloorStep;
+            var n = StepAt(ny);
+            var half = new Vector2(pv.Target.width * baseScale.x / n.x, pv.Target.height * baseScale.y / n.y) * 0.5f;
+            Range(half, TopInsetPx / Mathf.Max(1, ny), false, true, out var lo, out var hi, slack);
+            return lo.x <= hi.x + 1e-3f;
+        }
+
         // ------------------------------------------------------------------ test hooks
         /// <summary>Test: show this level now and ignore the director until <see cref="Release"/> (the camera stays where it is: at 1x the view is the target as the camera has it).</summary>
         internal void Hold(float lvl)
@@ -332,7 +350,10 @@ namespace FishingKing
         /// The 1x view's pan (horizontal, over the overscan only): to the offset nearest home that keeps every must-see
         /// point its margin (+ <see cref="OneLead"/>) inside the home-sized view, soft ones too when they fit; home when
         /// there are none. Followed at <see cref="OneTau"/>, no faster than <see cref="OneMaxSpeed"/>, accelerating and
-        /// braking at <see cref="OneAccel"/>; a hard point that would still leave the view pulls it along at once.
+        /// braking at <see cref="OneAccel"/> (home with nothing kept: <see cref="OneReturnSpeed"/>; a wind-up:
+        /// <see cref="OneHurrySpeed"/>); a hard point that would still leave the view pulls it along at once, by up to
+        /// <see cref="OneMaxSpeed"/> more (so the view never moves faster than twice that, and a point that turns up
+        /// outside, a rig landed or snagged out there, is glided to).
         /// </summary>
         void FollowOne(float dt, float W)
         {
@@ -354,7 +375,9 @@ namespace FishingKing
                 tgt = lo <= hi ? Mathf.Clamp(0f, lo, hi) : (lo + hi) * 0.5f;
                 tgt = Mathf.Clamp(tgt, -m, m);
             }
-            float vmax = HurryHome ? OneHurrySpeed : OneMaxSpeed, acc = HurryHome ? OneAccel * 3f : OneAccel;
+            bool going = keeps.Count + softKeeps.Count == 0;   // (nothing kept: back home, briskly)
+            float vmax = HurryHome ? OneHurrySpeed : going ? OneReturnSpeed : OneMaxSpeed;
+            float acc = HurryHome ? OneAccel * 3f : going ? OneReturnAccel : OneAccel;
             float err = tgt - panOne.x;
             float want = Mathf.Clamp(err / OneTau, -vmax, vmax);
             float brake = Mathf.Sqrt(2f * acc * Mathf.Abs(err));
@@ -366,16 +389,18 @@ namespace FishingKing
                 panOne.x = tgt;
                 panOneV.x = 0f;
             }
-            if (m > 0f && keeps.Count > 0)
+            if (m > 0f && keeps.Count > 0 && dt > 0f)
             {
-                // (a hard point never leaves the view: the follow lagging behind a fast run is pulled along)
+                // (a hard point never leaves the view: the follow lagging behind a fast run is pulled along, by up to the
+                // follow's own top speed more a frame; a point already well outside, a rig landed or snagged out there, is
+                // glided to, not snapped)
                 OneRange(keeps, W, HoldMargin, out float lo, out float hi);
                 if (lo <= hi)
                 {
-                    float held1 = Mathf.Clamp(panOne.x, lo, hi);
+                    float pull = Mathf.Clamp(Mathf.Clamp(panOne.x, lo, hi) - panOne.x, -OneMaxSpeed * dt, OneMaxSpeed * dt);
                     // (its speed is then the view's real speed this frame: the follow carries on from it)
-                    if (held1 != panOne.x && dt > 0f) panOneV.x = Mathf.Clamp(panOneV.x + (held1 - panOne.x) / dt, -OneHurrySpeed, OneHurrySpeed);
-                    panOne.x = held1;
+                    if (pull != 0f) panOneV.x = Mathf.Clamp(panOneV.x + pull / dt, -2f * OneMaxSpeed, 2f * OneMaxSpeed);
+                    panOne.x += pull;
                 }
             }
             panOne.x = Mathf.Clamp(panOne.x, -m, m);
