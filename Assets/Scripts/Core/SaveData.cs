@@ -88,6 +88,11 @@ namespace FishingKing
         public bool reelRing = true;     // the circle + direction arrows shown while drawing reel circles
         public bool reelReverse;         // counter-clockwise winds in (default: clockwise)
         public int zoomMode;             // 캐스팅 후 줌인 (ZoomMode): 0 1.25배 (default; older saves), 1 끔, 2 1.5배, 3 액티브
+        // 설정 → 조작 (Angler.ReadSettings): 왼손 = the rod in the right hand, the left hand cranking (default 오른손: the rod in
+        // the left hand); 가운데 = the rod held in front of the belly (default 옆: out at the hip). A save from before them reads
+        // false: 오른손, 옆 (the hold the game always had)
+        public bool leftHanded;
+        public bool rodCentre;
         public int totalCaught;
         public int totalEarned;
         public bool tutorialDone;

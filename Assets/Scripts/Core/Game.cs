@@ -74,6 +74,7 @@ namespace FishingKing
         //                    -fksnag <x> the snag rates x x (0 = never, 99 = at once); -fkobstseed <n> the obstacle rolls' seed
         // -fkmusic off|chiptune  no background music / the old chiptune for every cue; -fkmusiclog a [MUSIC] line for every
         //                    music event (read by Music itself at boot: see Music)
+        // -fkhand right|left  설정 → 조작 → 손잡이 forced (into the save); -fkrodpos side|centre the rod's position likewise
         static string Arg(string key)
         {
             var args = Environment.GetCommandLineArgs();
@@ -103,6 +104,10 @@ namespace FishingKing
                 foreach (var s in GameDatabase.Stages) if (!d.unlockedStages.Contains(s.id)) d.unlockedStages.Add(s.id);
             }
             if (Flag("-fkreverse")) I.data.reelReverse = true; // counter-clockwise winds in
+            // -fkhand right|left, -fkrodpos side|centre: 설정 → 조작 forced (into the save, as if chosen there)
+            string hand = Arg("-fkhand"), rodPos = Arg("-fkrodpos");
+            if (hand == "left" || hand == "right") I.data.leftHanded = hand == "left";
+            if (rodPos == "centre" || rodPos == "center" || rodPos == "side") I.data.rodCentre = rodPos != "side";
             if (Flag("-fkgear"))
             {
                 var d = I.data;
@@ -503,6 +508,20 @@ namespace FishingKing
         public void SetZoomMode(ZoomMode m)
         {
             data.zoomMode = (int)m;
+            Notify();
+        }
+
+        /// <summary>설정 → 조작 → 손잡이: 왼손 (the angler reads it every frame: Angler.ReadSettings).</summary>
+        public void SetLeftHanded(bool on)
+        {
+            data.leftHanded = on;
+            Notify();
+        }
+
+        /// <summary>설정 → 조작 → 낚싯대 위치: 가운데 (read every frame like the handedness).</summary>
+        public void SetRodCentre(bool on)
+        {
+            data.rodCentre = on;
             Notify();
         }
 
