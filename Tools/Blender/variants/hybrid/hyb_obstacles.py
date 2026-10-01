@@ -881,6 +881,7 @@ def overlay(stage, cam, obst, back_png, front_png, chk, path, k=2):
 
 # ============================================================================ main
 def run(stage):
+    R.set_canvas(*R.P.stage_canvas(stage))      # (640 x 400, or wider with overscan)
     mod = load_module(stage)
     smod = importlib.import_module("hyb_" + stage)
     R.use_preset(smod.PR)                     # (colours only; the geometry anchors live in the stage module)

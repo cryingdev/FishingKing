@@ -5,6 +5,8 @@ World (Blender): X right, Y forward (distance from the angler), Z up, water surf
 The angler's feet are at (0, 0, standH). The camera sits behind/above the feet and is identical
 in Unity (FishingKing.Persp), so everything Unity places on the water lines up with the renders.
 """
+import os
+import json
 import math
 import bpy
 
@@ -13,13 +15,39 @@ CAM_UP = 4.75      # metres above the feet
 PITCH = 12.0       # degrees looking down
 F_PX = 520.0       # focal length in pixels for a 400 px tall image
 W, H, PPU = 640, 400, 16
+DATA = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "Assets", "Resources", "Data"))
+
+
+def stage_canvas(stage_id):
+    """(widthPx, heightPx) of a stage's layers, from the game's Data/stage_<id>.json: 640 x 400, or wider for a stage
+    rendered with OVERSCAN (the sea: 800, the same camera and focal length, so the extra columns are just more of the
+    same view, for the game's camera to pan over beyond its 480 px frame). FK_CANVAS_W=640 in the environment forces
+    the 640 layout (build_overscan.ps1 renders it too and splices its back layer into the wide one's centre)."""
+    force = os.environ.get("FK_CANVAS_W")
+    if force:
+        return int(force), 400
+    try:
+        with open(os.path.join(DATA, "stage_%s.json" % stage_id), encoding="utf-8") as f:
+            d = json.load(f)
+        return int(d.get("widthPx") or 640), int(d.get("heightPx") or 400)
+    except (OSError, ValueError):
+        return 640, 400
+
+
+def set_canvas(width, height):
+    """The canvas the stage camera renders (W x H); the projection keeps F_PX and the centre, so a wider canvas only
+    adds columns on both sides. hyb_core.set_canvas calls this and updates its own copies."""
+    global W, H
+    W, H = int(width), int(height)
 
 
 def cam_pos(stand_h):
     return (0.0, -CAM_BACK, stand_h + CAM_UP)
 
 
-def setup_camera(stand_h, width=W, height=H):
+def setup_camera(stand_h, width=None, height=None):
+    width = W if width is None else width
+    height = H if height is None else height
     sc = bpy.context.scene
     cam = sc.camera
     if cam is None or cam.name != "PerspCam":

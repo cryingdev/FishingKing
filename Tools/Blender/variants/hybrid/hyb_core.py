@@ -38,9 +38,25 @@ OUT = os.path.join(BL, "_tmp", "variants", "hybrid")
 WORK = os.path.join(OUT, "work")
 os.makedirs(WORK, exist_ok=True)
 W, H = P.W, P.H
-CROP = (80, 65, 480, 270)                       # x0, y0, w, h (top-down) of what the game shows
+CROP = (80, 65, 480, 270)                       # x0, y0, w, h (top-down) of what the game shows (its home view)
+OX = 0                                          # columns the canvas adds on each side of the 640 px layout
 HORIZON_PY = P.F_PX * math.tan(math.radians(P.PITCH))
 HORIZON_ROW = H / 2 - HORIZON_PY                # 89.5: the true horizon (independent of standH)
+
+
+def set_canvas(width, height=400):
+    """The stage's canvas (fk_persp.stage_canvas): 640 x 400, or wider with OVERSCAN (the game's camera pans over the
+    extra columns beyond its home view; Assets/Scripts/Core/ViewZoom.cs). The camera keeps its focal length and centre,
+    so the wider image is the same view with more on both sides. Every screen-space size stays in px; the few
+    ABSOLUTE columns of the 640 px layout (preset sky streaks / aurora x0..x1, a stage's anchor columns) shift by OX,
+    and CROP (the game's home view) stays centred. Call it before building / rendering a stage (a stage script does it
+    at import; tools that load several stages in one process do it per stage)."""
+    global W, H, CROP, OX, HORIZON_ROW
+    P.set_canvas(width, height)
+    W, H = P.W, P.H
+    OX = (W - 640) // 2
+    CROP = ((W - 480) // 2, (H - 270) // 2, 480, 270)
+    HORIZON_ROW = H / 2 - HORIZON_PY
 
 # current key light (towards the light) + hue targets of ramp shading; use_preset() sets them
 LIGHT = Vector((-0.55, -0.5, 0.67)).normalized()
@@ -485,8 +501,9 @@ def _bands(up, stops, soft):
     return col, band
 
 
-def glow_level(pr, w=W, h=H, mirror=False):
+def glow_level(pr, w=None, h=None, mirror=False):
     """Concentric banded glow level (0..~0.6) around the sun, flat rings with narrow transitions."""
+    w, h = w or W, h or H
     g = pr.glow
     if not g:
         return np.zeros((h, w)), np.zeros((h, w), int)
@@ -506,12 +523,13 @@ def glow_level(pr, w=W, h=H, mirror=False):
     return lv, ring
 
 
-def sky_rgb(pr=None, w=W, h=H, mirror=False):
+def sky_rgb(pr=None, w=None, h=None, mirror=False):
     """Continuous sRGB sky (banded gradient + glow rings + sun disc + stratus streaks + aurora) and the
     curated palette (list of hex) it quantises to. mirror=True returns the sky as mirrored in calm water
     (rows below the horizon see the sky at the same distance above it; the sun disc is left out - use
     glitter for it). Quantise with quantize(rgb, a, Pal(hexes), dither=True)."""
     pr = pr or PR[0]
+    w, h = w or W, h or H
     rows = np.arange(h)[:, None] + 0.5
     up = (HORIZON_ROW - rows) if not mirror else (rows - HORIZON_ROW)
     up = np.broadcast_to(up, (h, w)).copy()
@@ -528,7 +546,7 @@ def sky_rgb(pr=None, w=W, h=H, mirror=False):
                 pal.append(mixhex(pr.sky[b][1], g["col"], rings[k - 1][1]))
     if pr.aurora:
         au = pr.aurora
-        cols = np.arange(w)[None, :] + 0.5
+        cols = np.arange(w)[None, :] + 0.5 - OX              # (the 640 px layout's columns: x0 / x1 are in them)
         lo = au["up0"] + au["amp"] * (np.sin(cols / 37.0) * 0.7 + np.sin(cols / 13.0 + 1.3) * 0.3)
         hgt = au["height"] * (0.7 + 0.3 * np.sin(cols / 23.0 + 0.4))
         u = (up - lo) / hgt
@@ -556,7 +574,7 @@ def sky_rgb(pr=None, w=W, h=H, mirror=False):
         pal += list(st["cols"])
     if not mirror:
         for st in pr.streaks or []:
-            cols = np.arange(w) + 0.5
+            cols = np.arange(w) + 0.5 - OX                    # (the 640 px layout's columns: x0 / x1 are in them)
             u = np.clip((cols - st["x0"]) / (st["x1"] - st["x0"]), 0, 1)
             # tapered lens: 1 px tails, st["th"] px in the middle, the flat underside row lit gold near the sun
             env = np.where((cols > st["x0"]) & (cols < st["x1"]), np.clip(np.sin(np.pi * u), 0, 1), 0.0)
@@ -569,7 +587,7 @@ def sky_rgb(pr=None, w=W, h=H, mirror=False):
                     r = r0 - k
                     if 0 <= r < h:
                         col[r, x] = s2l(hexrgb(st["col"]))
-                if t >= 2 and 0 <= r0 < h and abs(x - sun_rc(pr)[0]) < 170:
+                if t >= 2 and 0 <= r0 < h and abs(x - sun_rc(pr)[0]) < 170:   # (x: canvas column, like sun_rc)
                     col[r0, x] = s2l(hexrgb(st["lit"]))
             pal += [st["col"], st["lit"]]
         if pr.sun:
@@ -585,15 +603,16 @@ def sky_rgb(pr=None, w=W, h=H, mirror=False):
     return l2s(col), pal
 
 
-def light_shaft(pr=None, w=W, h=H):
+def light_shaft(pr=None, w=None, h=None):
     """Amount map (0..1) of a screen-space light shaft (trapezoid, soft edges, fading downwards)."""
     pr = pr or PR[0]
+    w, h = w or W, h or H
     s = pr.shaft
     if not s:
         return np.zeros((h, w))
     (xt, rt, wt), (xb, rb, wb) = s["top"], s["bottom"]
     rows = np.arange(h)[:, None] + 0.5
-    cols = np.arange(w)[None, :] + 0.5
+    cols = np.arange(w)[None, :] + 0.5 - OX                  # (the 640 px layout's columns: the shaft's x are in them)
     t = np.clip((rows - rt) / max(1.0, rb - rt), 0, 1)
     xc = xt + (xb - xt) * t
     hw = (wt + (wb - wt) * t) / 2

@@ -76,11 +76,14 @@ CONSTS = {
 }
 
 # ---------------------------------------------------------------- light positions (canvas px, x right, y down), from
-# hyb_sea.py's geometry through the stage camera (standH 3.0) and checked on the renders
-LH = (120.6, 72.4)          # lighthouse lantern glass (tower at x1 + 1.2 m, x1 = col 121 at D_MOLE 330 m, z 17.5-19.3)
+# hyb_sea.py's geometry through the stage camera (standH 3.0) and checked on the renders; columns in the 640 layout
+# + OX (the sea's canvas is 800 wide: 80 px of overscan each side, hyb_core.set_canvas)
+import hyb_core as _R      # noqa: E402
+OX = _R.OX
+LH = (120.6 + OX, 72.4)     # lighthouse lantern glass (tower at x1 + 1.2 m, x1 = col 121 at D_MOLE 330 m, z 17.5-19.3)
 LH_WATER = 101.8            # the mole's waterline row under the lighthouse
-BUOY = (482.2, 144.8)       # the red buoy's lamp (17, 44, 2.08); its waterline row 164.5
-HARBOUR = (88, 104, 113, 131, 142)   # columns of the harbour lights along the foot of the far coast
+BUOY = (482.2 + OX, 144.8)  # the red buoy's lamp (17, 44, 2.08); its waterline row 164.5
+HARBOUR = tuple(c + OX for c in (88, 104, 113, 131, 142))   # columns of the harbour lights along the far coast's foot
 
 # Unity look extras (Data/Periods/sea_<p>.json); lights = animated overlays (spec 5.6) over the baked lamps
 LOOK = {

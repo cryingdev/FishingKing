@@ -34,6 +34,19 @@ is fixed, `HORIZON_ROW` = 89.5 for every standH): `up` = px above the horizon, `
 centre. The game shows `CROP` = (80, 65, 480, 270), i.e. only ~25 px of sky above the horizon - keep suns,
 glows and aurora low (up <= ~20). Distances (haze) are metres.
 
+**Overscan** (a canvas wider than 640: `Data/stage_<id>.json` `widthPx`, the sea's 800): the game's camera pans
+sideways over the extra columns when a fish runs past its 480 px home view (`Assets/Scripts/Core/ViewZoom.cs`). The
+stage script calls `R.set_canvas(*P.stage_canvas(SID))` at import: the same camera and focal length, `R.W` wider,
+`R.CROP` (the home view) centred, `R.OX` = the columns added each side. Absolute columns are written in the 640
+layout and shifted by `OX` (the preset streak / aurora / shaft x are, by `hyb_core`; a stage's own anchors and its
+`periods/<stage>.py` lights by the stage). The 640 layout's geometry is built first and exactly as before (the same
+vertices and random sequence); what only the overscan shows comes after, on its own `random.Random` (hyb_sea.py:
+the coast / headland / mole extensions, the tetrapod ridges running on into the lower corners). `build_overscan.ps1
+-Stage <id>` renders every target twice (`FK_CANVAS_W=640`: the layout as it was; then the wide canvas) and
+`hyb_overscan.py` puts the layout's back layer into the wide one's centre (a back layer's random dash dithering runs
+across the whole width and would re-roll), so the home view stays pixel-identical; then the front depth map, the
+obstacles and the review sheet. Tools that load several stages in one process call `R.set_canvas` per stage.
+
 | field | meaning |
 |---|---|
 | `sky` | `[(up_px, hex), ...]` horizon -> zenith stops; flat bands with narrow dithered transitions (`sky_soft` = transition width as a fraction of the band) |

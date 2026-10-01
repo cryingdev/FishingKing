@@ -134,7 +134,12 @@ def compose(stage, period, layout, stand):
 
 
 def sheet(stage):
+    global W, H, CX0, CY0, CW, CH
     layout = json.load(open(os.path.join(C.DATA, "stage_%s.json" % stage), encoding="utf-8"))
+    # (the stage's canvas: 640 x 400, or wider with overscan; the sheet shows the game's home view, centred)
+    R.set_canvas(int(layout.get("widthPx") or 640), int(layout.get("heightPx") or 400))
+    W, H = P.W, P.H
+    CX0, CY0, CW, CH = R.CROP
     stand = float(layout["standH"])
     pad = 8
     out = np.zeros((2 * CH + 3 * pad, 2 * CW + 3 * pad, 4), np.float32)

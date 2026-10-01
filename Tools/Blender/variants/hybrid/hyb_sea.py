@@ -20,7 +20,10 @@ joints, side kerbs, contact shadow), a cast-iron bollard, cooler box + bait buck
 hugging the lower-left / lower-right corners (wet algae line at the water), a red lateral buoy far right,
 one perched gull. Key light from the left and high, pale warm rim on the OUTER left/top silhouette.
 
-Same camera (fk_persp.setup_camera(standH = 3.0 from Data/stage_sea.json)), 640x400, same gameplay layout.
+Same camera (fk_persp.setup_camera(standH = 3.0 from Data/stage_sea.json)), same gameplay layout, on an 800x400
+canvas (Data/stage_sea.json widthPx): the 640x400 layout plus 80 px of OVERSCAN each side, the same view further
+out, for the game's camera to pan over when a fish runs past its 480 px frame (ViewZoom). The anchor columns below
+are the 640 layout's + R.OX; the tetrapod mounds run on out into the lower corners (_TLX / _TRX).
 Outputs: _tmp/variants/hybrid/sea_back.png, sea_front.png, stage_sea.json
 Scratch (EXR passes, overlay): _tmp/variants/hybrid/work/sea/
 Run: blender -b --python variants/hybrid/hyb_sea.py [-- back|front] [--period dawn|day|evening|night [--dry]]   (hyb_period.py)
@@ -41,6 +44,7 @@ import fk_common as C  # noqa: E402
 import fk_persp as P  # noqa: E402
 
 SID = "sea"
+R.set_canvas(*P.stage_canvas(SID))             # 800 x 400 (overscan: see the docstring)
 # preset overrides (stage-local, the kit is untouched):
 #  * glitter far 0.3: the back water runs to row 400 at the glitter column, 0.45 would reach row ~229 (the middle
 #    of the play area); 0.3 keeps it in the far third of the VISIBLE water (ends ~row 183, d ~33 m)
@@ -57,11 +61,12 @@ R.WORK = SCR            # EXR passes of this stage go to its own scratch dir (pa
 
 # ------------------------------------------------------------------ geometry anchors of the mood
 SUN_C, SUN_R = R.sun_rc(PR)                     # (90, 17.5): above the crop, glow only
-GLIT_C = W / 2 + PR.glitter["dx"]               # 170: glitter column over OPEN sea
-MOLE_TIP_C = 122.0                              # lighthouse column (left, clear of the glitter)
-HEAD_C0 = 438.0                                 # right headland: cliff end column
-COAST_C1 = 150.0                                # left far coast runs out into the sea here
-BOAT_C = 236                                    # tiny fishing boat on the horizon
+GLIT_C = W / 2 + PR.glitter["dx"]               # 170 (+ OX): glitter column over OPEN sea
+OX = R.OX                                       # the overscan columns each side (the anchors: 640 layout + OX)
+MOLE_TIP_C = 122.0 + OX                         # lighthouse column (left, clear of the glitter)
+HEAD_C0 = 438.0 + OX                            # right headland: cliff end column
+COAST_C1 = 150.0 + OX                           # left far coast runs out into the sea here
+BOAT_C = 236 + OX                               # tiny fishing boat on the horizon
 D_ISLE, D_COAST, D_HEAD, D_MOLE, D_BOAT = 3600.0, 2600.0, 1400.0, 330.0, 560.0
 
 # ------------------------------------------------------------------ curated palettes
@@ -211,32 +216,33 @@ def back_scene(rnd):
     mt = R.m_tone
     # ---- low islands on the far horizon (centre right, very hazy)
     im = mt(ISLE, [0.62], light=LB, name="Isle")
-    land_mesh("Isle", rnd, D_ISLE, 400, 284, 320, lambda u: 4.6 * math.sin(math.pi * u) ** 0.6
+    land_mesh("Isle", rnd, D_ISLE, 400, 284 + OX, 320 + OX, lambda u: 4.6 * math.sin(math.pi * u) ** 0.6
               + 0.8 * math.sin(u * 17.0), im, "isle", step_px=2.0)
-    land_mesh("Isle", rnd, D_ISLE + 300, 300, 327, 345, lambda u: 2.6 * math.sin(math.pi * u) ** 0.7, im, "isle",
+    land_mesh("Isle", rnd, D_ISLE + 300, 300, 327 + OX, 345 + OX, lambda u: 2.6 * math.sin(math.pi * u) ** 0.7, im, "isle",
               step_px=2.0)
     # ---- far coast on the left (2600 m): low hills that run out into the sea before the glitter column
     cm = mt(COAST, [0.45, 0.74], light=LB, noise=0.1, nscale=0.02, ncoord="world", name="Coast")
 
-    def coast(u):
-        c = -30 + (COAST_C1 + 30) * u
+    def coast_c(c):
         end = min(1.0, max(0.0, (COAST_C1 - c) / 40.0))
+        c -= OX                                   # (the profile in the 640 layout's columns)
         return (6.8 + 2.2 * math.sin(c / 21.0) + 1.0 * math.sin(c / 7.3 + 2.0)) * end ** 0.8
-    land_mesh("Coast", rnd, D_COAST, 700, -30, COAST_C1, coast, cm, "coast", step_px=1.5)
+    land_mesh("Coast", rnd, D_COAST, 700, -30 + OX, COAST_C1, lambda u: coast_c(-30 + OX + (COAST_C1 + 30 - OX) * u),
+              cm, "coast", step_px=1.5)
     # ---- the headland on the right (1400 m): green top, pale sea cliffs at the base, steep cliff end on
     #      the left (faces the key light)
     hm = m_split(CLIFF, HEAD, 8.0, [0.46, 0.72], [0.36, 0.56, 0.78], noise=0.12, nscale=0.035, ncoord="world",
                  name="Head")
 
-    def head(u):
-        c = HEAD_C0 + (700 - HEAD_C0) * u
+    def head_c(c):
         rise = min(1.0, max(0.0, (c - HEAD_C0) / 10.0))
-        hgt = 15.5 + 2.6 * math.sin(c / 26.0 + 1.0) + 1.3 * math.sin(c / 8.5) + (c - HEAD_C0) * 0.018
+        hgt = 15.5 + 2.6 * math.sin((c - OX) / 26.0 + 1.0) + 1.3 * math.sin((c - OX) / 8.5) + (c - HEAD_C0) * 0.018
         return hgt * rise ** 0.55
-    land_mesh("Head", rnd, D_HEAD, 260, HEAD_C0 - 2, 700, head, hm, "head", step_px=1.2)
+    land_mesh("Head", rnd, D_HEAD, 260, HEAD_C0 - 2, 700 + OX, lambda u: head_c(HEAD_C0 + (700 + OX - HEAD_C0) * u), hm,
+              "head", step_px=1.2)
     # ---- harbour mole (330 m) with rock armour, the lighthouse on its tip
     molem = mt(MOLE, [0.42, 0.62, 0.82], light=LB, name="Mole")
-    x0 = R.col_to_x(-60, D_MOLE, STAND)
+    x0 = R.col_to_x(-60 + OX, D_MOLE, STAND)
     x1 = R.col_to_x(MOLE_TIP_C - 1, D_MOLE, STAND)
     tagk(R.box("Mole", ((x0 + x1) / 2, D_MOLE, 1.0), (x1 - x0, 8.0, 6.0), molem), "mole", "mole")
     tagk(R.box("Parapet", ((x0 + x1) / 2 - 3, D_MOLE + 3.2, 4.6), (x1 - x0 - 6, 1.6, 1.4), molem), "mole", "mole")
@@ -259,6 +265,25 @@ def back_scene(rnd):
     tagk(R.loft("Cap", [(lx, D_MOLE, 19.2), (lx, D_MOLE, 20.3), (lx, D_MOLE, 21.3)], [1.65, 0.95, 0.12], redm, 12),
          "lh", "lh")
     tagk(R.hpoly("Water", [(-9000, -40), (9000, -40), (9000, 5200), (-9000, 5200)], 0.0, R.m_flat(WB[3]), 0.01), "water")
+    if OX > 0:
+        # the overscan: the far coast, the headland and the mole run on out past the 640 layout's sides. Separate meshes
+        # with their own random jitter, made last: everything above is exactly the 640 layout's (the same vertices,
+        # the same random sequence, the same object ids), so its pixels match where the layouts overlap
+        rx = random.Random(8077)
+        land_mesh("CoastX", rx, D_COAST, 700, -30, -28 + OX, lambda u: coast_c(-30 + (OX + 2) * u), cm, "coast",
+                  step_px=1.5)
+        land_mesh("HeadX", rx, D_HEAD, 260, 698 + OX, W + 60, lambda u: head_c(698 + OX + (W + 60 - 698 - OX) * u), hm,
+                  "head", step_px=1.2)
+        xe = R.col_to_x(-60, D_MOLE, STAND)
+        tagk(R.box("MoleX", ((xe + x0) / 2 + 0.5, D_MOLE, 1.0), (x0 - xe + 1.0, 8.0, 6.0), molem), "mole", "mole")
+        tagk(R.box("ParapetX", ((xe + x0) / 2 + 0.5, D_MOLE + 3.2, 4.6), (x0 - xe + 1.0, 1.6, 1.4), molem), "mole", "mole")
+        x = xe
+        while x < x0:
+            r = rx.uniform(1.1, 1.7)
+            ob = C.add_prim("ico", "ArmourX", armm, radius=1.0, location=(0, 0, 0), subdivisions=1)
+            ob.matrix_world = Matrix.Translation((x, D_MOLE - 4.6 + rx.uniform(-0.6, 0.6), rx.uniform(-0.2, 0.9))) @ Matrix.Diagonal((r * 1.2, r, r * 0.9, 1))
+            tagk(ob, "mole", "armour")
+            x += rx.uniform(1.3, 2.2)
 
 
 # ================================================================== FRONT LAYER geometry
@@ -277,7 +302,18 @@ _TR = [(3.4, 0.4, 2.3, 0.9), (3.8, 2.4, 1.85, 0.9),
        (7.0, 3.1, 1.95, 0.9), (7.5, 5.8, 1.4, 0.88), (8.0, 8.2, 0.9, 0.86), (8.7, 10.5, 0.45, 0.85),
        (9.3, 5.5, 1.85, 0.9), (9.8, 8.3, 1.4, 0.88), (10.5, 10.9, 0.95, 0.85), (11.2, 13.3, 0.45, 0.82),
        (4.7, 5.0, 0.5, 0.85), (5.9, 7.5, 0.4, 0.85), (7.1, 10.0, 0.35, 0.82), (8.8, 12.6, 0.3, 0.8)]
-TETS = _TL + _TR
+# the overscan (800 px canvas): the two ridges run on out into the lower corners beyond the game's home view (cols
+# 160..640 of the 800 canvas: these stay outside it), the same rows of units falling away towards the open water;
+# appended after the 34 above, so those keep their ids (tet0..tet33) and their random yaw / tilt
+_TLX = [(-8.4, 0.9, 2.2, 0.9), (-10.4, 2.6, 2.0, 0.9), (-11.4, 4.6, 1.9, 0.9), (-11.9, 7.6, 1.5, 0.88),
+        (-12.5, 10.4, 1.0, 0.86), (-13.1, 13.0, 0.55, 0.84), (-13.6, 6.6, 1.8, 0.9), (-14.2, 9.6, 1.4, 0.88),
+        (-14.9, 12.6, 0.95, 0.85), (-15.6, 15.4, 0.5, 0.82), (-16.2, 8.2, 1.6, 0.88), (-17.0, 11.6, 1.1, 0.86),
+        (-17.8, 14.8, 0.6, 0.84)]
+_TRX = [(8.6, 0.7, 2.2, 0.9), (10.6, 2.4, 2.0, 0.9), (11.6, 4.3, 1.85, 0.9), (12.1, 7.3, 1.45, 0.88),
+        (12.8, 10.1, 0.95, 0.86), (13.4, 12.8, 0.5, 0.84), (13.9, 6.3, 1.8, 0.9), (14.5, 9.3, 1.35, 0.88),
+        (15.2, 12.3, 0.9, 0.85), (15.9, 15.1, 0.45, 0.82), (16.5, 7.9, 1.55, 0.88), (17.3, 11.3, 1.05, 0.86),
+        (18.1, 14.5, 0.55, 0.84)]
+TETS = _TL + _TR + (_TLX + _TRX if OX > 0 else [])
 TET_DIRS = [(0.0, 0.0, 1.0), (0.943, 0.0, -0.333), (-0.471, 0.816, -0.333), (-0.471, -0.816, -0.333)]
 BUOY = (17.0, 44.0)
 BOLLARD = (-1.85, 0.5)
@@ -337,11 +373,13 @@ def front_scene(rnd):
     # ---- tetrapod mounds (wet algae line at the water, dry weathered concrete above)
     tm = m_split(WET, CONC, 0.2, [0.4, 0.66], [0.3, 0.46, 0.62, 0.8], noise=0.08, nscale=1.6, name="Tet")
     refl = []
+    rx = random.Random(8031)                  # (the overscan units: their own random; the 34 keep theirs)
     for k, (x, y, z, s) in enumerate(TETS):
-        yaw = rnd.uniform(0, 2 * math.pi)
-        tumble = rnd.random() < 0.2                  # most units sit upright (the readable tetrapod silhouette)
-        tilt = rnd.uniform(-1.1, 1.1) if tumble else rnd.uniform(-0.3, 0.3)
-        tilt2 = rnd.uniform(-0.3, 0.3)
+        rr = rnd if k < len(_TL) + len(_TR) else rx
+        yaw = rr.uniform(0, 2 * math.pi)
+        tumble = rr.random() < 0.2                   # most units sit upright (the readable tetrapod silhouette)
+        tilt = rr.uniform(-1.1, 1.1) if tumble else rr.uniform(-0.3, 0.3)
+        tilt2 = rr.uniform(-0.3, 0.3)
         rot = Matrix.Rotation(yaw, 3, "Z") @ Matrix.Rotation(tilt, 3, "X") @ Matrix.Rotation(tilt2, 3, "Y")
         objs, tips = tetrapod(k, (x, y, z), s, rot, tm)
         refl += objs
@@ -458,7 +496,7 @@ def wave_marks(pal, idx, water, avoid, wband):
         ri, ci = int(r), int(c)
         if avoid[ri, ci]:
             continue
-        central = 176 < c < 464 and 140 < r < 335
+        central = 176 + OX < c < 464 + OX and 140 < r < 335
         if central and rng.random() < 0.82:
             continue
         if y > 110 and rng.random() < 0.55:          # far water: the band dashes already carry the texture
@@ -583,7 +621,7 @@ def render_back(rnd):
     img = R.to_rgba(idx, pal)
     PER.save(img, SID, "back")
     # readability: the rendered play-area water vs the waterTint Unity uses for the underwater tint
-    play = water & (rows > 160) & (rows < 330) & (cols > 176) & (cols < 464) & (ov == 0)
+    play = water & (rows > 160) & (rows < 330) & (cols > 176 + OX) & (cols < 464 + OX) & (ov == 0)
     vals, cnt = np.unique(idx[play], return_counts=True)
     main = pal.hex[int(vals[np.argmax(cnt)])]
     print("HYB back colours", R.count_colours(img), "palette", len(pal), "play-area water", main,

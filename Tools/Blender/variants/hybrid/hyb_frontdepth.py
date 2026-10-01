@@ -682,7 +682,7 @@ def overlay(stage, cam, L, front, back, D, cover, cls, near, far, prb, info, pat
     iso = iso_lines(D, cover)
     base[iso, :3] = base[iso, :3] * 0.45 + np.array((0.85, 1.0, 1.0), np.float32) * 0.55
     top = R.upscale(base, k).copy()
-    x0, y0, cw, ch = 80, 65, 480, 270                         # the game's view (hyb_core.CROP)
+    x0, y0, cw, ch = R.CROP                                   # the game's home view (centred, with overscan too)
     for i in range(x0 * k, (x0 + cw) * k):
         if (i // 6) % 2 == 0:
             top[y0 * k, i, :3] = 1.0
@@ -807,6 +807,7 @@ def _r(v, n=4):
 # ============================================================================ main
 def run(stage):
     L = json.load(open(os.path.join(C.DATA, "stage_%s.json" % stage), encoding="utf-8"))
+    R.set_canvas(*R.P.stage_canvas(stage))      # (640 x 400, or wider with overscan; several stages in one run)
     cam = Cam(L)
     W, H = cam.W, cam.H
     C.reset_scene()
