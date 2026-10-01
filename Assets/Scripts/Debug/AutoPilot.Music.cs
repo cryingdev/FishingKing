@@ -550,7 +550,9 @@ namespace FishingKing
             else
             {
                 yield return new WaitForSecondsRealtime(0.5f);
-                MCheck("끊기: the line cut, no sting", Music.StingNow == null && ctl.State == FishingController.S.Ready, $"state {ctl.State}");
+                // (a lure is gone: Ready; a float rig keeps its float, wound in spent with the bare hook: Retrieving)
+                bool done = ctl.State == FishingController.S.Ready || (ctl.State == FishingController.S.Retrieving && ctl.SpentRetrieve);
+                MCheck("끊기: the line cut, no sting", Music.StingNow == null && done, $"state {ctl.State}");
             }
         }
 
