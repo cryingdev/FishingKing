@@ -16,7 +16,7 @@ namespace FishingKing
     /// throw), the landing (eases in to the whole-pixel step in ~0.6 s, holds it pixel exact with the rod tip and the float
     /// in frame; the screen is compared pixel for pixel with the render target upscaled through the crop, a magenta marker
     /// texel must come out n x n screen px where WorldToScreen puts it, taps at known world points map back), a natural
-    /// bite (still in), the hook set, the fish escaping (out), a retrieve (out), a quick recast after a spoon's fish is off
+    /// bite (still in), the hook set, the fish escaping (out), a retrieve (out), a quick recast after a spoon's line parts
     /// (the wind-up hurries the zoom-out: 1x within 0.2 s of the press), the legend's cue off the zoomed frame (the view
     /// turns to it; across the whole view from the rig: out to 1x while it plays), a running carp fought for 14 s (the view
     /// follows the fish: [ZOOM] PAN lines, the fish and the rod tip in frame every frame, pixel exact, no empty borders; the
@@ -405,9 +405,10 @@ namespace FishingKing
 
         // ------------------------------------------------------------------ 3b. a quick recast: the wind-up hurries the zoom-out
         /// <summary>
-        /// A spoon's fish throws the hook (a lure rig is simply gone: straight back to the ready, the zoom-out just begun)
-        /// and he presses to wind up again 0.1 s later, as a player recasting at once does: the zoom-out is hurried, 1x
-        /// within 0.2 s of the press and at the throw.
+        /// A spoon's line parts in the fight (the lure goes with the fish: straight back to the ready, the zoom-out just
+        /// begun) and he presses to wind up again 0.1 s later, as a player recasting at once does: the zoom-out is hurried,
+        /// 1x within 0.2 s of the press and at the throw. (A fish that only shakes the hook leaves the lure on the line: it
+        /// lies there RetrieveWait 0.7 s and is wound in, longer than the 0.6 s zoom-out, so the view is home by then.)
         /// </summary>
         IEnumerator ZoomRecast(FishingController ctl)
         {
@@ -422,10 +423,13 @@ namespace FishingKing
                 yield break;
             }
             yield return new WaitForSeconds(1f);
-            ctl.DebugRelease();
+            int breaks0 = ctl.Breaks;
+            ctl.DebugBreak();
             yield return new WaitForEndOfFrame();
             var stOff = ctl.State;
             float lvlOff = z.Level;
+            var loss = ctl.Breaks > breaks0 ? ctl.LastLoss : null;
+            string lost = loss == null ? "no break" : loss.lure != null ? loss.lure.id + " lost" : "no lure lost";
             yield return new WaitForSeconds(0.1f);
             float pressT = -1f, pressLvl = -1f, outAfter = -1f, throwLvl = -1f, throwAfter = -1f;
             int frames = 0, zoomedLate = 0;
@@ -458,8 +462,8 @@ namespace FishingKing
             for (float w = 0f; w < 6f && ctl.State == FishingController.S.Casting; w += Time.deltaTime) yield return null;
             watching = false;
             yield return null;
-            ZCheck("recast_hurried", stOff == FishingController.S.Ready && pressLvl > 0f && outAfter >= 0f && outAfter <= ZoomAimOutMax && zoomedLate == 0 && throwLvl == 0f,
-                $"the fish off: {stOff} at level {Z2(lvlOff)}; pressed 0.1 s later at level {Z2(pressLvl)}: 1x {Z2(outAfter)} s after the press " +
+            ZCheck("recast_hurried", stOff == FishingController.S.Ready && loss?.lure != null && pressLvl > 0f && outAfter >= 0f && outAfter <= ZoomAimOutMax && zoomedLate == 0 && throwLvl == 0f,
+                $"the line parted ({lost}): {stOff} at level {Z2(lvlOff)}; pressed 0.1 s later at level {Z2(pressLvl)}: 1x {Z2(outAfter)} s after the press " +
                 $"(<= {ZoomAimOutMax}), zoomed after that {zoomedLate} of {frames} wind-up / throw frames, the throw {Z2(throwAfter)} s after the press at level {Z2(throwLvl)}; now {ctl.State}");
             yield return ToReady(ctl);
             EquipTest("bait_worm", ctl);
