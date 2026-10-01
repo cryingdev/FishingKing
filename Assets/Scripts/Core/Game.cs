@@ -317,7 +317,21 @@ namespace FishingKing
             Notify();
         }
 
-        /// <summary>Line snapped: lures are lost, natural bait is consumed.</summary>
+        /// <summary>
+        /// A lure gone with a parted line (a fight's break: a natural bait on the hook was already paid for at the hook
+        /// set, so nothing else is taken): off the owned list, and if it was the equipped one, the free paste goes on.
+        /// False for a natural bait or a lure no longer owned.
+        /// </summary>
+        public bool LoseLure(BaitDef lure)
+        {
+            if (lure == null || !lure.isLure || !Owns(lure.id)) return false;
+            data.ownedItems.Remove(lure.id);
+            if (data.bait == lure.id) data.bait = GameDatabase.StarterBait;
+            Notify();
+            return true;
+        }
+
+        /// <summary>Line snapped at a snag (the bait not eaten): lures are lost, natural bait is consumed.</summary>
         public bool LoseTackle()
         {
             var b = Bait;

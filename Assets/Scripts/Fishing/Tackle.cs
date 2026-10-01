@@ -391,10 +391,42 @@ namespace FishingKing
         public void SetBait(BaitDef b)
         {
             Bait = b;
-            baitSr.sprite = Art.WorldBait(b.id);
-            bool sea = stage.L.id == "sea" || stage.L.id == "ocean";
-            floatSr.sprite = Art.Get(sea ? "World/float_ball" : "World/float_stick");
+            baitSr.sprite = BareHook ? Art.Get(BareHookSprite) : Art.WorldBait(b.id);
+            floatSr.sprite = Art.Get(FloatSprite);
         }
+
+        /// <summary>The float this stage's float rigs use ("World/float_ball" at sea, "World/float_stick" elsewhere).</summary>
+        public string FloatSprite => stage.L.id == "sea" || stage.L.id == "ocean" ? "World/float_ball" : "World/float_stick";
+        /// <summary>The float's item icon (Items/float_ball / float_stick: the line-break loss toast).</summary>
+        public string FloatItemId => stage.L.id == "sea" || stage.L.id == "ocean" ? "float_ball" : "float_stick";
+
+        // ---- the bait gone (a float rig: eaten at a bite whose fish got off, stolen, torn off on a pad, lost at a snag)
+        public const string BareHookSprite = "World/hook_bare_w";
+        /// <summary>The natural bait is off the hook: the rig is drawn with the bare hook until it is cast again (re-baited).</summary>
+        public bool BaitGone { get; private set; }
+        /// <summary>A float rig with its bait gone: drawn with the bare hook, no fish takes it.</summary>
+        public bool BareHook => BaitGone && UsesFloat;
+
+        /// <summary>The bait is off the hook (a float rig): the bare hook is drawn in its place until the next cast.</summary>
+        public void TakeBait()
+        {
+            BaitGone = true;
+            if (UsesFloat) baitSr.sprite = Art.Get(BareHookSprite);
+        }
+
+        /// <summary>A new cast re-baits the hook.</summary>
+        void Rebait()
+        {
+            if (!BaitGone) return;
+            BaitGone = false;
+            if (Bait != null) baitSr.sprite = Art.WorldBait(Bait.id);
+        }
+
+        /// <summary>
+        /// Set while the line-snap's free end flies back (LineSnap): the hook is drawn there, not under the float, and the
+        /// straight line from the float to the hook is left to the snap's curl. Null otherwise.
+        /// </summary>
+        internal Vector3? HookOverride;
 
         /// <summary>A plan point inside a prop standing in the water (+5 cm): no rig in the water goes there (spec 4.9).</summary>
         bool Blocked(Vector3 p) => !stage.L.IsIce && Obst != null && !Obst.Empty && Obst.BlockedAtSurface(new Vector2(p.x, p.z), 0.05f);
@@ -501,6 +533,7 @@ namespace FishingKing
             sliding = ballistic = false;
             FloatFight = FightFloat.Off;
             FloatRiding = FloatInAir = false;
+            HookOverride = null;
             floatSr.enabled = baitSr.enabled = underLine.enabled = haloSr.enabled = false;
             if (chemiSr != null) chemiSr.enabled = false;
         }
@@ -514,6 +547,8 @@ namespace FishingKing
             flyArc = 1.2f + dist * 0.28f;
             flyT = 0;
             onLand = landed;
+            Rebait();
+            HookOverride = null;
             ballistic = sliding = false;
             contacts = 0;
             struck = null;
@@ -536,6 +571,8 @@ namespace FishingKing
 
         public void EnterWater(Vector3 at)
         {
+            Rebait();
+            HookOverride = null;
             Surface = PushOut(new Vector3(at.x, 0, at.z));
             Depth = 0;
             State = Mode.Water;
@@ -1299,8 +1336,8 @@ namespace FishingKing
                     chemiSr.color = new Color(1f, 1f, 1f, Mathf.Clamp01(night) * (dip < -4f ? 0.5f : 1f));
                 }
             }
-            // bait / lure under water
-            var hookPos = HookPos;
+            // bait / lure under water (or the bare hook; on the line-snap's free end while that flies back)
+            var hookPos = HookOverride ?? HookPos;
             baitSr.enabled = State == Mode.Water;
             FrontOcclusion.SetDepth(baitSr, 0f);
             bool film = !UsesFloat && Depth <= 0.12f;   // a topwater lure riding the surface
@@ -1309,7 +1346,7 @@ namespace FishingKing
             baitSr.sortingOrder = film ? (padTop ? StageView.OrderLight : Fx.OrderRipple + 1) : 12;
             baitSr.transform.position = Snap(P.To2D(film ? new Vector3(hookPos.x, 0f, hookPos.z) : P.Apparent(hookPos)));
             baitSr.transform.localScale = Vector3.one * BaitScale(hookPos);
-            baitSr.color = film ? new Color(tint.r, tint.g, tint.b, 1f) : stage.UnderwaterTint(Depth, UsesFloat ? 0.7f : 0.9f);
+            baitSr.color = film ? new Color(tint.r, tint.g, tint.b, 1f) : stage.UnderwaterTint(Mathf.Max(0f, -hookPos.y), UsesFloat ? 0.7f : 0.9f);
             baitSr.transform.rotation = Quaternion.Euler(0, 0, UsesFloat || State != Mode.Water ? 0f : LureLook(dt, hookPos, film));
             // a glowing lure's halo, seen from the surface
             bool halo = Bait.isLure && Bait.glow && State == Mode.Water;
@@ -1324,7 +1361,7 @@ namespace FishingKing
             // line from the float straight down to the hook (a lure's line is drawn by the angler)
             var a2 = P.To2D(Surface);
             var b2 = P.To2D(P.Apparent(hookPos));
-            underLine.enabled = State == Mode.Water && UsesFloat && (a2 - b2).sqrMagnitude > 0.01f;
+            underLine.enabled = State == Mode.Water && UsesFloat && HookOverride == null && (a2 - b2).sqrMagnitude > 0.01f;
             if (underLine.enabled)
             {
                 var mid = (a2 + b2) * 0.5f;
@@ -1407,9 +1444,10 @@ namespace FishingKing
         }
 
         /// <summary>
-        /// The fish is off (it got away, or the line broke at the hook) with a float rig: the float stays where it was, back
-        /// up on the water there (with a ring if it was under or in the air) and in the water again to be wound in. False
-        /// when no float rides the line (a lure).
+        /// The fish is off with a float rig (it got away, or the line parted on the hook's side of the float): the float
+        /// stays where it was, back up on the water there (with a ring if it was under or in the air) and in the water
+        /// again to be wound in, with the bare hook (the bait was eaten at the bite: <see cref="TakeBait"/>). False when
+        /// no float rides the line (a lure).
         /// </summary>
         public bool LetGo()
         {
@@ -1431,9 +1469,67 @@ namespace FishingKing
             FloatFight = FightFloat.Off;
             FloatRiding = FloatInAir = false;
             under = 0f;
-            Surface = at;
-            Depth = hook;   // (the bare hook sinks back to its depth under the float)
+            BackInWater(at, hook);   // (the bare hook sinks back to its depth under the float)
+            TakeBait();
+            if (pop) PopRing(at, 1f);
+            return true;
+        }
+
+        /// <summary>
+        /// The line parted at a snag (forced or cut with 끊기) with a float rig: it parts on the hook's side, so the float
+        /// stays where it lies and is wound in; the bait is gone with the hook's hold, the bare hook springs up off the
+        /// snag to <paramref name="hookUp"/> of its depth and sinks back under the float. The caller clears the snag first.
+        /// </summary>
+        public void LetGoSnag(float hookUp = 0.4f)
+        {
+            if (!UsesFloat) return;
+            var at = new Vector3(Surface.x, 0f, Surface.z);
+            float hook = Mathf.Clamp(Depth * hookUp, 0.2f, Mathf.Max(0.2f, Mathf.Min(FloatDepth, Bottom)));
+            BackInWater(at, hook);
+            TakeBait();
+            PopRing(at, 0.8f);
+        }
+
+        /// <summary>
+        /// A fish shook the lure off (no break): the lure stays on the line where it came out of the fish's mouth
+        /// (<paramref name="at"/>, game space; through the ice the hole, at that depth) and is wound in from there. False
+        /// for a float rig (its float is let go by <see cref="LetGo"/>).
+        /// </summary>
+        public bool LetGoLure(Vector3 at)
+        {
+            FloatFight = FightFloat.Off;
+            FloatRiding = FloatInAir = false;
+            if (UsesFloat || Bait == null) return false;
+            var L = stage.L;
+            var s = L.IsIce ? new Vector3(L.holeX, 0f, L.holeZ) : new Vector3(at.x, 0f, at.z);
+            if (!L.IsIce)
+            {
+                s.x = Mathf.Clamp(s.x, -L.xLim + 0.6f, L.xLim - 0.6f);
+                s.z = Mathf.Clamp(s.z, L.zNear + 0.4f, L.zFar - 1f);
+                s = PushOut(s);
+            }
+            Surface = s;
+            BackInWater(s, ClampLure(Mathf.Max(0.05f, -at.y)));
+            OnPad = padLeft = padSlid = null;
+            padSlideT = -1f;
+            twitchLeft = 0f;
+            fallArmed = true;   // (let go, it sinks / rises the way its buoyancy takes it)
+            Falling = false;
+            FallT = 0f;
+            touched = OnBottom = BottomTouch = false;
+            SinceTouch = 99f;
+            kick = 0f;
+            return true;
+        }
+
+        /// <summary>In the water again at <paramref name="at"/> (on the surface) with the hook <paramref name="hook"/> m down, at rest.</summary>
+        void BackInWater(Vector3 at, float hook)
+        {
+            Surface = new Vector3(at.x, 0f, at.z);
+            Depth = hook;
             State = Mode.Water;
+            Snag = null;
+            HookOverride = null;
             lastHook = HookPos;
             prevFlat = new Vector2(Surface.x, Surface.z);
             RelVel = FreeDrift = Vector2.zero;
@@ -1443,8 +1539,6 @@ namespace FishingKing
             Bow = 0f;
             mendT = -1f;
             Hanging = false;
-            if (pop) PopRing(at, 1f);
-            return true;
         }
 
         /// <summary>The float bobbing back up (or skipping on the water): a ring, a little spray and a soft plop.</summary>
