@@ -168,6 +168,11 @@ namespace FishingKing
         // ================================================================== setup
         /// <summary>Test hook (-fkenccm, EncProbe): the legend shown at this length whatever it rolled (0 = off).</summary>
         public static float DebugCm;
+        /// <summary>
+        /// Test hook (-fkencwinh &lt;px&gt;): the window this many render-target px tall (64..136, its top kept), so the
+        /// frog and the face crowd the HUD's bands and the gauge has to move; 0 = off (the window as laid out).
+        /// </summary>
+        public static float DebugWinH;
 
         public static EncounterView Create(FishingController ctl, LegendEncounter enc, BaitDef bait, float cm)
         {
@@ -548,6 +553,8 @@ namespace FishingKing
                 bottom = Mathf.Round(hat + (span - wh) * 0.5f);
                 top = bottom + wh;
             }
+            // (test hook: a narrower window, its top kept, as tight as the tall views' clamp or tighter)
+            if (DebugWinH > 0f) bottom = top - Mathf.Round(Mathf.Clamp(DebugWinH, 64f, WinH));
             window = new Rect(Mathf.Round((w - WinW) * 0.5f), bottom, WinW, top - bottom);
             ppWin = window.center;
             f0 = (window.height * 0.5f) / Mathf.Tan(21f * Mathf.Deg2Rad);

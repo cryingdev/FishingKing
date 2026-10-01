@@ -26,6 +26,7 @@
 | `-fkencdebug` | 조우 중 0.1초마다 감기 속도·원 인식 등 `[ENC] dbg` 로그 |
 | `-fkauto periods` / `-fkauto current` | 시간대 4종 렌더 확인 / 물살·물때·멘딩·파이트 검사 (물때: 같은 물고기·같은 프레임에서 들물 최강 / 만조 정조의 한 번 굴림당 접근 확률 비교, 실제 접근 횟수는 로그만) |
 | `-fklurebites` | `-fkauto lure`와 함께: Q를 재는 동안에도 물고기가 덤빔 (기본은 안 덤빔) |
+| `-fkencwinh <px>` | 테스트 전용(기본 꺼짐): 조우 창 높이를 강제로 줄임(64..136, 위쪽 고정). 개구리·얼굴이 HUD 자리를 막아 게이지가 다른 자리로 옮겨 가는지 확인 — 예: `-fkstage swamp -fkencounter now -fkauto encounter -fkencwinh 96` (`[CAP] gauge a -> b`·페이드 인 줄, gauge_<id>_N_<자리> 캡처, "gauge moved in the narrowed window" 검사) |
 | `-fktime <hh:mm>` · `-fktimescale <x>` · `-fktide <phase>` | 게임 시계 시각·속도·물때 강제 |
 | `-fkauto zoom [-fkzoommode off\|125\|150\|active]` | 캐스팅 후 줌 검사 (모드별) · `-fkzoomsettingsonly` 설정 창만 |
 | `-fkauto occlusion` · `-fkocclusion off` · `-fkoccwatch` | 발판 가림 검사 / 가림 끄기 / 아무 시나리오에서나 프레임 단위 노출 검출 |

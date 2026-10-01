@@ -61,6 +61,8 @@ namespace FishingKing
         //                    front of him (the ice: by the hole; the ocean: 24 m out), a 2 s soak, the meter x8, the roll
         //                    always succeeds (see LegendWatch)
         // -fklegend <id>     with -fkencounter: which of the stage's legends (the ocean: blue_marlin (default) / great_white)
+        // -fkencwinh <px>    the encounter window this many px tall (64..136, its top kept): the HUD's bands crowd the frog
+        //                    and the face, so the gauge's other spots get used (EncounterView.DebugWinH)
         // -fktime <hh:mm>    the game clock at boot; -fkperiod <dawn|day|evening|night> its centre; -fktimescale <x> game
         //                    minutes per real second (0 frozen); -fktide <low|flood|high|ebb|0..1> the sea's tide fixed;
         //                    -fkcurrent <x> every current x x; -fkgust lake / swamp gusts at 2 s then every 12 s;
@@ -148,6 +150,8 @@ namespace FishingKing
                 LegendWatch.ClearCooldowns();
                 foreach (var lr in I.data.legends) lr.pity = 0;
             }
+            if (float.TryParse(Arg("-fkencwinh"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float encWinH))
+                EncounterView.DebugWinH = encWinH;
             FishSpawner.OnlySpecies = GameDatabase.GetFish(Arg("-fkfish"));
             string obst = Arg("-fkobstacles");
             if (obst == "off") Obstacles.Off = true;

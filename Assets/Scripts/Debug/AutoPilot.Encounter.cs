@@ -45,6 +45,9 @@ namespace FishingKing
 
         IEnumerator EncounterTest()
         {
+            // the simulated pointer from the start: a real mouse on a shared desktop must not wind him up
+            PointerInput.SimActive = true;
+            PointerInput.SimDown = false;
             yield return new WaitForSeconds(2f);
             var ctl = FindAnyObjectByType<FishingController>();
             if (ctl == null)
@@ -96,6 +99,9 @@ namespace FishingKing
             Log($"[CAP] gauge: {gaugeTopFrames} frames shown from above, on the lure {gaugeFrogHits}; moves {gaugeMovesTotal} (most in one encounter {gaugeMovesMax})");
             if (gaugeTopFrames > 0) EncCheck($"gauge never on the top view's lure ({gaugeFrogHits} of {gaugeTopFrames} frames)", gaugeFrogHits == 0);
             EncCheck($"gauge moves at most {GaugeMovesCap} times an encounter (most {gaugeMovesMax}, total {gaugeMovesTotal})", gaugeMovesMax <= GaugeMovesCap);
+            EncCheck($"gauge inside the safe area ({gaugeOutside} of {gaugeFrames} frames outside)", gaugeFrames > 0 && gaugeOutside == 0);
+            // (-fkencwinh: the narrowed window must make it move)
+            if (EncounterView.DebugWinH > 0f) EncCheck($"gauge moved in the narrowed window ({EncounterView.DebugWinH:0} px: {gaugeMovesTotal} moves)", gaugeMovesTotal > 0);
             Log($"encounter test done ({encId}): {encFails} failed");
             yield return new WaitForSeconds(0.5f);
             PointerInput.SimActive = false;
@@ -127,10 +133,35 @@ namespace FishingKing
             Log($"[ENC] run {style}: casting");
             bool natural = LegendWatch.DebugMode == "natural";
             float flick = natural && ctl.Stage.L.mode == "boat" ? 4.2f : 3.4f;
+            // (left aiming by a press before the test took the pointer: let go first)
+            if (ctl.State == FishingController.S.Aiming)
+            {
+                Log("[ENC] still aiming before the cast: letting go");
+                PointerInput.SimActive = true;
+                PointerInput.SimDown = false;
+                for (float w = 0f; w < 2f && ctl.State != FishingController.S.Ready; w += Time.deltaTime) yield return null;
+                yield return new WaitForSeconds(0.3f);
+            }
             for (int tries = 0; tries < 4 && ctl.State == FishingController.S.Ready; tries++)
             {
+                // (a dialog that came up late would swallow the flick)
+                if (Dialog.Open)
+                {
+                    Click("알겠어요");
+                    yield return new WaitForSeconds(0.5f);
+                }
                 yield return Cast(ctl, flick, 0f);
                 for (float w = 0f; w < 6f && ctl.State == FishingController.S.Casting; w += Time.deltaTime) yield return null;
+                if (ctl.State != FishingController.S.Waiting)
+                    Log($"[ENC] cast try {tries}: state {ctl.State}, dialog {Dialog.Open}, press over UI {PointerInput.IsOverUI(Scr(0.5f, 0.55f))}");
+                // (a flick lost on a busy machine leaves him aiming: let go, and throw again)
+                if (ctl.State == FishingController.S.Aiming)
+                {
+                    Log("[ENC] the flick was lost (still aiming): again");
+                    PointerInput.SimDown = false;
+                    for (float w = 0f; w < 2f && ctl.State != FishingController.S.Ready; w += Time.deltaTime) yield return null;
+                    yield return new WaitForSeconds(0.3f);
+                }
             }
             Log($"[ENC] cast -> {ctl.State} z {ctl.Tackle.Surface.z:0.0} depth {ctl.Tackle.Depth:0.0} bottom {ctl.Tackle.Bottom:0.0}");
             // wait for the encounter (natural: work the key the way the legend likes)
@@ -389,7 +420,7 @@ namespace FishingKing
         }
 
         int capFrames, capHits, capOverlays, capMoves, capTopFrames, capFrogHits, capFrogOverlays;
-        int gaugeTopFrames, gaugeFrogHits, gaugeMovesMax, gaugeMovesTotal, gaugeShots;
+        int gaugeTopFrames, gaugeFrogHits, gaugeMovesMax, gaugeMovesTotal, gaugeShots, gaugeFrames, gaugeOutside;
         const int GaugeMovesCap = 4;
 
         static string R(Rect r) => string.Format(System.Globalization.CultureInfo.InvariantCulture, "({0:0},{1:0},{2:0},{3:0})", r.xMin, r.yMin, r.xMax, r.yMax);
@@ -414,6 +445,7 @@ namespace FishingKing
             int gSeen = 0;
             string gSpot = null;
             bool gLogged = false;
+            float gFade = -1f;   // since the last move, until it has faded in
             yield return endOfFrame;
             while (true)
             {
@@ -503,15 +535,33 @@ namespace FishingKing
                         string spot = hud.GaugeSpotName;
                         if (gSpot != null && spot != gSpot)
                         {
-                            Log(string.Format(inv, "[CAP] gauge {0} -> {1} ph={2} t={3:0.00} gauge={4} lure={5} face={6} (moves {7})", gSpot, spot,
-                                e.Ph, e.PhaseT, R(gq), frog ? R(gr) : "-", face ? R(fr) : "-", hud.GaugeMoves));
+                            Log(string.Format(inv, "[CAP] gauge {0} -> {1} ph={2} t={3:0.00} gauge={4} lure={5} face={6} (moves {7}, {8}, alpha {9:0.00})",
+                                gSpot, spot, e.Ph, e.PhaseT, R(gq), frog ? R(gr) : "-", face ? R(fr) : "-", hud.GaugeMoves,
+                                hud.GaugeMovedAtOnce ? "at once" : "after fading out", hud.GaugeAlpha));
+                            gFade = 0f;
                             if (frog && gaugeShots < 3)
                             {
                                 gaugeShots++;
-                                StartCoroutine(GaugeShot(ctl, $"gauge_{encId}_{gaugeShots}_{spot}"));
+                                StartCoroutine(GaugeShot(ctl, hud, gaugeShots));
+                            }
+                        }
+                        else if (gFade >= 0f)
+                        {
+                            gFade += Time.deltaTime;
+                            if (hud.GaugeAlpha >= 0.95f)
+                            {
+                                Log(string.Format(inv, "[CAP] gauge faded in at {0} in {1:0.00}s", spot, gFade));
+                                gFade = -1f;
                             }
                         }
                         gSpot = spot;
+                        var safeArea = hud.SafeArea;
+                        if (gq.xMin < safeArea.xMin || gq.xMax > safeArea.xMax || gq.yMin < safeArea.yMin || gq.yMax > safeArea.yMax)
+                        {
+                            gaugeOutside++;
+                            Log(string.Format(inv, "[CAP] gauge outside the safe area ph={0} spot={1} gauge={2} safe={3}", e.Ph, spot, R(gq), R(safeArea)));
+                        }
+                        gaugeFrames++;
                         if (frog)
                         {
                             gaugeTopFrames++;
@@ -533,11 +583,11 @@ namespace FishingKing
             }
         }
 
-        /// <summary>A shot of the gauge at its new spot, once it has faded in there.</summary>
-        IEnumerator GaugeShot(FishingController ctl, string name)
+        /// <summary>A shot of the gauge at its new spot, once it has faded in there (named after where it is then).</summary>
+        IEnumerator GaugeShot(FishingController ctl, EncounterHUD hud, int n)
         {
             yield return new WaitForSeconds(0.3f);
-            if (ctl.State == FishingController.S.Encounter) yield return EncShot(ctl, name);
+            if (ctl.State == FishingController.S.Encounter && hud != null) yield return EncShot(ctl, $"gauge_{encId}_{n}_{hud.GaugeSpotName}");
         }
 
         IEnumerator EncShot(FishingController ctl, string name)

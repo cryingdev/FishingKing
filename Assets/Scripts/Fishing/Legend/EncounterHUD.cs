@@ -59,11 +59,21 @@ namespace FishingKing
         class Spot
         {
             public readonly float hold;           // how long a spot is kept before a clearly better one is taken
+            // steady: a better spot is taken only once it has been better (by gain) for hold s on end, not merely clear
+            // at the moment the hold runs out
+            public readonly bool steady;
+            public readonly float gain;
             public int cur = -1;
-            public float held;
+            public float held, better;
             public readonly List<Rect> rects = new List<Rect>();
             public readonly List<float> prefs = new List<float>();
-            public Spot(float hold) => this.hold = hold;
+
+            public Spot(float hold, bool steady = false)
+            {
+                this.hold = hold;
+                this.steady = steady;
+                gain = steady ? 3f : 1f;
+            }
 
             public void Clear()
             {
@@ -80,7 +90,7 @@ namespace FishingKing
             public Rect Chosen => rects[Mathf.Clamp(cur, 0, rects.Count - 1)];
         }
 
-        readonly Spot promptSpot = new Spot(0.8f), gaugeSpot = new Spot(1.0f), cardSpot = new Spot(0.8f), captionSpot = new Spot(0.5f);
+        readonly Spot promptSpot = new Spot(0.8f), gaugeSpot = new Spot(1.0f, true), cardSpot = new Spot(0.8f), captionSpot = new Spot(0.5f);
         readonly List<Rect> blocks = new List<Rect>();
         bool hasFace, hasFrog;
         Rect face;                                // the face this frame (root-local canvas units), no margin
@@ -90,6 +100,7 @@ namespace FishingKing
         int gaugeDrawn = -1;
         Rect gaugeAt;
         float gaugeShow, gaugeK = 1f;
+        Rect? faceClip;                           // while the gauge is placed: the window (the face's margin stops there)
 
         public static EncounterHUD Create(RectTransform canvasRoot, LegendEncounter e, EncounterView v)
         {
@@ -386,6 +397,7 @@ namespace FishingKing
             if (hasFace)
             {
                 var f = Grow(face, FacePad + (current ? 0f : Hyst));
+                if (faceClip is Rect w) f = Rect.MinMaxRect(Mathf.Max(f.xMin, w.xMin), Mathf.Max(f.yMin, w.yMin), Mathf.Min(f.xMax, w.xMax), Mathf.Min(f.yMax, w.yMax));
                 float a = Area(r, f);
                 if (a > 0f) c += 1000f + a / 100f;
             }
@@ -420,7 +432,7 @@ namespace FishingKing
                         s.cur = i;
                     }
                 }
-                s.held = 0f;
+                s.held = s.better = 0f;
                 return;
             }
             float hit = Cost(s.rects[s.cur], true), cc = s.prefs[s.cur] + hit;
@@ -436,10 +448,12 @@ namespace FishingKing
                     bi = i;
                 }
             }
-            if (bi != s.cur && (hit >= 100f || (s.held >= s.hold && bc + 1f < cc)))
+            bool gain = bi != s.cur && bc + s.gain < cc;
+            s.better = gain ? s.better + dt : 0f;
+            if (bi != s.cur && (hit >= 100f || (s.held >= s.hold && gain && (!s.steady || s.better >= s.hold))))
             {
                 s.cur = bi;
-                s.held = 0f;
+                s.held = s.better = 0f;
             }
         }
 
@@ -557,18 +571,25 @@ namespace FishingKing
                 gaugeSpot.Clear();
                 for (int i = 0; i < 6; i++)
                     gaugeSpot.Add(Inside(new Rect(i % 3 == 0 ? gx : i % 3 == 1 ? gxl : gxr, i < 3 ? gyLow : gyHigh, gs.x, gs.y), safe), GaugePrefs[i]);
-                // (outside the window: off the reel)
+                // (outside the window: off the reel, and only where it fits; one the safe area pushes back over the window
+                // is all but ruled out)
                 var reelR = ReelRect(scr);
                 for (int i = 6; i < 8; i++)
                 {
-                    var r = Inside(new Rect(win.center.x - gs.x * 0.5f, i == 6 ? win.yMin - frame - gs.y : win.yMax + frame, gs.x, gs.y), safe);
-                    gaugeSpot.Add(r, GaugePrefs[i] + (r.Overlaps(reelR) ? 100f : 0f));
+                    var r0 = new Rect(win.center.x - gs.x * 0.5f, i == 6 ? win.yMin - frame - gs.y : win.yMax + frame, gs.x, gs.y);
+                    var r = Inside(r0, safe);
+                    gaugeSpot.Add(r, GaugePrefs[i] + (r.Overlaps(reelR) ? 100f : 0f) + ((r.position - r0.position).sqrMagnitude > 4f ? 500f : 0f));
                 }
-                // (in the side view the lure is kept clear too; from above it is the frog, kept clear like the face)
+                // (in the side view the lure is kept clear too; from above it is the frog, kept clear like the face. The
+                // face's margin stops at the window's frame: past it the gauge covers nothing of it)
                 int before = blocks.Count;
                 if (view.LureShown && !hasFrog) blocks.Add(LureRect(k));
+                faceClip = win;
+                // (hidden, it simply takes the best spot: it shows up there, no move)
+                if (gaugeShow <= 0.01f) gaugeSpot.cur = -1;
                 Choose(gaugeSpot, dt);
                 var gr = PlaceGauge(dt);
+                faceClip = null;
                 blocks.RemoveRange(before, blocks.Count - before);
                 gaugeLow = gaugeDrawn <= 2;
                 gaugeHigh = gaugeDrawn >= 3 && gaugeDrawn <= 5;
@@ -659,8 +680,10 @@ namespace FishingKing
             }
             else if (want != gaugeDrawn || (to.center - gaugeAt.center).sqrMagnitude > 64f)
             {
-                if (gaugeK <= 0f || Cost(gaugeAt, true) >= 100f)
+                bool reached = Cost(gaugeAt, true) >= 100f;
+                if (gaugeK <= 0f || reached)
                 {
+                    GaugeMovedAtOnce = reached && gaugeK > 0f;
                     gaugeDrawn = want;
                     gaugeAt = to;
                     gaugeK = 0f;
@@ -679,12 +702,18 @@ namespace FishingKing
         }
 
         /// <summary>The screen's safe area (root-local), <see cref="SafePad"/> in.</summary>
-        Rect SafeRect()
+        Rect SafeRect() => Grow(SafeArea, -SafePad);
+
+        /// <summary>The screen's safe area (root-local).</summary>
+        public Rect SafeArea
         {
-            var sa = Screen.safeArea;
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(root, sa.min, null, out var a);
-            RectTransformUtility.ScreenPointToLocalPointInRectangle(root, sa.max, null, out var b);
-            return Rect.MinMaxRect(a.x + SafePad, a.y + SafePad, b.x - SafePad, b.y - SafePad);
+            get
+            {
+                var sa = Screen.safeArea;
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(root, sa.min, null, out var a);
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(root, sa.max, null, out var b);
+                return Rect.MinMaxRect(a.x, a.y, b.x, b.y);
+            }
         }
 
         /// <summary>The rect moved (not resized) inside the area; centred on an axis it does not fit.</summary>
@@ -725,6 +754,10 @@ namespace FishingKing
         public string GaugeSpotName => gaugeDrawn >= 0 ? GaugeSpots[gaugeDrawn] : "-";
         /// <summary>How often the gauge has moved to another spot while it showed.</summary>
         public int GaugeMoves { get; private set; }
+        /// <summary>The last move went at once (something reached the gauge), not after a fade-out where it was.</summary>
+        public bool GaugeMovedAtOnce { get; private set; }
+        /// <summary>The gauge's alpha now (the tease's fade times a relocation's).</summary>
+        public float GaugeAlpha => gaugeGroup.alpha;
 
         /// <summary>For the log: each gauge spot this frame and what it would cover (the frog, the face, or nothing).</summary>
         public string GaugeSpotsNow()
