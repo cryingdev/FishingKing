@@ -32,7 +32,8 @@ namespace FishingKing
     /// with room to spare for 1 s; at 1x (끔 all the time, 액티브 while he waits, any mode while the zoom eases) the view
     /// itself pans, only as far as keeps the rod tip and the rig / fish their margins inside, accelerating gently and
     /// easing back home once they are back in the home frame or the fight is over (the landing, the catch card, the
-    /// ready: always home, briskly, before the card; a wind-up hurries it home). 끔 pans too: it means "no zoom", and a
+    /// ready: always home, briskly, before the card; a float a fish let go out there is followed while it is wound in;
+    /// a wind-up eases it home in 0.15 s). 끔 pans too: it means "no zoom", and a
     /// fish off the screen is never wanted; the view only
     /// moves once the fish (or the float) comes within its margin (+ <see cref="ViewZoom.OneLead"/>: ~30 px) of the home
     /// frame's side, so a fight that stays inside it looks exactly as before. Vertically the view stays put (a fish below
@@ -95,11 +96,13 @@ namespace FishingKing
         }
 
         /// <summary>
-        /// The rig is in the water or a fish is on: the rod tip and the rig / the fish are must-see points (zoomed: kept in
-        /// the crop; at 1x: the view pans over the stage art's overscan when they go beyond the home frame).
+        /// The rig is in the water (waiting, biting, snagged, or being wound in: a float a fish let go far out comes back
+        /// across the overscan in view) or a fish is on: the rod tip and the rig / the fish are must-see points (zoomed:
+        /// kept in the crop; at 1x: the view pans over the stage art's overscan when they go beyond the home frame).
         /// </summary>
         bool ZoomFollows => Angler != null && Tackle != null
-                            && (State == S.Waiting || State == S.Biting || State == S.Snagged || (State == S.Fighting && Hooked != null));
+                            && (State == S.Waiting || State == S.Biting || State == S.Snagged || (State == S.Fighting && Hooked != null)
+                                || (State == S.Retrieving && (Tackle.State == Tackle.Mode.Water || Tackle.State == Tackle.Mode.Perched)));
 
         void DirectZoom(ViewZoom z)
         {

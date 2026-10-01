@@ -1,6 +1,7 @@
 // The incoming period's stage layer (Docs/time_currents_spec.md 2.4): drawn over the outgoing one and dissolved in by
-// an ordered 4x4 Bayer dither in the pixel view's render-target pixels, so the new look replaces 1/16 of the pixels at a
-// time (never a translucent mix): a fragment shows when _F16 > (M[y%4][x%4] + 0.5) / 16, _F16 = floor(F * 16) / 16.
+// an ordered 4x4 Bayer dither on the layer's own art texels (x, y = the texel under the fragment: the pattern stays on
+// the art when the camera pans over a stage's overscan), so the new look replaces 1/16 of the pixels at a time (never a
+// translucent mix): a fragment shows when _F16 > (M[y%4][x%4] + 0.5) / 16, _F16 = floor(F * 16) / 16.
 // Otherwise the built-in sprite shader (vertex colour, premultiplied alpha blending).
 Shader "FishingKing/PeriodDissolve"
 {
@@ -26,6 +27,7 @@ Shader "FishingKing/PeriodDissolve"
             #include "UnityCG.cginc"
 
             sampler2D _MainTex;
+            float4 _MainTex_TexelSize;
             float _F16;
 
             struct appdata
@@ -57,7 +59,7 @@ Shader "FishingKing/PeriodDissolve"
 
             fixed4 frag (v2f i) : SV_Target
             {
-                float2 p = floor(i.pos.xy);
+                float2 p = floor(i.uv * _MainTex_TexelSize.zw);
                 float m = 4.0 * B2(fmod(p, 2.0)) + B2(fmod(floor(p * 0.5), 2.0));
                 clip(_F16 - (m + 0.5) / 16.0);
                 fixed4 c = tex2D(_MainTex, i.uv) * i.color;

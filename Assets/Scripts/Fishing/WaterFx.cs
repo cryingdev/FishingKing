@@ -71,7 +71,7 @@ namespace FishingKing
 
         // visible part of the stage canvas this frame (drawn), the home view's (in play), the camera's pan (game px)
         int vx0, vx1, vy0, vy1, rtW = 480;
-        int hx0, hx1, hy0, hy1, panX, lastPanX;
+        int hx0, hx1, hy0, hy1, panX;
 
         // ---- particles
         struct Dash { public float x, z, vx, vz, len, age, life, alpha, k; public byte kind; }
@@ -446,7 +446,7 @@ namespace FishingKing
 
             // 4. foam candidates (stream, sea)
             if (kind == Kind.Stream || kind == Kind.Sea) FindEdges(top);
-            Debug.Log($"[WaterFx] {L.id}: {kind}, water colours{sb}, {water} water px, {edgeN} foam spots");
+            Debug.Log($"[WaterFx] {L.id}: {kind}, water colours{sb}, {water} water px, {edgeN} foam spots ({edgeHome} in the home view's columns)");
         }
 
         bool Front(int c, int r) => c >= 0 && c < W && r >= 0 && r < H && (mask[r * W + c] & MFront) != 0;
@@ -472,8 +472,18 @@ namespace FishingKing
                 pix.Add(i);
                 kinds.Add(k);
             }
+            // at most 520 spots over the 640 px layout; a canvas widened with overscan takes its stride from the home view's
+            // columns (the 480 at its centre, budgeted 520 x 480 / 640), so the home view keeps its density (the sea's
+            // new tetrapods out there would otherwise thin it out); the arrays hold the whole canvas at that stride
             const int Max = 520;
-            int step = Mathf.Max(1, Mathf.CeilToInt(pix.Count / (float)Max));
+            int h0 = Mathf.Max(0, W / 2 - 240), h1 = Mathf.Min(W, W / 2 + 240), homeCount = 0;
+            foreach (int i in pix)
+            {
+                int c = i % W;
+                if (c >= h0 && c < h1) homeCount++;
+            }
+            int step = W <= 640 ? Mathf.Max(1, Mathf.CeilToInt(pix.Count / (float)Max))
+                : Mathf.Max(1, Mathf.CeilToInt(homeCount / (Max * 480f / 640f)));
             int n = (pix.Count + step - 1) / step;
             edgePix = new int[n];
             edgeX = new float[n];
@@ -492,8 +502,12 @@ namespace FishingKing
                 edgeH[edgeN] = Hash(i, 91);
                 edgeKind[edgeN] = kinds[q];
                 edgeN++;
+                int ec = i % W;
+                if (ec >= h0 && ec < h1) edgeHome++;
             }
         }
+
+        int edgeHome;   // foam spots in the home view's columns (logged)
 
         void ShowMask()
         {
@@ -789,13 +803,14 @@ namespace FishingKing
         void ViewBounds()
         {
             var pv = PixelView.Current;
-            int w = 480, h = 270;
+            int w = 480, h = 270, over = 0;
             var pan = Vector2Int.zero;
             if (pv != null && pv.Target != null)
             {
                 w = pv.Target.width;
                 h = pv.Target.height;
                 pan = pv.Pan;
+                if (pv.Zoom != null) over = pv.Zoom.OverscanPx;
             }
             rtW = w;
             panX = pan.x;
@@ -804,13 +819,13 @@ namespace FishingKing
             hx1 = Mathf.Min(W, x0 + w);
             hy0 = Mathf.Max(0, y0);
             hy1 = Mathf.Min(H, y0 + h);
-            const int Slack = 6;   // game px: the pan moves at most a few px a frame
-            int sl = pan.x != 0 || lastPanX != 0 ? Slack : 0;
+            // (with overscan the camera may move after this Update, in ViewZoom's LateUpdate, by up to its fastest step
+            // this frame: a wind-up's hurry home, the 1x follow, a zoomed crop pulled along: that much more each side)
+            int sl = over > 0 ? Mathf.Min(over * 2, 2 + Mathf.CeilToInt(ViewZoom.MaxCameraSpeed(over) * Mathf.Max(Time.deltaTime, 1f / 60f))) : 0;
             vx0 = Mathf.Max(0, x0 + pan.x - sl);
             vx1 = Mathf.Min(W, x0 + w + pan.x + sl);
             vy0 = Mathf.Max(0, y0 + pan.y);
             vy1 = Mathf.Min(H, y0 + h + pan.y);
-            lastPanX = pan.x;
         }
 
         /// <summary>The visible water's x range (metres) at distance z: the view as the camera has it now (panned over the overscan).</summary>
@@ -1521,8 +1536,9 @@ namespace FishingKing
             {
                 // a new gust: its patch comes in from the up-wind edge of the view
                 pawZ0 = Random.Range(L.zNear + 6f, lake ? 32f : 20f);
-                float half = Mathf.Min(L.xLim, P.VisibleHalfWidth(pawZ0, rtW));
-                pawX0 = -Mathf.Sign(cur.GustDir.x == 0f ? 1f : cur.GustDir.x) * half * 0.85f;
+                ViewX(pawZ0, out float vlo, out float vhi);   // (the view as the camera has it, panned over the overscan)
+                float half = (vhi - vlo) * 0.5f;
+                pawX0 = (vlo + vhi) * 0.5f - Mathf.Sign(cur.GustDir.x == 0f ? 1f : cur.GustDir.x) * half * 0.85f;
             }
             pawGustT = cur.GustT;
             float e = cur.Gust01;
@@ -1592,9 +1608,9 @@ namespace FishingKing
             if (cur == null || !cur.Moving) return;
             for (float z = L.zNear + 2f; z <= Mathf.Min(L.zFar, 44f); z += 4f)
             {
-                float half = Mathf.Min(L.xLim, P.VisibleHalfWidth(z, rtW));
-                float step = Mathf.Max(2f, half / 8f);
-                for (float x = -Mathf.Floor(half / step) * step; x <= half; x += step)
+                ViewX(z, out float vlo, out float vhi);       // (the view as the camera has it)
+                float step = Mathf.Max(2f, (vhi - vlo) * 0.5f / 8f);
+                for (float x = Mathf.Ceil(vlo / step) * step; x <= vhi; x += step)
                 {
                     if (!IsWaterAt(x, z)) continue;
                     var w = cur.Water(x, z);

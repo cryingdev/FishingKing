@@ -66,8 +66,15 @@ namespace FishingKing
         public const float OneMaxSpeed = 180f, OneAccel = 700f;
         /// <summary>Game px / s: the 1x pan's top speed and acceleration back home once nothing is kept in frame (the fight is over: home before the catch card).</summary>
         public const float OneReturnSpeed = 320f, OneReturnAccel = 1400f;
-        /// <summary>Game px / s: the 1x pan's top speed back home while <see cref="HurryHome"/> (a wind-up: casting is from the home view).</summary>
-        public const float OneHurrySpeed = 600f;
+        /// <summary>Seconds: while <see cref="HurryHome"/> (a wind-up: casting is from the home view) the 1x pan eases home in this long (the wind-up's own zoom-out, FishingController.ZoomAimOut).</summary>
+        public const float HurryTime = 0.15f;
+
+        /// <summary>
+        /// Game px / s the camera may move at most with this much overscan (the hurry home's peak, the 1x follow pulled
+        /// along by a point, a zoomed crop held on a running fish): what is drawn before the zoom moves it this frame
+        /// reaches that much past the view (WaterFx).
+        /// </summary>
+        public static float MaxCameraSpeed(int overscan) => Mathf.Max(400f, 2f * OneMaxSpeed, 1.5f * overscan / HurryTime);
 
         /// <summary>Called every frame before the zoom moves (the fishing controller): calls <see cref="Want"/>, <see cref="Focus"/>, <see cref="Keep"/>.</summary>
         public System.Action<ViewZoom> Director;
@@ -83,7 +90,7 @@ namespace FishingKing
         /// </summary>
         public Vector2Int ArtPx;
 
-        /// <summary>Set by the director for this frame: the 1x pan goes home at <see cref="OneHurrySpeed"/> (a wind-up).</summary>
+        /// <summary>Set by the director for this frame: the 1x pan eases home in <see cref="HurryTime"/> (a wind-up).</summary>
         public bool HurryHome;
 
         /// <summary>The zoom asked for (set by the director every frame; <see cref="Aim"/> unless it says otherwise).</summary>
@@ -105,6 +112,8 @@ namespace FishingKing
         bool stepEasing;
         int lastTop;
         Vector2 panOne, panOneV;      // the 1x view's offset from home (home-view px) and its speed
+        bool hurrying;                // easing home for a wind-up: from hurryFrom, hurryT s in
+        float hurryT, hurryFrom;
         Vector2Int heldCam;           // the camera's pan while a test holds the level
 
         internal void Init(PixelView v)
@@ -350,14 +359,31 @@ namespace FishingKing
         /// The 1x view's pan (horizontal, over the overscan only): to the offset nearest home that keeps every must-see
         /// point its margin (+ <see cref="OneLead"/>) inside the home-sized view, soft ones too when they fit; home when
         /// there are none. Followed at <see cref="OneTau"/>, no faster than <see cref="OneMaxSpeed"/>, accelerating and
-        /// braking at <see cref="OneAccel"/> (home with nothing kept: <see cref="OneReturnSpeed"/>; a wind-up:
-        /// <see cref="OneHurrySpeed"/>); a hard point that would still leave the view pulls it along at once, by up to
+        /// braking at <see cref="OneAccel"/> (home with nothing kept: <see cref="OneReturnSpeed"/>; a wind-up: eased
+        /// home in <see cref="HurryTime"/>); a hard point that would still leave the view pulls it along at once, by up to
         /// <see cref="OneMaxSpeed"/> more (so the view never moves faster than twice that, and a point that turns up
         /// outside, a rig landed or snagged out there, is glided to).
         /// </summary>
         void FollowOne(float dt, float W)
         {
             float m = OverscanPx;
+            if (HurryHome)
+            {
+                // a wind-up: home within HurryTime (eased), whatever the follow was doing
+                if (!hurrying)
+                {
+                    hurrying = true;
+                    hurryT = 0f;
+                    hurryFrom = panOne.x;
+                }
+                hurryT += dt;
+                float f = Mathf.Clamp01(hurryT / HurryTime);
+                panOne.x = Mathf.Clamp(hurryFrom * (1f - f * f * (3f - 2f * f)), -m, m);
+                panOneV.x = 0f;
+                panOne.y = 0f;
+                return;
+            }
+            hurrying = false;
             float tgt = 0f;
             if (m > 0f && keeps.Count + softKeeps.Count > 0)
             {
@@ -376,8 +402,8 @@ namespace FishingKing
                 tgt = Mathf.Clamp(tgt, -m, m);
             }
             bool going = keeps.Count + softKeeps.Count == 0;   // (nothing kept: back home, briskly)
-            float vmax = HurryHome ? OneHurrySpeed : going ? OneReturnSpeed : OneMaxSpeed;
-            float acc = HurryHome ? OneAccel * 3f : going ? OneReturnAccel : OneAccel;
+            float vmax = going ? OneReturnSpeed : OneMaxSpeed;
+            float acc = going ? OneReturnAccel : OneAccel;
             float err = tgt - panOne.x;
             float want = Mathf.Clamp(err / OneTau, -vmax, vmax);
             float brake = Mathf.Sqrt(2f * acc * Mathf.Abs(err));

@@ -87,7 +87,8 @@ namespace FishingKing
         Rect window, crop;
         Vector2 ppWin;
         float f0;
-        Vector2 lureSurf;                    // the lure's apparent surface point when it began
+        Vector2 lureSurf;                    // the lure's apparent surface point on the render target (this frame)
+        Vector2 lureWorld;                   // ... in the pixel-view world, when it began
         Rect closeFrom;
 
         // camera (set frame)
@@ -342,7 +343,8 @@ namespace FishingKing
             InitTop();
             Layout();
             var hp = ctl.Tackle.HookPos;
-            lureSurf = WorldToRT(stage.P.To2D(stage.P.Apparent(hp)));
+            lureWorld = stage.P.To2D(stage.P.Apparent(hp));
+            lureSurf = LureRT();
             fHead = Mathf.Atan2(-Eyes0.x, -Eyes0.z) * Mathf.Rad2Deg;
             fPos = Eyes0;
             track = new Vector3(0f, LureRest, 0f);
@@ -2709,12 +2711,19 @@ namespace FishingKing
         }
 
         // ------------------------------------------------------------------ the window in the pixel view
+        /// <summary>
+        /// The lure's point on the render target now: the camera's pan over a stage's overscan moves it (an encounter that
+        /// began with the view panned out to the rig sees the view ease home under it), the shake does not.
+        /// </summary>
+        Vector2 LureRT() => (lureWorld - pv.BaseCenter) * PPU + new Vector2(w * 0.5f, h * 0.5f) - (Vector2)pv.Pan;
+
         void UpdateCrop(float dt, LegendEncounter.Phase ph)
         {
             float t = enc.PhaseT;
             float dimA = 0.55f;
             bool show = true, frameOn = true;
             float frameA = 1f;
+            lureSurf = LureRT();
             Rect lureRect = new Rect(lureSurf.x - 4f, lureSurf.y - 4f, 8f, 8f);
             // the grow to full screen takes GrowT from the lunge's start, whatever the lunge's length (from the top view: a cut)
             float grow = ph == LegendEncounter.Phase.Lunge ? t : ph == LegendEncounter.Phase.HookWindow ? def.lungeT + t : 99f;

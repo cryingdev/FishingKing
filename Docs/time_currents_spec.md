@@ -134,7 +134,8 @@ periods share the geometry, so one mask serves them all).
   A draws; with `F == 1` the layers swap. Sprites of the stage's four periods are loaded when the stage opens
   (8 sprites; `Art.Stage("<stage>_<period>_back")`, falling back to `<stage>_back` if one is missing).
 - B draws with a new material `FishingKing/PeriodDissolve` (`Assets/Shaders/PeriodDissolve.shader`): sprite colour, and
-  `clip(F16 - bayer4(px))` where `px` = the fragment's pixel in the pixel view's 480x270 render target (`SV_POSITION.xy`),
+  `clip(F16 - bayer4(px))` where `px` = the layer's art texel under the fragment (`floor(uv * texture size)`: the
+  pattern stays on the art when the camera pans over a stage's overscan; it used to be the render-target pixel),
   `bayer4 = (M[y%4][x%4] + 0.5) / 16`, `M = {0,8,2,10},{12,4,14,6},{3,11,1,9},{15,7,13,5}`, `F16 = floor(F * 16) / 16`.
   So the incoming look replaces 1/16 of the pixels at a time (about every 2 real seconds), never a translucent mix.
 - A draws normally beneath B. The front layers have identical silhouettes, so B's front pixels cover A's exactly; an

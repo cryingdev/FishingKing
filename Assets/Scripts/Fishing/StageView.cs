@@ -51,6 +51,9 @@ namespace FishingKing
         /// <summary>Half the stage art's width in world units (20 for the 640 px layers): the clouds, birds, glints and snow cover all of it, the overscan the view may pan over included.</summary>
         float ArtHalf => (L.widthPx > 0 ? L.widthPx : 640) * 0.5f / PixelView.PPU;
 
+        /// <summary>The water glints' pool: 26 over the 640 px layers, as many more as the art is wider (the same density in the home view).</summary>
+        int GlintPool => Mathf.RoundToInt(26f * ArtHalf * 2f * PixelView.PPU / 640f);
+
         SpriteRenderer backA, backB, frontA, frontB;
         /// <summary>The front layer (the outgoing period's; the occlusion watch reads where it is drawn).</summary>
         internal SpriteRenderer FrontA => frontA;
@@ -115,7 +118,7 @@ namespace FishingKing
             PlaceOcclusion();
             if (L.clouds) SpawnClouds();
             birdFrames = MakeBird();
-            for (int i = 0; i < 26; i++) glints.Add(NewGlint());
+            for (int i = 0; i < GlintPool; i++) glints.Add(NewGlint());
             anyFireflies = L.fireflies;
             foreach (var lk in Looks) anyFireflies |= lk.fireflies;
             if (anyFireflies) for (int i = 0; i < 22; i++) motes.Add(NewMote(new Color(0.85f, 1f, 0.45f), true));
@@ -213,7 +216,7 @@ namespace FishingKing
             WaterTint = now.WaterTint;
             WaterDeep = now.WaterDeep;
             if (Water != null) Water.SetLook(now.WaterTint, now.WaterDeep, now.FxAlpha, now.Night);
-            glintOn = Mathf.Clamp(Mathf.RoundToInt(26f * now.GlintDensity), 0, glints.Count);
+            glintOn = Mathf.Clamp(Mathf.RoundToInt(GlintPool * now.GlintDensity), 0, glints.Count);
             for (int i = 0; i < glints.Count; i++)
                 if (i >= glintOn) glints[i].sr.enabled = false;
                 else if (!L.IsIce && !glints[i].sr.enabled) RespawnGlint(glints[i], true);
