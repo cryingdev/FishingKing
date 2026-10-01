@@ -219,11 +219,18 @@ namespace FishingKing
 
             // ---- 3. the retry, and the rig already lying there (and the look at it from the zoomed wait)
             int askedWait = z.StepPxAsked;
+            // (no ordinary fish on the lying bait until that look is over: a bite cuts it, as any change of state does, at
+            // random; the claim check after it still lets one bite)
+            bool noBites0 = FishingController.NoBites;
+            FishingController.NoBites = true;
+            foreach (var f in ctl.Spawner.Fish)
+                if (f.State == FishAgent.St.Approach || f.State == FishAgent.St.Nibble) f.LoseInterest();
             yield return WaitSpot(ctl, 20f, 1f);
             float retry = Time.time - w.SpotT - missAt;
             SpotCheck($"the next spot came {retry:0.0}s after the miss (spotRetry {sp.encounter.spotRetry:0}s)", w.SpotOn && Mathf.Abs(retry - sp.encounter.spotRetry) <= 0.6f);
             float lieD = new Vector2(ctl.Tackle.Surface.x - w.Spot.x, ctl.Tackle.Surface.z - w.Spot.z).magnitude;
             if (w.SpotOn && mode0 != ZoomMode.Off && ctl.State == FishingController.S.Waiting) yield return WatchLook(ctl, "waiting", askedWait, false);
+            FishingController.NoBites = noBites0;
             for (float t = 0f; t < 4f && w.SpotOn; t += Time.deltaTime) yield return null;
             SpotCheck($"the rig already lying in the water ({lieD:0.0} m from the new spot) does not claim it (claimed {w.SpotClaimed}, meter {w.Meter:0.00}, state {ctl.State})",
                 // (an ordinary fish may bite the lying bait meanwhile: only no claim and no encounter matter)
