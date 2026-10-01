@@ -312,16 +312,27 @@ namespace FishingKing
             float t0 = Time.time, homeAt = -1f;
             int maxStepBack = 0, jumpsBack = 0;
             var lastCam = z.CamPan;
+            var stepsBack = new System.Text.StringBuilder();
             while (Time.time - t0 < 6f)
             {
                 yield return new WaitForEndOfFrame();
                 int sb = Mathf.Abs(z.CamPan.x - lastCam.x);
                 maxStepBack = Mathf.Max(maxStepBack, sb);
-                if (PanJump(sb, Time.deltaTime)) jumpsBack++;
+                if (sb > 0 || stepsBack.Length > 0) stepsBack.Append(sb).Append(z.Level > 0f ? "z " : " ");
+                if (PanJump(sb, Time.deltaTime))
+                {
+                    jumpsBack++;
+                    // (what moved the camera that frame: the zoom level, the 1x pan, the rod tip and the fish on the home view)
+                    var hk = ctl.Hooked;
+                    Debug.Log(string.Format(CIp, "[PAN] home jump {0} px at {1:0.000} s (dt {2:0.0000}): level {3:0.000}, camera {4}, 1x pan {5}, state {6}, rod lift {7:0.00}, tip px {8}, fish px {9}",
+                        sb, Time.time - t0, Time.deltaTime, z.Level, z.CamPan, z.PanOne, ctl.State, ctl.Angler.RodLift01,
+                        z.WorldToPx(ctl.RodTip2D), hk != null ? z.WorldToPx(ctl.Stage.P.To2D(hk.Pos)).ToString() : "-"));
+                }
                 lastCam = z.CamPan;
                 if (homeAt < 0f && z.AtHome && z.Level <= 0f) homeAt = Time.time - t0;
                 if (HasButton("판매") || (mode == ZoomMode.Off && ctl.State == FishingController.S.Ready && homeAt >= 0f)) break;
             }
+            Debug.Log("[PAN] home steps (px a frame, z = zoomed): " + stepsBack);
             PCheck(tag + "_home", camOut > 0f && homeAt >= 0f && homeAt <= PanHomeMax && jumpsBack == 0,
                 string.Format(CIp, "panned {0:0} px when the fight ended ({1}), home (1x, camera and 1x pan at 0) {2:0.00} s after {6}, the camera's steps back up to {3} px a frame ({4} jumps); now {5}",
                     camOut, mode == ZoomMode.Off ? "let go" : "landed", homeAt, maxStepBack, jumpsBack, ZDesc(z),
