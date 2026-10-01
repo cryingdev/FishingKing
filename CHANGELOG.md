@@ -14,7 +14,7 @@
 
 ### 팽팽한 줄이 튕기는 소리 (녹음)
 - 추가: `Assets/Resources/Audio/Sfx/line_twang_1..6.wav`: 고무줄을 튕긴 녹음 한 개에서 6번을 잘라 냄(각 0.26–0.34초, 모노, 피크 −1 dB, 실내 잡음이 올라오기 전에 끝냄).
-  `Sfx.LineStrain`이 합성 `LineTing` 대신 이 중 하나를 무작위로(직전과 다른 것) 틀고, 빠르기·크기·음높이 변화는 그대로. 원본: freesound "rubber band 2" (giddster).
+  `Sfx.LineStrain`이 합성 `LineTing` 대신 이 중 하나를 무작위로(직전과 다른 것) 틀고, 빠르기·크기·음높이 변화는 그대로. 원본: freesound "rubber band 2" (giddster, CC0).
 
 ### 팽팽한 줄이 튕기는 소리 (합성)
 - 추가: `Sfx.LineStrain`(`LineTing`): 장력이 줄 한계의 60%(`FishingController.StrainFrom`)를 넘으면 고무줄을 튕기는 듯한 "뚜웅"(180 Hz 톱니파 계열 음에 빠르게 닫히는 필터, 튕길 때 음이 떨어지며 떨림)이 나기 시작해,

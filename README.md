@@ -110,6 +110,11 @@ UI와 로고는 픽셀 폰트 **Galmuri** (© Lee Minseo, [SIL Open Font License
 배경음은 GM 사운드폰트 **FluidR3_GM** (© Frank Wen, MIT License; Debian/Ubuntu `fluid-soundfont-gm` 패키지)으로 렌더했습니다.
 렌더한 OGG만 저장소에 들어 있고 사운드폰트 파일은 들어 있지 않습니다. 다시 렌더하는 방법은 [Tools/Music/README.md](Tools/Music/README.md)에 있습니다.
 
+## 효과음
+
+녹음 효과음 대부분은 직접 준비한 것이고, 팽팽한 줄이 튕기는 소리(`Assets/Resources/Audio/Sfx/line_twang_*.wav`)는
+Freesound의 "rubber band 2" (giddster, CC0)를 잘라 썼습니다.
+
 ## 참고
 
 렌더 파이프라인은 Built-in, 입력은 Input System 패키지입니다.
