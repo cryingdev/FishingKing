@@ -1,0 +1,440 @@
+using System;
+using System.Collections;
+using System.IO;
+using UnityEngine;
+
+namespace FishingKing
+{
+    /// <summary>
+    /// -fkauto pan: the view follows a fish beyond the home 1x frame over the stage art's overscan (<see cref="ViewZoom"/>).
+    /// <code>
+    /// -fkfresh -fkrich -fkgear -fksave pan -fkscene Fishing -fkstage sea -fkauto pan -fkshots &lt;dir&gt; -screen-width 1920 -screen-height 1080 [-fkzoommode 125|off|150|active]
+    /// </code>
+    /// On the sea (any stage given with -fkstage works; the sea is the default), per mode (1.25배 and 끔, or the one
+    /// -fkzoommode names): a fish hooked out on the right is held on a scripted run (the fight model stands still) out past
+    /// the home frame's right edge to near the art's edge, a fast dash, back in, then the same out past the left edge,
+    /// back in and landed (끔: let go). Every frame: the fish and the rod tip in the view (the fish wherever the bounds can
+    /// show it; frames with it beyond the art itself are counted apart), the crop in the bounds and its UV on the target,
+    /// pixel exact at rest when zoomed, the camera on whole px, and the view's movement per frame (game px) and per 0.25 s;
+    /// then the view home (the camera and the 1x pan back to zero, at 1x) within <see cref="PanHomeMax"/> s of the fight's
+    /// end. At the far point the same moment is shot with the overscan off (the old clamp at the home frame's edge: the
+    /// fish out of view) and on (followed): pan_&lt;mode&gt;_before / _after. Then a natural fight (the fight model running,
+    /// wound in like the fish scenario) hooked far out on the right, the same per-frame checks; and the alignment: with
+    /// the camera panned and time frozen, the render target must equal the home one shifted by the pan (stage layers,
+    /// actor layers, the front layer's occlusion, the obstacle outlines, the water: everything moves together).
+    /// [PAN] CHECK lines; ends with "pan test done: N failed".
+    /// </summary>
+    public partial class AutoPilot
+    {
+        int panFails;
+        /// <summary>Seconds the view may take to be home again after a fight ends far out (the zoom-out, the 1x pan back).</summary>
+        const float PanHomeMax = 2.0f;
+        /// <summary>Game px the view may move in one frame (and px/s over 0.25 s) while following.</summary>
+        const float PanStepMax = 6f, PanSpeedMax = 320f;
+
+        void PCheck(string name, bool ok, string numbers)
+        {
+            if (!ok) panFails++;
+            Debug.Log($"[PAN] CHECK {name} {(ok ? "PASS" : "FAIL")} {numbers}");
+        }
+
+        class PanStats
+        {
+            public int frames, beyondHome, beyondArt, outFish, outTip, border, inexact, offWhole, maxSide;
+            public float maxStep, maxSpeed, maxCam, maxOver;
+            public Vector2 lastCentre;
+            public bool has;
+            public readonly System.Collections.Generic.Queue<Vector3> trail = new System.Collections.Generic.Queue<Vector3>();
+
+            public override string ToString() => string.Format(CIp,
+                "{0} frames: the fish beyond the home frame {1} (by up to {2:0} px, the camera panned up to {3:0} px), beyond the art {4}; the fish out of view {5}, the rod tip out {6}; crop off the bounds / the target {7}, not pixel exact at rest {8}, camera off whole px {9}; the view's steps up to {10:0.0} px a frame, {11:0} px/s",
+                frames, beyondHome, maxOver, maxCam, beyondArt, outFish, outTip, border, inexact, offWhole, maxStep, maxSpeed);
+        }
+
+        /// <summary>One frame's sample (read at its end): the fish, the rod tip, the crop, the camera.</summary>
+        void PanSample(FishingController ctl, PanStats st)
+        {
+            var pv = PixelView.Current;
+            var z = pv.Zoom;
+            var b = z.BoundsPx;
+            float W = pv.Target.width;
+            st.frames++;
+            var fish = z.WorldToPx(ctl.Fish2D(ctl.Hooked));
+            var tip = z.WorldToPx(ctl.RodTip2D);
+            float over = Mathf.Max(-fish.x, fish.x - W);
+            if (over > 0f)
+            {
+                st.beyondHome++;
+                st.maxOver = Mathf.Max(st.maxOver, over);
+            }
+            st.maxCam = Mathf.Max(st.maxCam, Mathf.Abs(z.CamPan.x));
+            if (fish.x < b.xMin + 1f || fish.x > b.xMax - 1f) st.beyondArt++;
+            else if (!InCropPx(z, new Vector2(fish.x, Mathf.Clamp(fish.y, z.CropPx.yMin, z.CropPx.yMax)), 0f)) st.outFish++;
+            if (!InCropPx(z, tip, 0f)) st.outTip++;
+            if (!CropInside(z)) st.border++;
+            if (z.Level >= 1f && !z.StepEasing && !z.PixelExact) st.inexact++;
+            // the camera on whole px: its place is home + the pan (+ a shake), snapped
+            Vector2 cam = pv.WorldCamera.transform.position;
+            float cx = cam.x * PixelView.PPU, cy = cam.y * PixelView.PPU;
+            if (Mathf.Abs(cx - Mathf.Round(cx)) > 1e-3f || Mathf.Abs(cy - Mathf.Round(cy)) > 1e-3f) st.offWhole++;
+            var c = z.CropPx.center;
+            if (st.has) st.maxStep = Mathf.Max(st.maxStep, (c - st.lastCentre).magnitude);
+            st.lastCentre = c;
+            st.has = true;
+            st.maxSpeed = Mathf.Max(st.maxSpeed, TrailSpeed(st.trail, c));
+        }
+
+        /// <summary>The world x (metres) at depth y, distance z whose fish shows at home-view px x <paramref name="px"/>.</summary>
+        static float XForPx(FishingController ctl, float px, float y, float z)
+        {
+            var P = ctl.Stage.P;
+            var zm = ZoomNow;
+            float lo = -ctl.Stage.L.xLim, hi = ctl.Stage.L.xLim;
+            for (int i = 0; i < 40; i++)
+            {
+                float m = (lo + hi) * 0.5f;
+                if (zm.WorldToPx(P.To2D(P.Apparent(new Vector3(m, y, z)))).x < px) lo = m;
+                else hi = m;
+            }
+            return (lo + hi) * 0.5f;
+        }
+
+        IEnumerator PanTest()
+        {
+            PointerInput.SimActive = true;   // (the real pointer is ignored from the start: other windows may share the desktop)
+            yield return new WaitForSeconds(2f);
+            UnityEngine.Random.InitState(1616);
+            PointerInput.SimDpi = 0f;
+            GameClock.Scale = 0f;
+            GameClock.Min = GameClock.Centre(Period.Day);
+            var sd = Game.Data;
+            sd.sweepHint = sd.tideHint = sd.driftHint = sd.mendHint = sd.sideHint = sd.timeHint = true;
+            LegendWatch.DebugMode = null;
+            string stage = Arg("-fkstage") ?? "sea";
+            var ctl = FindAnyObjectByType<FishingController>();
+            if (ctl == null || ctl.Stage.Def.id != stage)
+            {
+                yield return GoStage(stage, 3f);
+                ctl = FindAnyObjectByType<FishingController>();
+            }
+            if (Dialog.Open)
+            {
+                Click("알겠어요");
+                yield return new WaitForSeconds(0.5f);
+            }
+            var z = ZoomNow;
+            if (ctl == null || z == null)
+            {
+                PCheck("scene", false, "no fishing scene");
+                Application.Quit();
+                yield break;
+            }
+            ctl.Watch?.DebugLurk(null);
+            FishingController.NoBites = true;
+            var L = ctl.Stage.L;
+            var rt = PixelView.Current.Target;
+            Log(string.Format(CIp, "[PAN] {0}: screen {1}x{2}, target {3}x{4}, art {5}, overscan {6} px each side, bounds {7}",
+                stage, Screen.width, Screen.height, rt.width, rt.height, z.ArtPx, z.OverscanPx, z.BoundsPx));
+            PCheck("overscan", z.OverscanPx > 0 && z.OverscanPx == Mathf.Max(0, ((L.widthPx > 0 ? L.widthPx : 640) - rt.width) / 2),
+                $"{z.OverscanPx} px each side from the {L.widthPx}x{L.heightPx} art and the {rt.width}x{rt.height} target");
+            SteerGear("rod_surf", "reel_highgear", "line_pe3");
+            var arg = Arg("-fkzoommode");
+            var modes = arg != null ? new[] { ZoomModeArg() } : new[] { ZoomMode.X125, ZoomMode.Off };
+            foreach (var m in modes) yield return PanRun(ctl, m);
+            sd.zoomMode = (int)(arg != null ? ZoomModeArg() : ZoomMode.X125);
+            yield return PanNatural(ctl);
+            yield return PanAlign(ctl);
+
+            FishingController.NoBites = false;
+            Obstacles.Show = false;
+            Time.timeScale = 1f;
+            PointerInput.SimDown = false;
+            PointerInput.SimActive = false;
+            Log($"[PAN] pan test done: {panFails} failed");
+            yield return new WaitForSeconds(0.3f);
+            Application.Quit();
+        }
+
+        /// <summary>Hooks a fish on the right at the ready-made rig and returns once the zoom (if any) has settled.</summary>
+        IEnumerator PanHook(FishingController ctl, string tag, Vector3 at, string fish, float cm, int seed)
+        {
+            yield return ToReady(ctl);
+            EquipTest("bait_worm", ctl);
+            yield return null;
+            var z = ZoomNow;
+            PCheck(tag + "_ready_home", z.AtHome && z.Level == 0f && z.UV == new Rect(0f, 0f, 1f, 1f), ZDesc(z));
+            if (!ctl.DebugPlaceRig(at))
+            {
+                PCheck(tag + "_rig", false, $"state {ctl.State}");
+                yield break;
+            }
+            for (float w = 0f; w < 3f && ctl.State != FishingController.S.Waiting; w += Time.deltaTime) yield return null;
+            yield return new WaitForSeconds(FishingController.ZoomSetting == ZoomMode.Off ? 0.6f : 1.2f);
+            var land = ctl.Tackle.Surface;
+            if (!ctl.DebugHook(GameDatabase.GetFish(fish), cm, seed, new Vector3(land.x, -1.2f, land.z)))
+                PCheck(tag + "_hook", false, $"state {ctl.State} tackle {ctl.Tackle.State}");
+        }
+
+        IEnumerator PanRun(FishingController ctl, ZoomMode mode)
+        {
+            var sd = Game.Data;
+            sd.zoomMode = (int)mode;
+            string tag = mode == ZoomMode.Off ? "off" : mode == ZoomMode.X150 ? "150" : mode == ZoomMode.Active ? "active" : "125";
+            var z = ZoomNow;
+            var L = ctl.Stage.L;
+            float W = PixelView.Current.Target.width;
+            const float Z = 28f, Y = -1.0f;
+            float x0 = XForPx(ctl, W * 0.62f, Y, Z);
+            yield return PanHook(ctl, tag, new Vector3(x0, 0f, Z), "mackerel", 36f, 1616);
+            if (ctl.State != FishingController.S.Fighting) yield break;
+            ctl.Fight.Hold(9999f);
+            var st = new PanStats();
+            var b = z.BoundsPx;
+            // the far points: 24 px inside the art's edges (beyond the home frame by the overscan less that), and a dash
+            // out to 10 px past the art's edge (the bounds stop the view there: counted apart)
+            float xR = XForPx(ctl, b.xMax - 24f, Y, Z), xL = XForPx(ctl, b.xMin + 24f, Y, Z), xEdge = XForPx(ctl, b.xMax + 10f, Y, Z);
+            Log(string.Format(CIp, "[PAN] {0}: fish run x {1:0.0} -> {2:0.0} (px {3:0}) / dash {4:0.0} -> {5:0.0} (px {6:0}) at z {7} m; {8}",
+                tag, x0, xR, b.xMax - 24f, xL, xEdge, b.xMax + 10f, Z, ZDesc(z)));
+
+            IEnumerator Move(float from, float to, float speed)
+            {
+                float t = 0f, dur = Mathf.Abs(to - from) / speed;
+                while (t < dur && ctl.State == FishingController.S.Fighting && ctl.Hooked != null)
+                {
+                    t += Time.deltaTime;
+                    float u = Mathf.Clamp01(t / dur);
+                    u = u * u * (3f - 2f * u);
+                    ctl.DebugFishHold = new Vector3(Mathf.Lerp(from, to, u), Y, Z);
+                    yield return new WaitForEndOfFrame();
+                    if (ctl.State != FishingController.S.Fighting || ctl.Hooked == null) yield break;
+                    PanSample(ctl, st);
+                }
+            }
+            IEnumerator Stay(float x, float dur)
+            {
+                ctl.DebugFishHold = new Vector3(x, Y, Z);
+                for (float t = 0f; t < dur && ctl.State == FishingController.S.Fighting; t += Time.deltaTime)
+                {
+                    yield return new WaitForEndOfFrame();
+                    if (ctl.State != FishingController.S.Fighting || ctl.Hooked == null) yield break;
+                    PanSample(ctl, st);
+                }
+            }
+
+            yield return Stay(x0, 0.5f);
+            yield return Move(x0, xR, 5f);           // a run out past the right edge (5 m/s)
+            yield return Stay(xR, 1.2f);
+            if (ctl.State == FishingController.S.Fighting)
+            {
+                // the same moment without the overscan (the old clamp at the home frame's edge) and with it
+                var art = z.ArtPx;
+                z.ArtPx = Vector2Int.zero;
+                yield return new WaitForSeconds(0.9f);
+                yield return PanShot(ctl, $"pan_{tag}_before");
+                z.ArtPx = art;
+                yield return new WaitForSeconds(1.2f);
+                st.has = false;
+                st.trail.Clear();
+                yield return PanShot(ctl, $"pan_{tag}_after");
+                st.has = false;
+                st.trail.Clear();
+            }
+            yield return Move(xR, xEdge, 12f);       // a dash on past the art's edge (12 m/s)
+            yield return Stay(xEdge, 0.6f);
+            yield return Move(xEdge, x0, 6f);        // back in
+            yield return Stay(x0, 0.8f);
+            yield return Move(x0, xL, 6f);           // out past the left edge
+            yield return Stay(xL, 1.0f);
+            yield return Move(xL, x0, 6f);
+            yield return Stay(x0, 0.8f);
+            PCheck(tag + "_run", st.frames > 200 && st.beyondHome > 60 && st.maxCam >= z.OverscanPx * 0.6f && st.beyondArt > 0,
+                $"the run reached past the home frame and the art: {st}");
+            PCheck(tag + "_in_view", st.frames > 200 && st.outFish == 0 && st.outTip == 0, st.ToString());
+            PCheck(tag + "_whole_px", st.border == 0 && st.inexact == 0 && st.offWhole == 0, st.ToString());
+            PCheck(tag + "_smooth", st.maxStep <= PanStepMax && st.maxSpeed <= PanSpeedMax,
+                string.Format(CIp, "steps up to {0:0.0} px a frame (<= {1}), {2:0} px/s over 0.25 s (<= {3})", st.maxStep, PanStepMax, st.maxSpeed, PanSpeedMax));
+
+            // the end of the fight from out on the right: landed (끔: let go); the view home after it
+            yield return Move(x0, xR, 6f);
+            yield return Stay(xR, 1.2f);
+            float camOut = Mathf.Abs(z.CamPan.x) + Mathf.Abs(z.PanOne.x);
+            float t0 = Time.time, homeAt = -1f;
+            if (mode == ZoomMode.Off) ctl.DebugRelease();
+            else ctl.DebugLand();
+            ctl.DebugFishHold = null;
+            int maxStepBack = 0;
+            var lastCam = z.CamPan;
+            while (Time.time - t0 < 6f)
+            {
+                yield return new WaitForEndOfFrame();
+                maxStepBack = Mathf.Max(maxStepBack, Mathf.Abs(z.CamPan.x - lastCam.x));
+                lastCam = z.CamPan;
+                if (homeAt < 0f && z.AtHome && z.Level <= 0f) homeAt = Time.time - t0;
+                if (HasButton("판매") || (mode == ZoomMode.Off && ctl.State == FishingController.S.Ready && homeAt >= 0f)) break;
+            }
+            PCheck(tag + "_home", camOut > 0f && homeAt >= 0f && homeAt <= PanHomeMax && maxStepBack <= PanStepMax,
+                string.Format(CIp, "panned {0:0} px when the fight ended ({1}), home (1x, camera and 1x pan at 0) {2:0.00} s later, the camera's steps back up to {3} px a frame; now {4}",
+                    camOut, mode == ZoomMode.Off ? "let go" : "landed", homeAt, maxStepBack, ZDesc(z)));
+            if (HasButton("판매"))
+            {
+                PCheck(tag + "_card_home", z.AtHome && z.Level == 0f && z.UV == new Rect(0f, 0f, 1f, 1f), ZDesc(z));
+                yield return PanShot(ctl, $"pan_{tag}_card");
+            }
+            yield return ToReady(ctl);
+            PCheck(tag + "_ready_home_after", ctl.State == FishingController.S.Ready && z.AtHome && z.Level == 0f, $"state {ctl.State}; {ZDesc(z)}");
+        }
+
+        /// <summary>A natural fight hooked far out on the right (the fight model running, wound in like the fish scenario), 40 s at most.</summary>
+        IEnumerator PanNatural(FishingController ctl)
+        {
+            var z = ZoomNow;
+            float W = PixelView.Current.Target.width;
+            const float Z = 30f;
+            float x0 = XForPx(ctl, W + 20f, -1.2f, Z);
+            yield return PanHook(ctl, "natural", new Vector3(x0, 0f, Z), "mackerel", 38f, 2002);
+            if (ctl.State != FishingController.S.Fighting) yield break;
+            var st = new PanStats();
+            var c = Scr(0.72f, 0.4f);
+            float r = Screen.height * 0.13f, ang = 0f, t = 0f, ws = CircleGesture.Reversed ? -1f : 1f;
+            bool winding = false, shot = false;
+            while (ctl.State == FishingController.S.Fighting && ctl.Hooked != null && t < 40f)
+            {
+                float dt = Time.deltaTime;
+                t += dt;
+                var f = ctl.Fight;
+                if (winding && (f.TensionRatio > 0.8f || f.Jumping)) winding = false;
+                else if (!winding && f.TensionRatio < 0.55f && !f.Jumping && t > 4f) winding = true;   // (let it run first)
+                if (winding) ang -= ws * dt * 1.6f * Mathf.PI * 2f;
+                else if (f.TensionRatio > 0.95f) ang += ws * dt * 1.2f * Mathf.PI * 2f;
+                PointerInput.SimDown = true;
+                PointerInput.SimPos = c + new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * r;
+                yield return new WaitForEndOfFrame();
+                if (ctl.State != FishingController.S.Fighting || ctl.Hooked == null) break;
+                PanSample(ctl, st);
+                if (!shot && st.maxOver > 30f && z.WorldToPx(ctl.Fish2D(ctl.Hooked)).x > W + 30f)
+                {
+                    shot = true;
+                    st.has = false;
+                    st.trail.Clear();
+                    yield return PanShot(ctl, "pan_natural");
+                }
+            }
+            PointerInput.SimDown = false;
+            PCheck("natural_in_view", st.frames > 120 && st.outFish == 0 && st.outTip == 0 && st.border == 0 && st.inexact == 0 && st.offWhole == 0,
+                $"(the fight ended {ctl.State} after {Z2(t)} s) {st}");
+            PCheck("natural_smooth", st.maxStep <= PanStepMax && st.maxSpeed <= PanSpeedMax, st.ToString());
+            Log($"[PAN] natural: the fish went past the home frame in {st.beyondHome} of {st.frames} frames (shot {shot})");
+            if (ctl.State == FishingController.S.Fighting) ctl.DebugRelease();
+            float t0 = Time.time, homeAt = -1f;
+            while (Time.time - t0 < 6f && homeAt < 0f)
+            {
+                yield return new WaitForEndOfFrame();
+                if (z.AtHome && z.Level <= 0f) homeAt = Time.time - t0;
+                if (HasButton("판매")) break;
+            }
+            if (HasButton("판매"))
+            {
+                yield return new WaitForSeconds(0.3f);
+                homeAt = z.AtHome && z.Level <= 0f ? Time.time - t0 : -1f;
+            }
+            PCheck("natural_home", homeAt >= 0f && homeAt <= PanHomeMax + 1f, $"home {Z2(homeAt)} s after the fight; {ZDesc(z)}");
+            yield return ToReady(ctl);
+        }
+
+        /// <summary>
+        /// The camera panned (a fish held far out on the right, the obstacle outlines shown), time frozen: the render target
+        /// with the camera at its pan must be the home one shifted by the pan, pixel for pixel, where they overlap.
+        /// </summary>
+        IEnumerator PanAlign(FishingController ctl)
+        {
+            var z = ZoomNow;
+            var pv = PixelView.Current;
+            float W = pv.Target.width;
+            const float Z = 26f, Y = -0.8f;
+            float x0 = XForPx(ctl, W * 0.6f, Y, Z);
+            Game.Data.zoomMode = (int)ZoomMode.Off;
+            yield return PanHook(ctl, "align", new Vector3(x0, 0f, Z), "mackerel", 36f, 77);
+            if (ctl.State != FishingController.S.Fighting) yield break;
+            ctl.Fight.Hold(9999f);
+            float xR = XForPx(ctl, z.BoundsPx.xMax - 30f, Y, Z);
+            ctl.DebugFishHold = new Vector3(xR, Y, Z);
+            Obstacles.Show = true;
+            for (float w = 0f; w < 4f && z.CamPan.x < z.OverscanPx * 0.5f; w += Time.deltaTime) yield return null;
+            yield return new WaitForSeconds(0.8f);
+            var pan = z.CamPan;
+            float ts = Time.timeScale;
+            Time.timeScale = 0f;
+            CurrentField.DebugFreeze = true;
+            yield return null;
+            yield return new WaitForEndOfFrame();
+            if ((Time.frameCount & 1) != 0) yield return new WaitForEndOfFrame();
+            var a = GrabRT();
+            z.Hold(0f, Vector2Int.zero);
+            yield return null;
+            yield return new WaitForEndOfFrame();
+            if ((Time.frameCount & 1) != 0) yield return new WaitForEndOfFrame();
+            var home = GrabRT();
+            z.Hold(0f, pan);
+            yield return null;
+            yield return new WaitForEndOfFrame();
+            if ((Time.frameCount & 1) != 0) yield return new WaitForEndOfFrame();
+            var a2 = GrabRT();
+            z.Release();
+            Time.timeScale = ts;
+            CurrentField.DebugFreeze = false;
+            if (a == null || home == null || a2 == null || pan.x == 0)
+            {
+                PCheck("align", false, $"no capture or no pan ({pan})");
+            }
+            else
+            {
+                int w = a.width, h = a.height, diff = 0, noise = 0, overlap = 0;
+                var pa = a.GetPixels32();
+                var ph = home.GetPixels32();
+                var p2 = a2.GetPixels32();
+                string first = "";
+                for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    int hx = x + pan.x, hy = y + pan.y;
+                    if (hx < 0 || hx >= w || hy < 0 || hy >= h) continue;
+                    var p = pa[y * w + x];
+                    var q = p2[y * w + x];
+                    if (p.r != q.r || p.g != q.g || p.b != q.b)
+                    {
+                        noise++;
+                        continue;
+                    }
+                    overlap++;
+                    var s = ph[hy * w + hx];
+                    if (p.r != s.r || p.g != s.g || p.b != s.b)
+                        if (diff++ == 0) first = $" first at ({x},{y}) panned #{p.r:x2}{p.g:x2}{p.b:x2} vs home ({hx},{hy}) #{s.r:x2}{s.g:x2}{s.b:x2}";
+                }
+                PCheck("align", overlap > w * h / 2 && diff == 0 && noise < w * h / 50,
+                    $"camera panned {pan.x},{pan.y} px: {diff} of {overlap} overlapping px differ from the home target shifted by the pan (frame-to-frame noise {noise} left out){first}");
+                File.WriteAllBytes(Path.Combine(shots, "pan_align_panned_rt.png"), a.EncodeToPNG());
+                File.WriteAllBytes(Path.Combine(shots, "pan_align_home_rt.png"), home.EncodeToPNG());
+            }
+            if (a != null) Destroy(a);
+            if (home != null) Destroy(home);
+            if (a2 != null) Destroy(a2);
+            Obstacles.Show = false;
+            ctl.DebugFishHold = null;
+            ctl.DebugRelease();
+            yield return ToReady(ctl);
+        }
+
+        IEnumerator PanShot(FishingController ctl, string name)
+        {
+            yield return new WaitForEndOfFrame();
+            var z = ZoomNow;
+            string fish = ctl.Hooked != null ? ZV(z.WorldToPx(ctl.Fish2D(ctl.Hooked))) : "-";
+            bool fishIn = ctl.Hooked != null && InCrop(z, ctl.Fish2D(ctl.Hooked), 0f);
+            Log(string.Format(CIp, "[PAN] SHOT {0} state {1} fish {2} in view {3} tip {4}; {5}", name, ctl.State, fish, fishIn, ZV(z.WorldToPx(ctl.RodTip2D)), ZDesc(z)));
+            string p = Path.Combine(shots, name + ".png");
+            ScreenCapture.CaptureScreenshot(p);
+            Log("shot " + p);
+            yield return null;
+        }
+    }
+}

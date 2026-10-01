@@ -69,9 +69,9 @@ namespace FishingKing
         static ViewZoom ZoomNow => PixelView.Current != null ? PixelView.Current.Zoom : null;
 
         static string ZDesc(ViewZoom z) => z == null ? "-" : string.Format(CIz,
-            "level {0:0.000} zoom {1:0.0000}x{2:0.0000} scale {3:0.000}x{4:0.000} step {5}x{6} crop ({7:0.00},{8:0.00} {9:0.00}x{10:0.00}) pan ({11:0.0}, {12:0.0}) exact {13}",
+            "level {0:0.000} zoom {1:0.0000}x{2:0.0000} scale {3:0.000}x{4:0.000} step {5}x{6} crop ({7:0.00},{8:0.00} {9:0.00}x{10:0.00}) pan ({11:0.0}, {12:0.0}) exact {13} camera {14},{15} 1x {16} overscan {17}",
             z.Level, z.Zoom.x, z.Zoom.y, z.ScaleNow.x, z.ScaleNow.y, z.StepPx.x, z.StepPx.y, z.CropPx.x, z.CropPx.y, z.CropPx.width, z.CropPx.height,
-            z.PanPx.x, z.PanPx.y, z.PixelExact);
+            z.PanPx.x, z.PanPx.y, z.PixelExact, z.CamPan.x, z.CamPan.y, z.PanOne.x, z.OverscanPx);
 
         static bool InCropPx(ViewZoom z, Vector2 px, float margin)
         {
@@ -81,12 +81,17 @@ namespace FishingKing
 
         static bool InCrop(ViewZoom z, Vector2 world, float margin) => InCropPx(z, z.WorldToPx(world), margin);
 
-        /// <summary>The crop lies inside the render target (no empty border).</summary>
+        /// <summary>
+        /// No empty border: the crop lies inside the view's bounds (the render target at home, or the stage art with its
+        /// overscan) and its UV inside the render target as the camera has it (the camera's pan holds it).
+        /// </summary>
         static bool CropInside(ViewZoom z)
         {
-            var rt = PixelView.Current.Target;
+            var b = z.BoundsPx;
             var c = z.CropPx;
-            return c.xMin >= -1e-3f && c.yMin >= -1e-3f && c.xMax <= rt.width + 1e-3f && c.yMax <= rt.height + 1e-3f;
+            var uv = z.UV;
+            return c.xMin >= b.xMin - 1e-3f && c.yMin >= b.yMin - 1e-3f && c.xMax <= b.xMax + 1e-3f && c.yMax <= b.yMax + 1e-3f
+                   && uv.xMin >= -1e-4f && uv.yMin >= -1e-4f && uv.xMax <= 1f + 1e-4f && uv.yMax <= 1f + 1e-4f;
         }
 
         IEnumerator ZShot(FishingController ctl, string name)
@@ -592,8 +597,8 @@ namespace FishingKing
             Vector2 lastPan = z.PanPx, pan1 = lastPan;
             bool s1 = shot1 < 0f, s2 = shot2 < 0f, skipSpeed = false;
             st.arrowDone = !arrow;
-            var rt = PixelView.Current.Target;
-            var whole = new Rect(0f, 0f, rt.width, rt.height);
+            // (the whole view the crop may go over: the target at home, or the stage art with its overscan)
+            var whole = z.BoundsPx;
             PointerInput.SimActive = true;
             while (ctl.State == FishingController.S.Fighting && t < dur)
             {
@@ -610,8 +615,8 @@ namespace FishingKing
                 var pan = z.PanPx;
                 var fishPx = z.WorldToPx(ctl.Fish2D(ctl.Hooked));
                 var tipPx = z.WorldToPx(ctl.RodTip2D);
-                // (a fish beyond the whole view, e.g. under the sea's breakwater, is out at 1x too: the crop stays on the target;
-                // nor can a crop of this size on the target hold it with the rod tip when they lie farther apart than it)
+                // (a fish beyond the whole view, e.g. under the sea's breakwater, is out at 1x too: the crop stays in the
+                // bounds; nor can a crop of this size in the bounds hold it with the rod tip when they lie farther apart than it)
                 if (!whole.Contains(fishPx) || !OneCropHolds(z, whole, fishPx, tipPx, 1f)) st.beyond++;
                 else if (!InCropPx(z, fishPx, 0f)) st.outFish++;
                 if (!InCropPx(z, tipPx, 0f)) st.outTip++;

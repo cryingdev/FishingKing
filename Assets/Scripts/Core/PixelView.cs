@@ -135,8 +135,13 @@ namespace FishingKing
                 shake = new Vector2(Random.Range(-a, a), Random.Range(-a, a));
             }
             else shake = Vector2.zero;
-            // snap the camera to whole pixels so the scene never shimmers
-            Vector3 p = basePos + (Vector3)shake;
+            PlaceCamera();
+        }
+
+        /// <summary>The camera at its centre, the shake and the pan, snapped to whole pixels so the scene never shimmers.</summary>
+        void PlaceCamera()
+        {
+            Vector3 p = basePos + (Vector3)shake + new Vector3(pan.x, pan.y, 0f) / PPU;
             p.x = Mathf.Round(p.x * PPU) / PPU;
             p.y = Mathf.Round(p.y * PPU) / PPU;
             WorldCamera.transform.position = p;
@@ -144,8 +149,24 @@ namespace FishingKing
 
         public void SetCenter(Vector2 c) => basePos = new Vector3(c.x, c.y, -10);
 
-        /// <summary>The camera's centre without the shake.</summary>
+        /// <summary>The camera's centre without the shake or the pan (the home view).</summary>
         public Vector2 BaseCenter => basePos;
+
+        Vector2Int pan;
+
+        /// <summary>
+        /// The camera's offset from its centre in whole game px (<see cref="ViewZoom"/>: the fishing view panned over the
+        /// stage art beyond the home view, following a fish or a rig that went past it; zero everywhere else).
+        /// </summary>
+        public Vector2Int Pan => pan;
+
+        /// <summary>Moves the camera to this pan now (set by <see cref="ViewZoom"/> with the crop it shows this frame).</summary>
+        internal void SetPan(Vector2Int p)
+        {
+            if (p == pan) return;
+            pan = p;
+            PlaceCamera();
+        }
 
         /// <summary>The part of the target the display shows (set by <see cref="ViewZoom"/>).</summary>
         internal void SetDisplayUV(Rect r)

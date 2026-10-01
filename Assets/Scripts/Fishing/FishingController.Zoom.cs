@@ -24,6 +24,14 @@ namespace FishingKing
     /// a bite that ends without a hook (missed: winding in, or a lure back to the wait) eases out to 1x. A snag stays at
     /// the zoom it found; the legend encounter as above (1x, in for its fight).</para>
     /// <para>끔: never zooms (no fight follow either).</para>
+    /// <para>Beyond the home frame (every mode): the stage art is wider than the render target (<see cref="ViewZoom.ArtPx"/>),
+    /// so a fish running out past the 1x frame's side (the sea, the ocean, a wide run on the lake), or a rig cast or
+    /// drifted there, is followed onto it: zoomed, the crop's pan simply goes on past the old edge (the camera moves by
+    /// whole px under it); at 1x (끔 all the time, 액티브 while he waits, any mode while the zoom eases) the view itself pans,
+    /// only as far as keeps the rod tip and the rig / fish their margins inside, accelerating gently and easing back home
+    /// once they are back in the home frame or the fight is over (the landing, the catch card, the ready: always home; a
+    /// wind-up hurries it home). 끔 pans too: it means "no zoom", and a fish off the screen is never wanted; the pan only
+    /// starts past the home frame, so as long as the fish stays in it 끔 looks exactly as before.</para>
     /// </summary>
     public partial class FishingController
     {
@@ -71,8 +79,18 @@ namespace FishingKing
 
         void InitZoom()
         {
-            if (view != null && view.Zoom != null) view.Zoom.Director = DirectZoom;
+            if (view == null || view.Zoom == null) return;
+            view.Zoom.Director = DirectZoom;
+            // the stage art's overscan: the view may pan sideways over all of it (ViewZoom.ArtPx)
+            view.Zoom.ArtPx = new Vector2Int(L.widthPx > 0 ? L.widthPx : 640, L.heightPx > 0 ? L.heightPx : 400);
         }
+
+        /// <summary>
+        /// The rig is in the water or a fish is on: the rod tip and the rig / the fish are must-see points (zoomed: kept in
+        /// the crop; at 1x: the view pans over the stage art's overscan when they go beyond the home frame).
+        /// </summary>
+        bool ZoomFollows => Angler != null && Tackle != null
+                            && (State == S.Waiting || State == S.Biting || State == S.Snagged || (State == S.Fighting && Hooked != null));
 
         void DirectZoom(ViewZoom z)
         {
@@ -84,8 +102,14 @@ namespace FishingKing
             if (!zoomIn)
             {
                 zoomCue = 0;
-                // (a wind-up or a throw hurries any zoom-out still under way: casting is always at 1x)
-                z.Want(false, State == S.Aiming || State == S.Casting ? ZoomAimOut : ViewZoom.EaseTime);
+                // (a wind-up or a throw hurries any zoom-out still under way, and the view home: casting is always at 1x
+                // from the home view)
+                bool aiming = State == S.Aiming || State == S.Casting;
+                z.Want(false, aiming ? ZoomAimOut : ViewZoom.EaseTime);
+                z.HurryHome = aiming;
+                // 끔 (and 액티브 while he waits): at 1x the view still pans, gently and only as far as needed, to keep the rod
+                // tip and the float / the fish in when they go beyond the home frame (a long run, a wide cast)
+                if (ZoomFollows) KeepInFrame(z);
                 return;
             }
             z.TopInsetPx = FightStripUnits * UIKit.ScaleFactor;
@@ -125,6 +149,19 @@ namespace FishingKing
             }
             z.Want(zoomCue >= 0);
             z.Focus(Vector2.Lerp(tip, rig, 0.5f), zoomCue > 0 ? ZoomCueTau : ZoomWaitTau);
+        }
+
+        /// <summary>The 1x view's must-see points: the rod tip and the fish, or the rig (a sunk lure a little below its entry).</summary>
+        void KeepInFrame(ViewZoom z)
+        {
+            z.Keep(RodTip2D, ZoomTipMargin);
+            if (State == S.Fighting && Hooked != null)
+            {
+                z.Keep(Fish2D(Hooked), ZoomFishMargin);
+                return;
+            }
+            z.Keep(RigShown2D, ZoomRigMargin);
+            if (!Tackle.UsesFloat && Tackle.State == Tackle.Mode.Water && Tackle.Depth > 0.05f) z.Keep(P.To2D(P.Apparent(Tackle.HookPos)), ZoomRigMargin);
         }
 
         /// <summary>Test hook (-fkauto zoom): the line breaks now (the fight's own break).</summary>

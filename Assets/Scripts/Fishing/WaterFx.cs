@@ -69,8 +69,9 @@ namespace FishingKing
         float fade0 = 20f, fade1 = 70f;   // distance fade (metres)
         int maxDash = 10;                 // longest dash (px)
 
-        // visible part of the stage canvas this frame
+        // visible part of the stage canvas this frame (drawn), the home view's (in play), the camera's pan (game px)
         int vx0, vx1, vy0, vy1, rtW = 480;
+        int hx0, hx1, hy0, hy1, panX, lastPanX;
 
         // ---- particles
         struct Dash { public float x, z, vx, vz, len, age, life, alpha, k; public byte kind; }
@@ -589,14 +590,14 @@ namespace FishingKing
             return (mask[Mathf.FloorToInt(rf) * W + Mathf.FloorToInt(cf)] & MFront) == 0;
         }
 
-        /// <summary>The water point (x, z) is in view: 6 px inside the pixel view's sides and top, above its bottom. True without a water mask.</summary>
+        /// <summary>The water point (x, z) is in view: 6 px inside the home view's sides and top, above its bottom (the pan over the overscan never widens it). True without a water mask.</summary>
         public bool InView(float x, float z)
         {
             if (mask == null) return true;
             Proj(x, 0, z, out float cf, out float rf, out _);
             int c = Mathf.FloorToInt(cf), r = Mathf.FloorToInt(rf);
             const int M = 6;
-            return c >= vx0 + M && c < vx1 - M && r >= vy0 && r < vy1 - M;
+            return c >= hx0 + M && c < hx1 - M && r >= hy0 && r < hy1 - M;
         }
 
         /// <summary>The front layer covers this point of the pixel scene (scene units; false off the canvas or without a mask).</summary>
@@ -614,8 +615,8 @@ namespace FishingKing
             for (int i = 0; i < 8; i++)
             {
                 z = Mathf.Lerp(zMin, zMax, Mathf.Pow(Random.value, bias));
-                float half = Mathf.Min(L.xLim, P.VisibleHalfWidth(z, rtW));
-                x = Random.Range(-half, half);
+                ViewX(z, out float lo, out float hi);
+                x = Random.Range(lo, hi);
                 if (IsWaterAt(x, z)) return true;
             }
             x = z = 0;
@@ -779,21 +780,45 @@ namespace FishingKing
         }
 
         // ------------------------------------------------------------------ frame
-        /// <summary>The part of the stage canvas the pixel view shows (its render texture, centred on the origin).</summary>
+        /// <summary>
+        /// The part of the stage canvas the pixel view shows: where the effects are drawn (its render texture where the
+        /// camera has it now, panned over the overscan: <see cref="PixelView.Pan"/>, a few px wider on the side it moves
+        /// to, as the zoom moves the camera after this Update) and the home view (centred on the origin), which stays the
+        /// play area's "in view" (<see cref="InView"/>: a drifting rig never goes where only a pan would show it).
+        /// </summary>
         void ViewBounds()
         {
             var pv = PixelView.Current;
             int w = 480, h = 270;
+            var pan = Vector2Int.zero;
             if (pv != null && pv.Target != null)
             {
                 w = pv.Target.width;
                 h = pv.Target.height;
+                pan = pv.Pan;
             }
             rtW = w;
-            vx0 = Mathf.Max(0, Mathf.FloorToInt(halfW) - w / 2);
-            vx1 = Mathf.Min(W, Mathf.FloorToInt(halfW) - w / 2 + w);
-            vy0 = Mathf.Max(0, Mathf.FloorToInt(halfH) - h / 2);
-            vy1 = Mathf.Min(H, Mathf.FloorToInt(halfH) - h / 2 + h);
+            panX = pan.x;
+            int x0 = Mathf.FloorToInt(halfW) - w / 2, y0 = Mathf.FloorToInt(halfH) - h / 2;
+            hx0 = Mathf.Max(0, x0);
+            hx1 = Mathf.Min(W, x0 + w);
+            hy0 = Mathf.Max(0, y0);
+            hy1 = Mathf.Min(H, y0 + h);
+            const int Slack = 6;   // game px: the pan moves at most a few px a frame
+            int sl = pan.x != 0 || lastPanX != 0 ? Slack : 0;
+            vx0 = Mathf.Max(0, x0 + pan.x - sl);
+            vx1 = Mathf.Min(W, x0 + w + pan.x + sl);
+            vy0 = Mathf.Max(0, y0 + pan.y);
+            vy1 = Mathf.Min(H, y0 + h + pan.y);
+            lastPanX = pan.x;
+        }
+
+        /// <summary>The visible water's x range (metres) at distance z: the view as the camera has it now (panned over the overscan).</summary>
+        void ViewX(float z, out float lo, out float hi)
+        {
+            float half = P.VisibleHalfWidth(z, rtW), shift = P.VisibleHalfWidth(z, 2f * panX);
+            lo = Mathf.Max(-L.xLim, shift - half);
+            hi = Mathf.Min(L.xLim, shift + half);
         }
 
         void Update()
@@ -1111,8 +1136,10 @@ namespace FishingKing
             for (int n = n0; n <= n1; n++)
             {
                 float zb = n * sw.lambda - s + driftZ;
-                float half = Mathf.Min(L.xLim, P.VisibleHalfWidth(Mathf.Max(zb, sw.zMin), rtW) + sw.cell);
-                int j0 = Mathf.FloorToInt((-half - driftX) / sw.cell), j1 = Mathf.CeilToInt((half - driftX) / sw.cell);
+                ViewX(Mathf.Max(zb, sw.zMin), out float xlo, out float xhi);
+                xlo = Mathf.Max(-L.xLim, xlo - sw.cell);
+                xhi = Mathf.Min(L.xLim, xhi + sw.cell);
+                int j0 = Mathf.FloorToInt((xlo - driftX) / sw.cell), j1 = Mathf.CeilToInt((xhi - driftX) / sw.cell);
                 for (int j = j0; j <= j1; j++)
                 {
                     if (Hash(n, j) > sw.fill) continue;
@@ -1392,8 +1419,8 @@ namespace FishingKing
                     {
                         // up-drift, at the edge of the view
                         d.z = Random.Range(4f, 40f);
-                        float half = P.VisibleHalfWidth(d.z, rtW);
-                        d.x = Mathf.Abs(w.x) >= 0.01f ? -Mathf.Sign(w.x) * (half + 0.5f) : Random.Range(-half, half);
+                        ViewX(d.z, out float lo, out float hi);
+                        d.x = Mathf.Abs(w.x) >= 0.01f ? (w.x > 0f ? lo - 0.5f : hi + 0.5f) : Random.Range(lo, hi);
                         d.on = true;
                     }
                 }
@@ -1417,8 +1444,8 @@ namespace FishingKing
             if (kind == Kind.Stream) gone = d.z < L.zNear + 0.5f || (d.age > 0.5f && !IsWaterAt(d.x, d.z));
             else
             {
-                float half = P.VisibleHalfWidth(d.z, rtW);
-                gone = Mathf.Abs(d.x) > half + 2f || d.z < L.zNear || d.z > 45f;
+                ViewX(d.z, out float lo, out float hi);
+                gone = d.x < lo - 2f || d.x > hi + 2f || d.z < L.zNear || d.z > 45f;
             }
             if (gone) SpawnDrifter(i, false);
         }

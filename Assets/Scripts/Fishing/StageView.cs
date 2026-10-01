@@ -48,6 +48,9 @@ namespace FishingKing
         /// </summary>
         public Vector2 DeckBob { get; private set; }
 
+        /// <summary>Half the stage art's width in world units (20 for the 640 px layers): the clouds, birds, glints and snow cover all of it, the overscan the view may pan over included.</summary>
+        float ArtHalf => (L.widthPx > 0 ? L.widthPx : 640) * 0.5f / PixelView.PPU;
+
         SpriteRenderer backA, backB, frontA, frontB;
         /// <summary>The front layer (the outgoing period's; the occlusion watch reads where it is drawn).</summary>
         internal SpriteRenderer FrontA => frontA;
@@ -318,7 +321,7 @@ namespace FishingKing
             for (int i = 0; i < 5; i++)
             {
                 var sr = Layer(Art.Stage("cloud_" + (i % 3 + 1)), OrderCloud, "Cloud");
-                sr.transform.position = new Vector3(Random.Range(-22f, 22f), horizonY + Random.Range(0.8f, 3.5f), 0);
+                sr.transform.position = new Vector3(Random.Range(-ArtHalf - 2f, ArtHalf + 2f), horizonY + Random.Range(0.8f, 3.5f), 0);
                 sr.color = new Color(1, 1, 1, 0.92f);
                 clouds.Add(sr.transform);
             }
@@ -348,9 +351,9 @@ namespace FishingKing
         {
             var sr = Layer(birdFrames[0], OrderBird, "Bird");
             float dir = Random.value < 0.5f ? 1 : -1;
-            var pos = new Vector3(-dir * 22f, horizonY + Random.Range(0.3f, 2.5f), 0);
+            var pos = new Vector3(-dir * (ArtHalf + 2f), horizonY + Random.Range(0.3f, 2.5f), 0);
             float speed = Random.Range(2.5f, 4f), t = 0;
-            while (Mathf.Abs(pos.x) < 23f && sr != null)
+            while (Mathf.Abs(pos.x) < ArtHalf + 3f && sr != null)
             {
                 t += Time.deltaTime;
                 pos.x += dir * speed * Time.deltaTime;
@@ -375,7 +378,7 @@ namespace FishingKing
         {
             // pick a random point of the visible water, denser in the distance like real glints
             float z = Mathf.Lerp(L.zNear + 1f, Mathf.Min(L.zFar, 90f), Mathf.Pow(Random.value, 0.8f));
-            float half = Mathf.Min(L.xLim, P.VisibleHalfWidth(z, 640));
+            float half = Mathf.Min(L.xLim, P.VisibleHalfWidth(z, ArtHalf * 2f * PixelView.PPU));
             var w = new Vector3(Random.Range(-half, half), L.IsIce ? -10f : 0f, z);
             if (L.IsIce) { g.sr.enabled = false; return; }
             g.sr.enabled = true;
@@ -402,7 +405,7 @@ namespace FishingKing
             }
             else
             {
-                m.pos = new Vector2(Random.Range(-21f, 21f), Random.Range(-13f, 13f));
+                m.pos = new Vector2(Random.Range(-ArtHalf - 1f, ArtHalf + 1f), Random.Range(-13f, 13f));
                 m.vel = new Vector2(Random.Range(-0.4f, 0.1f), Random.Range(-1.4f, -0.8f));
             }
             if (floaty) m.pos = P.To2D(m.world);
@@ -423,7 +426,7 @@ namespace FishingKing
             foreach (var c in clouds)
             {
                 c.position += new Vector3(dt * 0.12f, 0, 0);
-                if (c.position.x > 24f) c.position = new Vector3(-24f, horizonY + Random.Range(0.8f, 3.5f), 0);
+                if (c.position.x > ArtHalf + 4f) c.position = new Vector3(-ArtHalf - 4f, horizonY + Random.Range(0.8f, 3.5f), 0);
             }
             if (now.Birds)
             {
@@ -465,7 +468,7 @@ namespace FishingKing
                 else
                 {
                     m.pos += (m.vel + new Vector2(Mathf.Sin(m.phase * 1.7f) * 0.3f, 0)) * dt;
-                    if (m.pos.y < -13f) m.pos = new Vector2(Random.Range(-21f, 21f), 13f);
+                    if (m.pos.y < -13f) m.pos = new Vector2(Random.Range(-ArtHalf - 1f, ArtHalf + 1f), 13f);
                     m.sr.transform.position = new Vector3(Mathf.Round(m.pos.x * 16) / 16, Mathf.Round(m.pos.y * 16) / 16, 0);
                     m.sr.color = new Color(m.col.r * tint.r, m.col.g * tint.g, m.col.b * tint.b, m.col.a);
                 }

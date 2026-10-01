@@ -27,8 +27,19 @@ namespace FishingKing
     /// outgrow it and back up once the larger step has held them (with room to spare) for <see cref="StepUpHold"/>.</para>
     /// <para>The pan: <see cref="Director"/> says each frame whether to zoom (<see cref="Want"/>), where to look
     /// (<see cref="Focus"/>, followed with its own smoothing) and which points must stay in frame (<see cref="Keep"/>). The
-    /// pan is held at the full step, clamped so the crop never leaves the render target (which lies inside the 640x400 stage
-    /// image: no empty borders); the zoom pivots on it, so every in-between crop contains the final one.</para>
+    /// pan is held at the full step, clamped so the crop never leaves the view's bounds (<see cref="BoundsPx"/>: the render
+    /// target, or with the stage art's overscan the art itself: no empty borders); the zoom pivots on it, so every
+    /// in-between crop contains the final one.</para>
+    /// <para>Overscan (<see cref="ArtPx"/>): the stage art is rendered wider than the render target (every stage's
+    /// 640x400 layers against the 480x270 target at 16:9: 80 px each side; the sea's 800 px wide set: 160), so the view
+    /// may pan sideways beyond the home 1x frame, over the art the target does not show. All coordinates here stay in
+    /// home-view px (the render target with the camera at home, <see cref="WorldToPx"/>); the crop may lie anywhere in
+    /// the bounds, and each frame the world camera moves by the whole game px (<see cref="PixelView.Pan"/>, nearest home)
+    /// that brings the crop onto the target: the stage layers, the actor layers, the depth maps, the water and the
+    /// effects all move with it, and the display shows the crop through it. At 1x the view itself pans (the director's
+    /// must-see points beyond the home frame: <see cref="PanOne"/>, an acceleration-limited follow in whole game px that
+    /// eases back home once nothing asks for it); zoomed, the crop's own pan goes into the overscan the same way. Without
+    /// overscan (the aquarium, or art no wider than the target) the bounds are the target and nothing moves: as before.</para>
     /// </summary>
     [DefaultExecutionOrder(950)] // after the actors' LateUpdates (rod tip, fish, float), before the encounter HUD (1100)
     public class ViewZoom : MonoBehaviour
@@ -47,12 +58,31 @@ namespace FishingKing
         public const float StepUpHold = 1f;
         const float FitSlack = 3f, FitSlackUp = 12f;   // game px of room a step must leave to be kept / to be taken again
         const float HoldMargin = 1f;   // game px: a must-see point is held at least this far inside the crop whenever one crop holds them all
+        /// <summary>Game px: at 1x the view starts to pan this much before a must-see point reaches its margin (the follow accelerates from rest).</summary>
+        public const float OneLead = 12f;
+        /// <summary>Seconds: how the 1x pan settles on where it is asked to be.</summary>
+        public const float OneTau = 0.25f;
+        /// <summary>Game px / s: the 1x pan's top speed (3 px a frame at 60 fps) and its acceleration.</summary>
+        public const float OneMaxSpeed = 180f, OneAccel = 700f;
+        /// <summary>Game px / s: the 1x pan's top speed back home while <see cref="HurryHome"/> (a wind-up: casting is from the home view).</summary>
+        public const float OneHurrySpeed = 600f;
 
         /// <summary>Called every frame before the zoom moves (the fishing controller): calls <see cref="Want"/>, <see cref="Focus"/>, <see cref="Keep"/>.</summary>
         public System.Action<ViewZoom> Director;
 
         /// <summary>Screen pixels along the top covered by the HUD (the fight strip): must-see points are kept below it.</summary>
         public float TopInsetPx;
+
+        /// <summary>
+        /// The stage art's size in game px, centred on the scene origin like the render target at home (zero: none, the
+        /// view never leaves the target). The view may pan sideways over the part of it the target does not show
+        /// (<see cref="OverscanPx"/>); vertically it stays on the target (a fish below the home frame is under the stand,
+        /// hidden by the front layer: Docs/testing.md -fkauto panmeasure).
+        /// </summary>
+        public Vector2Int ArtPx;
+
+        /// <summary>Set by the director for this frame: the 1x pan goes home at <see cref="OneHurrySpeed"/> (a wind-up).</summary>
+        public bool HurryHome;
 
         /// <summary>The zoom asked for (set by the director every frame; <see cref="Aim"/> unless it says otherwise).</summary>
         public float StepAim = Aim;
@@ -72,6 +102,8 @@ namespace FishingKing
         float stepT, stepLen = StepDownTime, upT;
         bool stepEasing;
         int lastTop;
+        Vector2 panOne, panOneV;      // the 1x view's offset from home (home-view px) and its speed
+        Vector2Int heldCam;           // the camera's pan while a test holds the level
 
         internal void Init(PixelView v)
         {
@@ -101,13 +133,44 @@ namespace FishingKing
         public Vector2 BaseScale => baseScale;
         /// <summary>Screen pixels per game pixel now.</summary>
         public Vector2 ScaleNow => scaleNow;
-        /// <summary>The display's crop of the render target (UV, 0..1), as drawn this frame.</summary>
+        /// <summary>The display's crop of the render target (UV, 0..1), as drawn this frame (the target as the camera has it now, pan included).</summary>
         public Rect UV => uv;
-        /// <summary>The crop in render-target pixels (bottom-left origin).</summary>
+        /// <summary>The crop in home-view pixels (the render target with the camera at home, bottom-left origin; with overscan it may lie beyond it).</summary>
         public Rect CropPx => crop;
-        /// <summary>The crop's centre (render-target px) and where it settles at the full step.</summary>
+        /// <summary>The crop's centre (home-view px) and where it settles at the full step.</summary>
         public Vector2 PanPx => crop.center;
         public Vector2 PanTargetPx => panF;
+
+        /// <summary>Game px the view may pan beyond the home view to either side (half the art's width beyond the target's; 0 without overscan).</summary>
+        public int OverscanPx
+        {
+            get
+            {
+                if (pv == null || pv.Target == null || ArtPx.x <= 0) return 0;
+                return Mathf.Max(0, (ArtPx.x - pv.Target.width) / 2);
+            }
+        }
+
+        /// <summary>Where the view may go, in home-view px: the render target at home, widened by <see cref="OverscanPx"/> each side.</summary>
+        public Rect BoundsPx
+        {
+            get
+            {
+                float W = pv != null && pv.Target != null ? pv.Target.width : PixelView.BaseWidth;
+                float H = pv != null && pv.Target != null ? pv.Target.height : PixelView.BaseHeight;
+                int m = OverscanPx;
+                return new Rect(-m, 0f, W + 2f * m, H);
+            }
+        }
+
+        /// <summary>The 1x view's offset from home (home-view px, whole px as shown).</summary>
+        public Vector2Int PanOne => new Vector2Int(Mathf.RoundToInt(panOne.x), Mathf.RoundToInt(panOne.y));
+
+        /// <summary>The world camera's offset from home this frame (whole game px).</summary>
+        public Vector2Int CamPan => pv != null ? pv.Pan : Vector2Int.zero;
+
+        /// <summary>The view is at home: 1x or zoomed, the camera has not moved and the 1x view is not panned.</summary>
+        public bool AtHome => CamPan == Vector2Int.zero && PanOne == Vector2Int.zero;
 
         /// <summary>At the step, whole screen pixels per game pixel and the crop's origin on whole screen pixels.</summary>
         public bool PixelExact
@@ -121,7 +184,7 @@ namespace FishingKing
             }
         }
 
-        /// <summary>A pixel-view world point -> render-target pixels (the unshaken camera).</summary>
+        /// <summary>A pixel-view world point -> home-view pixels (the render target with the unshaken camera at home, not panned).</summary>
         public Vector2 WorldToPx(Vector2 world)
         {
             var rt = pv != null ? pv.Target : null;
@@ -170,8 +233,9 @@ namespace FishingKing
 
         /// <summary>
         /// A point that must stay in frame this frame, at least <paramref name="marginPx"/> game pixels inside it (or up to
-        /// the render target's edge when it lies nearer that). <paramref name="soft"/>: it only steers where the view settles
-        /// (followed at the focus's pace, and only when it fits with the others), never pulls it along fast.
+        /// the bounds' edge when it lies nearer that). <paramref name="soft"/>: it only steers where the view settles
+        /// (followed at the focus's pace, and only when it fits with the others), never pulls it along fast. Zoomed out the
+        /// same points steer the 1x view's pan over the overscan (<see cref="PanOne"/>); none: it goes home.
         /// </summary>
         public void Keep(Vector2 world, float marginPx, bool soft = false)
         {
@@ -193,14 +257,23 @@ namespace FishingKing
         }
 
         // ------------------------------------------------------------------ test hooks
-        /// <summary>Test: show this level now and ignore the director until <see cref="Release"/>.</summary>
+        /// <summary>Test: show this level now and ignore the director until <see cref="Release"/> (the camera stays where it is: at 1x the view is the target as the camera has it).</summary>
         internal void Hold(float lvl)
         {
+            if (!held) heldCam = CamPan;
             held = true;
             level = from = to = Mathf.Clamp01(lvl);
             stepNow = stepZoom;
             stepEasing = false;
             Apply();
+        }
+
+        /// <summary>Test (-fkauto pan): as <see cref="Hold(float)"/> with the camera put at this pan (the crop on its target where it can be).</summary>
+        internal void Hold(float lvl, Vector2Int cam)
+        {
+            held = true;
+            heldCam = cam;
+            Hold(lvl);
         }
 
         internal void Release() => held = false;
@@ -210,7 +283,12 @@ namespace FishingKing
         {
             if (pv == null || pv.Target == null) return;
             Bases();
-            if (Director != null && Director.Target is Object o && o == null) Director = null;
+            if (Director != null && Director.Target is Object o && o == null)
+            {
+                Director = null;
+                ArtPx = Vector2Int.zero;
+            }
+            HurryHome = false;
             if (!held && Director != null) Director(this);
             float dt = Time.deltaTime;
             if (!held) ChooseStep(dt);
@@ -233,7 +311,7 @@ namespace FishingKing
             float topIn = TopInAtStep;
             if (hasFocus)
             {
-                var tgt = Constrain(Clamp(focusPx, half, W, H), half, topIn, true);
+                var tgt = Constrain(Clamp(focusPx, half), half, topIn, true);
                 panF = jumpPan ? tgt : Vector2.Lerp(panF, tgt, 1f - Mathf.Exp(-dt / focusTau));
                 jumpPan = false;
             }
@@ -242,11 +320,80 @@ namespace FishingKing
                 panF = Vector2.Lerp(panF, Constrain(panF, half, topIn, false), 1f - Mathf.Exp(-dt / KeepTau));
                 panF = HoldIn(panF, half);
             }
-            panF = Clamp(panF, half, W, H);
+            panF = Clamp(panF, half);
+            if (!held) FollowOne(dt, W);
             hasFocus = false;
             keeps.Clear();
             softKeeps.Clear();
             Apply();
+        }
+
+        /// <summary>
+        /// The 1x view's pan (horizontal, over the overscan only): to the offset nearest home that keeps every must-see
+        /// point its margin (+ <see cref="OneLead"/>) inside the home-sized view, soft ones too when they fit; home when
+        /// there are none. Followed at <see cref="OneTau"/>, no faster than <see cref="OneMaxSpeed"/>, accelerating and
+        /// braking at <see cref="OneAccel"/>; a hard point that would still leave the view pulls it along at once.
+        /// </summary>
+        void FollowOne(float dt, float W)
+        {
+            float m = OverscanPx;
+            float tgt = 0f;
+            if (m > 0f && keeps.Count + softKeeps.Count > 0)
+            {
+                OneRange(keeps, W, OneLead, out float lo, out float hi);
+                if (softKeeps.Count > 0)
+                {
+                    OneRange(softKeeps, W, OneLead, out float slo, out float shi);
+                    float a = Mathf.Max(lo, slo), b = Mathf.Min(hi, shi);
+                    if (a <= b && a <= m && b >= -m)
+                    {
+                        lo = a;
+                        hi = b;
+                    }
+                }
+                tgt = lo <= hi ? Mathf.Clamp(0f, lo, hi) : (lo + hi) * 0.5f;
+                tgt = Mathf.Clamp(tgt, -m, m);
+            }
+            float vmax = HurryHome ? OneHurrySpeed : OneMaxSpeed, acc = HurryHome ? OneAccel * 3f : OneAccel;
+            float err = tgt - panOne.x;
+            float want = Mathf.Clamp(err / OneTau, -vmax, vmax);
+            float brake = Mathf.Sqrt(2f * acc * Mathf.Abs(err));
+            want = Mathf.Clamp(want, -brake, brake);
+            panOneV.x = Mathf.MoveTowards(panOneV.x, want, acc * dt);
+            panOne.x += panOneV.x * dt;
+            if (Mathf.Abs(tgt - panOne.x) < 0.5f && Mathf.Abs(panOneV.x) < 10f)
+            {
+                panOne.x = tgt;
+                panOneV.x = 0f;
+            }
+            if (m > 0f && keeps.Count > 0)
+            {
+                // (a hard point never leaves the view: the follow lagging behind a fast run is pulled along)
+                OneRange(keeps, W, HoldMargin, out float lo, out float hi);
+                if (lo <= hi)
+                {
+                    float held1 = Mathf.Clamp(panOne.x, lo, hi);
+                    // (its speed is then the view's real speed this frame: the follow carries on from it)
+                    if (held1 != panOne.x && dt > 0f) panOneV.x = Mathf.Clamp(panOneV.x + (held1 - panOne.x) / dt, -OneHurrySpeed, OneHurrySpeed);
+                    panOne.x = held1;
+                }
+            }
+            panOne.x = Mathf.Clamp(panOne.x, -m, m);
+            panOne.y = 0f;
+        }
+
+        /// <summary>The 1x view's offsets (home-view px) that keep these points their margin + <paramref name="lead"/> inside it.</summary>
+        static void OneRange(List<Vector3> ks, float W, float lead, out float lo, out float hi)
+        {
+            lo = float.MinValue;
+            hi = float.MaxValue;
+            foreach (var k in ks)
+            {
+                float mg = Mathf.Min(k.z + lead, W * 0.4f);
+                if (lead <= HoldMargin) mg = Mathf.Min(lead, k.z);
+                lo = Mathf.Max(lo, k.x + mg - W);
+                hi = Mathf.Min(hi, k.x - mg);
+            }
         }
 
         /// <summary>Half the crop at the full step shown (render-target px; the step while none is easing).</summary>
@@ -374,8 +521,13 @@ namespace FishingKing
         /// <summary>The whole number of screen pixels per game pixel nearest to <paramref name="s"/> x <paramref name="z"/> (always more than 1x).</summary>
         static int StepOf(float s, float z) => Mathf.Max(Mathf.RoundToInt(s * z), Mathf.FloorToInt(s + 1e-3f) + 1);
 
-        static Vector2 Clamp(Vector2 c, Vector2 half, float W, float H) =>
-            new Vector2(Mathf.Clamp(c.x, half.x, Mathf.Max(half.x, W - half.x)), Mathf.Clamp(c.y, half.y, Mathf.Max(half.y, H - half.y)));
+        /// <summary>The pan (a crop's centre, <paramref name="half"/> its half size) kept so the crop stays in the bounds.</summary>
+        Vector2 Clamp(Vector2 c, Vector2 half)
+        {
+            var b = BoundsPx;
+            return new Vector2(Mathf.Clamp(c.x, b.xMin + half.x, Mathf.Max(b.xMin + half.x, b.xMax - half.x)),
+                Mathf.Clamp(c.y, b.yMin + half.y, Mathf.Max(b.yMin + half.y, b.yMax - half.y)));
+        }
 
         /// <summary>
         /// The pan nearest <paramref name="c"/> that has every must-see point inside its margins (the top also below the
@@ -415,22 +567,23 @@ namespace FishingKing
 
         /// <summary>
         /// The pans (the crop's centre at the step, per axis lo..hi) that keep the must-see points inside their margins (the
-        /// top also below the HUD); false when there is none. <paramref name="onTarget"/>: only pans keeping the crop on the
-        /// target, and no margin asked past the target's edge (where the crop stops): whether a frame can hold them.
-        /// <paramref name="slack"/>: that much more room around each point (whether a step holds them with room to spare).
+        /// top also below the HUD); false when there is none. <paramref name="onTarget"/>: only pans keeping the crop in the
+        /// bounds (the target, or the art with overscan), and no margin asked past their edge (where the crop stops): whether
+        /// a frame can hold them. <paramref name="slack"/>: that much more room around each point (whether a step holds them
+        /// with room to spare).
         /// </summary>
         bool Range(Vector2 half, float topIn, bool withSoft, bool onTarget, out Vector2 lo, out Vector2 hi, float slack = 0f)
         {
-            float W = pv.Target.width, H = pv.Target.height;
-            lo = onTarget ? half : new Vector2(float.MinValue, float.MinValue);
-            hi = onTarget ? new Vector2(Mathf.Max(half.x, W - half.x), Mathf.Max(half.y, H - half.y)) : new Vector2(float.MaxValue, float.MaxValue);
+            var b = BoundsPx;
+            lo = onTarget ? b.min + half : new Vector2(float.MinValue, float.MinValue);
+            hi = onTarget ? Vector2.Max(b.min + half, b.max - half) : new Vector2(float.MaxValue, float.MaxValue);
             topIn = Mathf.Min(topIn, half.y * 0.5f);
-            Narrow(keeps, half, topIn, onTarget, W, H, slack, ref lo, ref hi);
-            if (withSoft) Narrow(softKeeps, half, topIn, onTarget, W, H, slack, ref lo, ref hi);
+            Narrow(keeps, half, topIn, onTarget, b, slack, ref lo, ref hi);
+            if (withSoft) Narrow(softKeeps, half, topIn, onTarget, b, slack, ref lo, ref hi);
             return lo.x <= hi.x + 1e-3f && lo.y <= hi.y + 1e-3f;
         }
 
-        static void Narrow(List<Vector3> ks, Vector2 half, float topIn, bool onTarget, float W, float H, float slack, ref Vector2 lo, ref Vector2 hi)
+        static void Narrow(List<Vector3> ks, Vector2 half, float topIn, bool onTarget, Rect b, float slack, ref Vector2 lo, ref Vector2 hi)
         {
             foreach (var k in ks)
             {
@@ -438,10 +591,10 @@ namespace FishingKing
                 float left = mx, right = mx, below = my, above = my + topIn;
                 if (onTarget)
                 {
-                    left = Mathf.Clamp(left, 0f, k.x);
-                    right = Mathf.Clamp(right, 0f, W - k.x);
-                    below = Mathf.Clamp(below, 0f, k.y);
-                    above = Mathf.Clamp(above, 0f, H - k.y);
+                    left = Mathf.Clamp(left, 0f, k.x - b.xMin);
+                    right = Mathf.Clamp(right, 0f, b.xMax - k.x);
+                    below = Mathf.Clamp(below, 0f, k.y - b.yMin);
+                    above = Mathf.Clamp(above, 0f, b.yMax - k.y);
                 }
                 lo.x = Mathf.Max(lo.x, k.x + right - half.x);
                 hi.x = Mathf.Min(hi.x, k.x - left + half.x);
@@ -459,27 +612,52 @@ namespace FishingKing
             float zx = 1f + level * (stepNow.x - 1f), zy = 1f + level * (stepNow.y - 1f);
             zoomNow = new Vector2(zx, zy);
             var size = new Vector2(W / zx, H / zy);
-            var C = new Vector2(W, H) * 0.5f;
+            var b = BoundsPx;
+            // the 1x view's centre: home, panned over the overscan (whole px: at 1x the camera itself is the view); a test's
+            // hold keeps the camera where it was
+            var one = held ? heldCam : PanOne;
+            var C = new Vector2(W, H) * 0.5f + new Vector2(one.x, one.y);
             // the zoom pivots on the pan: offset from the centre grows as (1 - 1/z), reaching the pan at the full step
             float kx = stepNow.x > 1f ? (1f - 1f / zx) / (1f - 1f / stepNow.x) : 0f;
             float ky = stepNow.y > 1f ? (1f - 1f / zy) / (1f - 1f / stepNow.y) : 0f;
             var c = C + new Vector2((panF.x - C.x) * kx, (panF.y - C.y) * ky);
-            var o = new Vector2(Mathf.Clamp(c.x - size.x * 0.5f, 0f, W - size.x), Mathf.Clamp(c.y - size.y * 0.5f, 0f, H - size.y));
+            var o = new Vector2(Mathf.Clamp(c.x - size.x * 0.5f, b.xMin, b.xMax - size.x), Mathf.Clamp(c.y - size.y * 0.5f, b.yMin, b.yMax - size.y));
             if (level >= 1f && !stepEasing)
             {
                 // at rest: the crop's origin on whole screen pixels (every game pixel n x n)
                 int sw = Mathf.Max(1, Screen.width), sh = Mathf.Max(1, Screen.height);
-                int ox = Mathf.Clamp(Mathf.RoundToInt(o.x * stepPx.x), 0, Mathf.Max(0, Mathf.RoundToInt(W * stepPx.x) - sw));
-                int oy = Mathf.Clamp(Mathf.RoundToInt(o.y * stepPx.y), 0, Mathf.Max(0, Mathf.RoundToInt(H * stepPx.y) - sh));
+                int bx0 = Mathf.RoundToInt(b.xMin * stepPx.x), by0 = Mathf.RoundToInt(b.yMin * stepPx.y);
+                int ox = Mathf.Clamp(Mathf.RoundToInt(o.x * stepPx.x), bx0, Mathf.Max(bx0, Mathf.RoundToInt(b.xMax * stepPx.x) - sw));
+                int oy = Mathf.Clamp(Mathf.RoundToInt(o.y * stepPx.y), by0, Mathf.Max(by0, Mathf.RoundToInt(b.yMax * stepPx.y) - sh));
                 o = new Vector2(ox / (float)stepPx.x, oy / (float)stepPx.y);
                 size = new Vector2(sw / (float)stepPx.x, sh / (float)stepPx.y);
             }
             crop = new Rect(o, size);
-            var r = new Rect(o.x / W, o.y / H, size.x / W, size.y / H);
+            // the camera: the whole game px nearest home whose target holds the crop (moving the camera by whole px and
+            // the crop on the target back by as much shows the same screen: only the art beyond the home view comes in)
+            var cam = held ? heldCam : new Vector2Int(CamAxis(o.x, size.x, W, b.xMin, b.xMax), CamAxis(o.y, size.y, H, b.yMin, b.yMax));
+            pv.SetPan(cam);
+            var ot = new Vector2(Mathf.Clamp(o.x - cam.x, 0f, Mathf.Max(0f, W - size.x)), Mathf.Clamp(o.y - cam.y, 0f, Mathf.Max(0f, H - size.y)));
+            var r = new Rect(ot.x / W, ot.y / H, size.x / W, size.y / H);
             if (level <= 0f) r = new Rect(0f, 0f, 1f, 1f);
             uv = r;
             scaleNow = new Vector2(Mathf.Max(1, Screen.width) / size.x, Mathf.Max(1, Screen.height) / size.y);
             pv.SetDisplayUV(uv);
+        }
+
+        /// <summary>
+        /// The camera's whole-px offset on one axis whose target ([cam, cam + <paramref name="full"/>]) holds the crop
+        /// [<paramref name="o"/>, o + <paramref name="s"/>] and stays in the bounds: the one nearest home (0); when none
+        /// holds it exactly (easing, the crop within a pixel of the target's size), the nearest.
+        /// </summary>
+        static int CamAxis(float o, float s, float full, float bMin, float bMax)
+        {
+            int lo = Mathf.CeilToInt(o + s - full - 1e-3f), hi = Mathf.FloorToInt(o + 1e-3f);
+            int bl = Mathf.CeilToInt(bMin - 1e-3f), bh = Mathf.Max(bl, Mathf.FloorToInt(bMax - full + 1e-3f));
+            lo = Mathf.Max(lo, bl);
+            hi = Mathf.Min(hi, bh);
+            if (lo > hi) return Mathf.Clamp(Mathf.RoundToInt(o + (s - full) * 0.5f), bl, bh);
+            return Mathf.Clamp(0, lo, hi);
         }
     }
 }
