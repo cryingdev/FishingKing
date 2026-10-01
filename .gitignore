@@ -24,3 +24,4 @@ __pycache__/
 
 # BGM pipeline scratch output
 /Tools/Music/_tmp/
+/Tools/Music/sf2/

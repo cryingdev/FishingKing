@@ -30,7 +30,8 @@ Outputs (paths relative to the repository root)
 - Tools/Music/_tmp/                          scratch: stem midis, wavs, lint reports (git-ignored)
 
 Requires: python3 with mido + numpy + scipy, fluidsynth (2.x), oggenc (vorbis-tools), a GM SoundFont
-(FluidR3_GM.sf2, MIT licence; path from $FK_SF2 or the Debian/Ubuntu default /usr/share/sounds/sf2/FluidR3_GM.sf2).
+(FluidR3_GM.sf2, MIT licence; path from $FK_SF2, else Tools/Music/sf2/FluidR3_GM.sf2, else the Debian/Ubuntu
+/usr/share/sounds/sf2/FluidR3_GM.sf2).
 """
 
 import json
@@ -60,7 +61,9 @@ PEAK = 0.89                   # -1 dBFS
 SEAM_FADE = 0.012             # s: crossfade at a loop's start (see Song._cut_loop)
 DC_CUT = 12.0                 # Hz: high-pass on every render (some FluidR3 pads carry a large DC / sub-sonic offset)
 STING_FLOOR = -60.0           # dB under a sting's peak where its tail is cut
-SF2_DEFAULT = "/usr/share/sounds/sf2/FluidR3_GM.sf2"
+# where the GM SoundFont is looked for when $FK_SF2 is not set: the repo-local folder (git-ignored; Windows / macOS: put
+# FluidR3_GM.sf2 there), then the Debian/Ubuntu package path
+SF2_CANDIDATES = [os.path.join(HERE, "sf2", "FluidR3_GM.sf2"), "/usr/share/sounds/sf2/FluidR3_GM.sf2"]
 
 # FluidSynth effects: one global reverb / chorus (the per-track send is CC91 / CC93)
 REVERB = {"synth.reverb.room-size": 0.62, "synth.reverb.damp": 0.35, "synth.reverb.width": 0.9, "synth.reverb.level": 0.75}
@@ -68,10 +71,11 @@ CHORUS = {"synth.chorus.nr": 3, "synth.chorus.level": 1.2, "synth.chorus.speed":
 
 
 def sf2_path():
-    p = os.environ.get("FK_SF2", SF2_DEFAULT)
-    if not os.path.isfile(p):
-        raise FileNotFoundError(f"GM SoundFont not found: {p} (set FK_SF2)")
-    return p
+    env = os.environ.get("FK_SF2")
+    for p in ([env] if env else SF2_CANDIDATES):
+        if os.path.isfile(p):
+            return p
+    raise FileNotFoundError(f"GM SoundFont not found: {env or ' / '.join(SF2_CANDIDATES)} (set FK_SF2)")
 
 
 # ---------------------------------------------------------------------------------------------------------- pitches
@@ -724,14 +728,24 @@ def _ensure_meta(asset_path):
 def register(song):
     """Add / replace the cue in Assets/Resources/Data/music.json (sorted by id). Several builds may run at once:
     the read-modify-write holds an exclusive lock on Tools/Music/_tmp/manifest.lock."""
-    import fcntl
     os.makedirs(TMP, exist_ok=True)
-    with open(os.path.join(TMP, "manifest.lock"), "w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
-        try:
-            _register(song)
-        finally:
-            fcntl.flock(lock, fcntl.LOCK_UN)
+    with open(os.path.join(TMP, "manifest.lock"), "a+") as lock:
+        if os.name == "nt":   # (Windows: msvcrt locks a byte range; LK_LOCK retries for ~10 s)
+            import msvcrt
+            lock.seek(0)
+            msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
+            try:
+                _register(song)
+            finally:
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                _register(song)
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 def _register(song):
