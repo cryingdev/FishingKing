@@ -825,6 +825,7 @@ line:
 - **`-fklegend <fish_id>`** picks the ocean legend (default blue_marlin).
 - **natural mode:**
   - The lurk goes at (Angler.X, −, 16); on the ice at (holeX, −, holeZ + 4); on the ocean at z 24.
+  - The build-up needs the legend's spot (spec 2.2.1). The AutoPilot waits for it to blink, then casts straight into it. On the ice the spot is the hole, so the usual drop lands in it. The ocean legends use a 2.0 m spot and a 14 s window; every other legend uses the defaults, 1.5 m and 12 s.
   - The AutoPilot plays the key's trigger pattern:
     - golden bait: float depth to the bottom, then still;
     - frog: run and pause;

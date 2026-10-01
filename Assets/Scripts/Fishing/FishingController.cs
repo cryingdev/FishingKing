@@ -738,6 +738,7 @@ namespace FishingKing
             if (L.IsIce) Tackle.FloatDepth = AimDepth;
             SetState(S.Waiting);
             Watch?.OnCast();
+            Watch?.OnRigLanded(at);   // (in the legend's blinking spot in time: claimed)
             var bait = Tackle.Bait;
             // a stage legend's key lures count as liked (the legend comes to them through its encounter)
             if (!GameDatabase.FishOfStage(Stage.Def.id).Any(f => f.Appeal(bait) > 0 || (f.encounter != null && f.encounter.KeyWeight(bait.id) > 0)))

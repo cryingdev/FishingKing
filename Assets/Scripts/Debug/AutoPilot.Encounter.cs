@@ -149,6 +149,13 @@ namespace FishingKing
                 for (float w = 0f; w < 2f && ctl.State != FishingController.S.Ready; w += Time.deltaTime) yield return null;
                 yield return new WaitForSeconds(0.3f);
             }
+            // natural: the build-up needs the legend's spot: wait for it to blink and cast into it (off the ice: straight at
+            // it, the cast's real flight and landing; on the ice the hole is the spot and the usual drop lands in it)
+            if (natural)
+            {
+                yield return WaitSpot(ctl, 60f);
+                if (ctl.Watch.SpotOn && !ctl.Stage.L.IsIce) yield return CastAt(ctl, ctl.Watch.Spot);
+            }
             for (int tries = 0; tries < 4 && ctl.State == FishingController.S.Ready; tries++)
             {
                 // (a dialog that came up late would swallow the flick)
@@ -325,6 +332,31 @@ namespace FishingKing
         }
 
         int keyCount0;
+
+        /// <summary>Waits (up to <paramref name="timeout"/> s) for a legend spot with at least <paramref name="left"/> s of its window left.</summary>
+        IEnumerator WaitSpot(FishingController ctl, float timeout, float left = 4f)
+        {
+            for (float w = 0f; w < timeout; w += Time.deltaTime)
+            {
+                var wt = ctl.Watch;
+                if (wt != null && wt.SpotOn && wt.SpotWindow - wt.SpotT >= left) yield break;
+                yield return null;
+            }
+            Log($"[SPOT] no spot with {left:0}s left within {timeout:0}s");
+        }
+
+        /// <summary>From the ready, a cast straight at <paramref name="at"/> (the real flight and landing), waited out until it lands.</summary>
+        IEnumerator CastAt(FishingController ctl, Vector3 at)
+        {
+            if (Dialog.Open)
+            {
+                Click("알겠어요");
+                yield return new WaitForSeconds(0.5f);
+            }
+            bool ok = ctl.DebugCastTo(at);
+            Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "[SPOT] cast at ({0:0.00}, {1:0.00}): {2}", at.x, at.z, ok ? "thrown" : "not ready (" + ctl.State + ")"));
+            for (float w = 0f; w < 6f && ok && ctl.State == FishingController.S.Casting; w += Time.deltaTime) yield return null;
+        }
 
         /// <summary>One frame of simulated circles at <paramref name="rps"/> revolutions per second (the finger down).</summary>
         static void Circle(ref float ang, float rps, float windSign, Vector2 centre, float radius, float dt)

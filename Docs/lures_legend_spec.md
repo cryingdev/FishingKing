@@ -414,6 +414,53 @@ Other rules:
 - **Wrong-lure tip.** A non-key lure spending 30 s in total within 8 m of the lurk point flashes `tipWrongLure`, once per visit.
 - **One encounter per cast.**
 
+### 2.2.1 The spot (cast into the blinking water)
+
+The meter above only runs while the legend's **spot** is claimed. Every cue also offers a spot, and the player has to cast into it. All of the meter's own conditions still apply on top.
+
+**Offer.** Each cue (the first one 2–6 s after the lurk appears and its notice "깊은 곳에서 무언가 눈을 떴다…" flashes, then every 15–25 s) also brings up a spot, unless one is already blinking or claimed. The spot is chosen as follows:
+- it is on open water inside the **home view**, so a camera pan never shows it alone (`WaterFx.OpenWater`, checked at its centre and at ±radius);
+- it is within the rod's cast distance of where he stands, and at least `zNear + 3` out;
+- it is within `nearLurk − 1` m of the lurk point, so the meter's "near" rule holds there, and as close to the lurk point as it can be;
+- it is deep enough for the legend's `depthMin` (+0.3 m);
+- it is clear of standing props, lily pads and overhangs by its radius;
+- it scores higher within 2.5 m of one of the legend's own covers (`coverFor`), outside it.
+
+On the ice the spot is the hole. To keep a spot in reach, the lurk point itself now lies no farther out than `castDist + nearLurk − 2`.
+
+**Marker.** `WaterFx.ShowSpot` draws the marker in the water effects' own style: 1 px runs, squashed like the rises, clipped to the play water, and sorted at `OrderRing` under the float. Its colour is the legend's `eyeGlow` with 30 % of the water's lit colour, and its bright parts are lifted towards the foam, which is moonlit at night. The period look tints it that way, and the period's dimming only takes it down to 80 %. The marker blinks:
+- the bright phase shows a 2 px outer ring of `spotRadius`, an inner ring at half that radius, a small sparkle cross at the centre, and a pulse ring growing out of it;
+- the dim phase shows the outer ring faint, with one centre pixel.
+
+The blink period is 0.9 s and quickens to 0.3 s over the last 4 s of the window. This is the countdown. The zoom keeps the spot in frame while it blinks, as it does the cue.
+
+**Claim.** A new cast whose rig enters the water (`FishingController.OnLanded`, or `KnockOff` for a perched cast knocked in) claims the spot when all of these hold:
+- it is within `spotRadius` of the spot;
+- it lands inside `spotWindow`; a cast still in the air when the window runs out may still land in it;
+- the rig is a key of a legend here that is not away, and the hook is not bare.
+
+A claimed spot flashes "바로 그 자리! 가만히 기다려 봐요…" and plays one wide pulse ring. The claim holds while the rig stays in the water (`Waiting`) within `spotHold` of the spot. `spotHold` defaults to `nearLurk`, not the landing radius, because a worked lure travels several metres during a 15–30 s build-up. A rig already in the water when the spot comes up never counts: only a landing after the offer does.
+
+**Miss.** A spot is missed when:
+- the window runs out: "빛이 사라졌다…";
+- the rig lands outside the radius: "빗나갔다… 빛나는 곳 안으로 던져야 해요";
+- the rig is wrong: the legend's `tipWrongLure`.
+
+After a miss, the marker fades over 0.6 s and the next cue and spot come `spotRetry` s later. A lost claim works the same way: a new cast, the rig wound in, the rig off the spot, or a fish on. Misses never touch the cooldown or the pity. The meters show `blocked = "spot"` while no spot is claimed. The lurk point does not relocate while a spot blinks or is held.
+
+**First time.** The first spot ever also flashes "빛나는 곳으로 던져 보세요" (`SaveData.spotHint`), after the stage's notice has had its 2.2 s.
+
+**Data** (`EncounterDef`):
+
+| Field | Default | Ocean (marlin, great white) |
+|---|---|---|
+| `spotWindow` | 12 s | 14 s |
+| `spotRadius` | 1.5 m | 2.0 m |
+| `spotRetry` | 8 s | 8 s |
+| `spotHold` | 0 (= `nearLurk`) | 0 |
+
+The ocean values allow for longer casts off the boat. The `-fkencounter now` test has no spots and still starts the encounter 1 s after the lure lands. The `natural` test needs the spot, and its AutoPilot casts into it.
+
 ### 2.3 States and phases
 
 `FishingController.S` gains **`Encounter`**, with `UpdateEncounter(dt)`. While it is active:
@@ -688,6 +735,12 @@ Cooldowns are saved in the legend's `LegendRecord`: `coolUntil` is the wall-cloc
 - 이 녀석을 상대하려면 더 튼튼한 줄이 필요할 것 같다… (20kg 이상)
 - 어둠 속에서 빛나며 가라앉는 먹이에 끌리는 것 같다…
 
+**The spot (2.2.1)**
+- 빛나는 곳으로 던져 보세요 (once ever)
+- 바로 그 자리! 가만히 기다려 봐요…
+- 빛이 사라졌다…
+- 빗나갔다… 빛나는 곳 안으로 던져야 해요
+
 **Encounter start**
 - …! (Omen flash)
 - 어둠 속에서 무언가 다가온다…
@@ -896,7 +949,8 @@ With `w = 0` the output is bit-identical to today's, so the angler and the reels
 
 | Switch | Effect |
 |---|---|
-| `-fkencounter [now\|natural]` | Owns and equips `bait_egi`. If the equipped line is under 20 kg, owns and equips `line_pe3`. Cooldowns are 0 and pity is 0. **`now`** (default): the encounter starts 1.0 s after the lure lands, skipping the conditions. **`natural`**: the lurk point is placed at (Angler.X, −, 16) right away, the soak is 2 s, the meter fills ×8 and the roll always succeeds. Use it with `-fkscene Fishing -fkstage cave`. |
+| `-fkencounter [now\|natural]` | Owns and equips `bait_egi`. If the equipped line is under 20 kg, owns and equips `line_pe3`. Cooldowns are 0 and pity is 0. **`now`** (default): the encounter starts 1.0 s after the lure lands, skipping the conditions. **`natural`**: the lurk point is placed at (Angler.X, −, 16) right away (its first cue and spot 1.5 s later), the soak is 2 s, the meter fills ×8 and the roll always succeeds, but the spot (2.2.1) must still be claimed: the AutoPilot waits for it and casts straight into it. Use it with `-fkscene Fishing -fkstage cave`. |
+| `-fkauto legendspot` | With `-fkencounter natural` (for example `-fkstage lake`), the spot test. It checks that the spot is in the home view, on open water and within the cast. It then checks that no encounter starts when the spot is ignored (a timeout after the window), after a late cast, with a rig already lying in it, after a cast beside it, or with a wrong rig. It checks the retry delay, that no cooldown or pity is spent, and that the key cast into the spot in time claims it and starts the encounter. It shoots `legspot_1_blink_on`, `_2_blink_off`, `_3_land` and `_4_miss`. Its log has `[SPOT] CHECK` lines. |
 | `-fkencplay perfect\|bad\|early` | The AutoPilot `encounter` play style (default `perfect`). `coolsave`: a failed encounter whose cooldown is set and saved despite `-fkencounter`; relaunch with the same `-fksave`, no `-fkencounter`, and `-fkauto legcool` to check it survived. |
 | `-fklure <id>` | Owns and equips that lure, like `-fkbait`. With `-fkauto lure`, runs the lure-action scenario. |
 

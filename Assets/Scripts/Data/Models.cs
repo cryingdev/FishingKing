@@ -419,6 +419,13 @@ namespace FishingKing
         /// <summary>A mood just entered is kept this long before the gauge can drop it back (0 = the hysteresis alone).</summary>
         public float moodHold;
 
+        // ---- the spot (Docs/lures_legend_spec.md 2.2.1): with each cue a spot on the water near the lurk point blinks;
+        // a new cast must come down within spotRadius of it inside spotWindow s for the meter to run at all
+        public float spotWindow = 12f;            // s the spot blinks (the blink quickens over its last 4 s)
+        public float spotRadius = 1.5f;           // m: a landing this close to it claims it
+        public float spotRetry = 8f;              // s after a miss (or a claim lost) before the next spot (no cooldown, no pity)
+        public float spotHold;                    // m the claimed rig may move from it (0 = nearLurk: worked lures travel)
+
         /// <summary>How much this lure draws the legend (0 = not a key lure).</summary>
         public float KeyWeight(string baitId) => baitId != null && keyLures.TryGetValue(baitId, out float w) ? w : 0f;
 

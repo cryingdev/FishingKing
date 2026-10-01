@@ -552,6 +552,14 @@ namespace FishingKing
 
         static bool vivid;
 
+        /// <summary>A colour with a quarter-step alpha as given (the caller applies its own period dimming).</summary>
+        static Color SA(Color c, float a)
+        {
+            c.a = Mathf.Round(Mathf.Clamp01(a) * 4f) / 4f;
+            if (vivid && c.a > 0f) c.a = 1f;
+            return c;
+        }
+
         float Fade(float z) => 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(fade0, fade1, z));
 
         /// <summary>Stage-canvas position (pixels, fractional) and pixels per metre of a point on the water.</summary>
@@ -612,6 +620,115 @@ namespace FishingKing
             int c = Mathf.FloorToInt(cf), r = Mathf.FloorToInt(rf);
             const int M = 6;
             return c >= hx0 + M && c < hx1 - M && r >= hy0 && r < hy1 - M;
+        }
+
+        /// <summary>
+        /// Open play water at (x, z): in the home view (<see cref="InView"/>), painted water, not behind the front layer.
+        /// True without a water mask.
+        /// </summary>
+        public bool OpenWater(float x, float z)
+        {
+            if (mask == null) return true;
+            if (!InView(x, z)) return false;
+            Proj(x, 0, z, out float cf, out float rf, out _);
+            int c = Mathf.FloorToInt(cf), r = Mathf.FloorToInt(rf);
+            if (c < 0 || c >= W || r < 0 || r >= H) return false;
+            byte m = mask[r * W + c];
+            return (m & MWater) != 0 && (m & MFront) == 0;
+        }
+
+        // ------------------------------------------------------------------ the legend's spot (LegendWatch)
+        /// <summary>What the legend's spot looks like this frame (set by LegendWatch every frame it shows).</summary>
+        public struct SpotLook
+        {
+            public float x, z, radius;   // m
+            public bool on;              // the blink's bright phase
+            public float alpha;          // 0..1 (fading in / out)
+            public float pulse;          // 0..1 through an expanding ring (a claim: wide and bright), < 0 none
+            public bool claim;
+            public Color glow;           // the legend's eye glow
+        }
+
+        SpotLook spot;
+        float spotStamp = -1f;
+
+        /// <summary>The legend's spot shows this frame (drawn by the next Update; not set for 0.1 s: gone).</summary>
+        public void ShowSpot(SpotLook s)
+        {
+            spot = s;
+            spotStamp = Time.time;
+        }
+
+        /// <summary>
+        /// The legend's spot: a ring of its radius on the water (squashed like the rises, clipped to the play water),
+        /// in the legend's eye glow with some of the water's lit colour (so the period look tints it); the bright phase
+        /// thickens it to 2 px and adds an inner ring and a small sparkle cross at its centre, the dim phase leaves the outer ring faint. A pulse
+        /// ring expands out of it at every bright phase (a claim: one wide bright ring). Drawn a frame behind the watch
+        /// when this Update runs first (the test waits for <see cref="SpotDrawnOn"/>).
+        /// </summary>
+        void DrawSpot()
+        {
+            int used0 = used;
+            DrawSpotRuns();
+            SpotDrawnSegs = used - used0;
+        }
+
+        /// <summary>The spot as last drawn (the test log): its blink phase and the runs it took.</summary>
+        public bool SpotDrawnOn { get; private set; }
+        public int SpotDrawnSegs { get; private set; }
+
+        void DrawSpotRuns()
+        {
+            if (spotStamp < 0f || Time.time - spotStamp > 0.1f) return;
+            var s = spot;
+            SpotDrawnOn = s.on;
+            // (kept readable at night: the period's dimming only takes it down to 0.8)
+            float a = s.alpha * Mathf.Max(0.8f, fxAlpha);
+            if (a < 0.05f) return;
+            var p = new Vector3(s.x, 0f, s.z);
+            Proj(s.x, 0, s.z, out float cc, out float rr, out float ppm);
+            float squash = Mathf.Clamp(P.Foreshorten(p) * 1.3f, 0.12f, 1f);
+            int cx = Mathf.RoundToInt(cc), cy = Mathf.FloorToInt(rr);
+            // the legend's glow, a little of the water's lit colour in it (the ring) / lifted towards the foam (the hot
+            // parts): both follow the period look (the foam is moonlit at night)
+            var ring = Color.Lerp(s.glow, lighter, 0.3f);
+            var hot = Color.Lerp(Color.Lerp(s.glow, Color.white, 0.55f), foam, 0.2f);
+            float rx = Mathf.Max(2f, s.radius * ppm), ry = rx * squash;
+            if (s.pulse >= 0f)
+            {
+                float k = s.pulse;
+                float pr = rx * (s.claim ? Mathf.Lerp(0.8f, 1.9f, 1f - (1f - k) * (1f - k)) : Mathf.Lerp(0.35f, 1.25f, k));
+                float pa = (s.claim ? 1f : 0.75f) * (1f - k);
+                if (pa >= 0.125f) Ellipse(cx, cy, pr, pr * squash, SA(s.claim ? hot : ring, pa * a), SA(s.claim ? hot : ring, pa * a * 0.8f), OrderRing);
+            }
+            if (s.claim) return;
+            if (!s.on)
+            {
+                // the dim phase: the outer ring alone, faint, and its centre
+                Ellipse(cx, cy, rx, ry, SA(ring, 0.5f * a), SA(ring, 0.4f * a), OrderRing);
+                Run(cy, cx, cx, SA(ring, 0.5f * a), OrderRing);
+                return;
+            }
+            // the bright phase: a 2 px outer ring (its inner line a step fainter), an inner ring, the sparkle
+            Ellipse(cx, cy, rx, ry, SA(hot, a), SA(ring, a), OrderRing);
+            if (rx >= 4f) Ellipse(cx, cy, rx - 1f, Mathf.Max(1f, ry - (ry > 2.5f ? 1f : 0f)), SA(ring, 0.75f * a), SA(ring, 0.75f * a), OrderRing);
+            float ir = rx * 0.5f;
+            if (ir >= 2f) Ellipse(cx, cy, ir, ir * squash, SA(hot, 0.75f * a), SA(ring, 0.75f * a), OrderRing);
+            // the sparkle: a cross (3 px arms near, 2 far off) with short diagonals, its centre the brightest
+            int arm = ppm >= 9f ? 3 : 2;
+            Run(cy, cx - arm, cx + arm, SA(hot, 0.75f * a), OrderRing);
+            for (int d = 1; d <= arm; d++)
+            {
+                float da = (d == 1 ? 1f : d == 2 ? 0.75f : 0.5f) * a;
+                Run(cy + d, cx, cx, SA(hot, da), OrderRing);
+                Run(cy - d, cx, cx, SA(hot, da), OrderRing);
+            }
+            for (int dx = -1; dx <= 1; dx += 2)
+            {
+                Run(cy + 1, cx + dx, cx + dx, SA(hot, 0.5f * a), OrderRing);
+                Run(cy - 1, cx + dx, cx + dx, SA(hot, 0.5f * a), OrderRing);
+            }
+            Run(cy, cx, cx, SA(Color.Lerp(hot, Color.white, 0.5f), a), OrderRing);
         }
 
         /// <summary>The front layer covers this point of the pixel scene (scene units; false off the canvas or without a mask).</summary>
@@ -856,6 +973,7 @@ namespace FishingKing
             if (edgeN > 0) DrawFoam(t);
             for (int i = 0; i < dashes.Length; i++) DrawDash(ref dashes[i]);
             DrawRings();
+            DrawSpot();
             for (int i = 0; i < drift.Length; i++) DrawDrifter(ref drift[i], t);
             if (kind == Kind.Sea) DrawSea(dt, t);
             if (kind == Kind.Lake || kind == Kind.Swamp) DrawCatsPaw();

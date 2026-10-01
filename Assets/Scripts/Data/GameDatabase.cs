@@ -571,6 +571,9 @@ namespace FishingKing
             e.lurkZMin = 20f;
             e.lurkZMax = 45f;
             e.nearLurk = 10f;
+            // (long casts off the boat: a wider spot, a little longer to reel in and throw)
+            e.spotRadius = 2.0f;
+            e.spotWindow = 14f;
             e.lurkDepth = 6f;
             e.minQ = 0.6f;
             e.minSoak = 5f;
@@ -629,6 +632,8 @@ namespace FishingKing
             e.lurkZMin = 20f;
             e.lurkZMax = 45f;
             e.nearLurk = 10f;
+            e.spotRadius = 2.0f;
+            e.spotWindow = 14f;
             e.lurkDepth = 6f;
             e.minQ = 0.55f;
             e.minSoak = 6f;

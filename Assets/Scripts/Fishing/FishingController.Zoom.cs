@@ -161,7 +161,10 @@ namespace FishingKing
                 // the bite: in quickly, on the float / lure (the rod tip kept in frame)
                 zoomCue = 0;
                 bool bite = State == S.Biting;
-                z.Want(true, bite ? ZoomBiteIn : ViewZoom.EaseTime);
+                // (a legend's blinking spot while he waits: in frame too, or out to 1x while it blinks)
+                bool spot = State == S.Waiting && Watch != null && Watch.SpotOn;
+                if (spot) z.Keep(Watch.Spot2D, ZoomCueMargin, true);
+                z.Want(!spot || z.KeepsFit, bite ? ZoomBiteIn : ViewZoom.EaseTime);
                 z.Focus(rig, bite ? ZoomBiteTau : ZoomWaitTau);
                 return;
             }
@@ -174,6 +177,8 @@ namespace FishingKing
             {
                 z.Keep(Watch.CueRings2D, ZoomCueMargin, true);
                 z.Keep(Watch.CueEyes2D, ZoomCueMargin, true);
+                // (and the spot that blinks with it: the player has to see where to cast)
+                if (Watch.SpotOn) z.Keep(Watch.Spot2D, ZoomCueMargin, true);
                 if (zoomCue == 0) zoomCue = z.KeepsFit ? 1 : -1;
             }
             z.Want(zoomCue >= 0);
@@ -191,6 +196,7 @@ namespace FishingKing
             }
             z.Keep(RigShown2D, ZoomRigMargin);
             if (!Tackle.UsesFloat && Tackle.State == Tackle.Mode.Water && Tackle.Depth > 0.05f) z.Keep(P.To2D(P.Apparent(Tackle.HookPos)), ZoomRigMargin);
+            if (Watch != null && Watch.SpotOn) z.Keep(Watch.Spot2D, ZoomCueMargin, true);
         }
 
         /// <summary>Test hook (-fkauto zoom): the line breaks now (the fight's own break).</summary>

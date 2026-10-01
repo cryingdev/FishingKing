@@ -365,6 +365,7 @@ namespace FishingKing
             perchWound = 0f;
             snagPrevOk = false;
             if (tok) NaturalEntry(drop);
+            Watch?.OnRigLanded(drop);   // (a perched cast knocked in: it came down here)
             Obstacles.Say(string.Format(CIo, "perch off {0} ({1}) into ({2:0.00}, {3:0.00}){4}", o != null ? o.id : "bank", tok ? "tok" : "wind", drop.x, drop.z,
                 lipP > 0f ? $" lip roll {lipP:0.00}: {(lip ? "snag" : "no")}" : ""));
             if (lip)
