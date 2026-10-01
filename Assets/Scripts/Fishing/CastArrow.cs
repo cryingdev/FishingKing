@@ -109,7 +109,7 @@ namespace FishingKing
                 alpha = Mathf.Lerp(DimFrom, DimTo, pull01);
             }
             sr.sprite = frames[Frame];
-            float lean = Mathf.Round((angler.RodAngles.y + Angler.WindLeanOut) * LeanPx);
+            float lean = Mathf.Round((angler.RodAngles.y + angler.HandSign * Angler.WindLeanOut) * LeanPx);   // (from the rest lean: out to the rod hand's side)
             var p = angler.HatPos2D + (OffPx + new Vector2(lean, 0f)) / PixelView.PPU;
             transform.position = new Vector3(Mathf.Round(p.x * PixelView.PPU) / PixelView.PPU, Mathf.Round(p.y * PixelView.PPU) / PixelView.PPU, 0f);
             sr.color = new Color(1f, 1f, 1f, alpha);

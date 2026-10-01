@@ -102,14 +102,44 @@ namespace FishingKing
         const float ViewMarginPx = 56f;     // the feet stay this far inside the pixel view's sides (his body and rod stay in view)
         const float FaceTau = 0.085f;       // turning towards the target: ~95 % after 0.25 s
         const float BodyShare = 0.8f;       // the body turns this much of the way, the rod and head the rest
-        const float BodyMax = 35f, HeadMax = 45f, RodMax = 40f; // degrees either way
-        // the rod is held on his left: turning right would swing the rod hand, the reel and the rod's butt behind his
-        // head (seen from behind), so to the right the body turns less and the hand follows only part of the body turn
-        // (the left arm reaches out) and the rod turns less (RodMaxRight: at 40 deg, as to the left, the fish close in out to
-        // his right brought it onto the hat with the hat guard's tilt at its most, KeepOffHat); the head turns the whole way
-        const float BodyMaxRight = 25f, HandRight = 0.35f;
-        /// <summary>Degrees the rod may yaw to his right (static: the -fkrodright test switch; to the left <see cref="RodMax"/>).</summary>
-        internal static float RodMaxRight = 30f;
+        const float BodyMax = 35f, HeadMax = 45f;
+        /// <summary>Degrees the rod may yaw out to the rod hand's side (his left, or his right left-handed).</summary>
+        public const float RodMax = 40f;
+        // the rod is held on his left (the default, 오른손: the right hand cranks): turning right would swing the rod hand,
+        // the reel and the rod's butt behind his head (seen from behind), so across the body the body turns less and the
+        // hand follows only part of the body turn (the rod arm reaches out) and the rod turns less (RodMaxAcross: at 40
+        // deg, as out to the rod side, the fish close in out across brought it onto the hat with the hat guard's tilt at
+        // its most, KeepOffHat); the head turns the whole way. Left-handed (왼손) all of it is mirrored.
+        const float BodyMaxAcross = 25f, HandAcross = 0.35f;
+        /// <summary>Degrees the rod may yaw across the body (to his right; left-handed to his left). Static: the -fkrodright test switch.</summary>
+        internal static float RodMaxAcross = 30f;
+        /// <summary>
+        /// Degrees the rod may yaw either way when it is held in the middle (<see cref="RodCentre"/>): the hand stays in
+        /// front of the belly as the body turns, so neither side swings the rod hand behind his head. Static: the
+        /// -fkrodcentremax test switch.
+        /// </summary>
+        internal static float RodMaxCentre = 35f;
+
+        // ---- 설정 → 조작 (SaveData.leftHanded / rodCentre, read every frame; a change snaps the pose: ReadSettings)
+        /// <summary>왼손: the rod in his right hand and the reel cranked with the left (the whole hold mirrored; the figure itself is not).</summary>
+        public bool LeftHanded { get; private set; }
+        /// <summary>가운데: the rod held in front of the belly in both hands, its tip straight ahead (the cast swing stays on the rod hand's side).</summary>
+        public bool RodCentre { get; private set; }
+        /// <summary>+1: the rod in his left hand (the default), -1: in his right (<see cref="LeftHanded"/>). Mirrors x / yaw of the hold.</summary>
+        public float HandSign => LeftHanded ? -1f : 1f;
+        /// <summary>The rod's yaw limits this frame (degrees, + = right): see <see cref="RodMax"/>, <see cref="RodMaxAcross"/>, <see cref="RodMaxCentre"/>.</summary>
+        public float RodYawMin => RodCentre ? -RodMaxCentre : LeftHanded ? -RodMaxAcross : -RodMax;
+        public float RodYawMax => RodCentre ? RodMaxCentre : LeftHanded ? RodMax : RodMaxAcross;
+        /// <summary>
+        /// The middle hold (<see cref="RodCentre"/>; character space from the feet, x for the default hand, mirrored
+        /// left-handed): the rod hand's fist on the grip just in front of the belly, a little to its own side so the reel
+        /// under the rod hangs in the middle, within reach of the other hand on the crank with the elbow bent. Static:
+        /// the -fkarmtune test switch (hc).
+        /// </summary>
+        internal static Vector3 HoldCentre = new Vector3(-0.05f, 1.02f, 0.24f);
+        /// <summary>The middle hold's reel roll as a share of <see cref="ReelRoll"/> (it hangs nearly straight under the rod, towards the cranking hand).</summary>
+        const float CentreRoll = 0.5f;
+        bool settingsRead;
         const float WalkFace = 25f;         // degrees he turns towards the side he walks to
         float walkV, faceS;
         float stepAcc;                    // m walked since the last footstep
@@ -119,10 +149,10 @@ namespace FishingKing
         /// <summary>
         /// Degrees (+ = to his right) the rod is swept to the side on top of where he faces (<see cref="SweepMax"/> at most).
         /// The body turns with it as with a turn of his face (so the rod keeps its clearance from the hat as when he faces
-        /// that way), the head keeps looking at the rig / fish, and swept out to his left the rod comes down
-        /// <see cref="SweepDrop"/> towards the water at a full sweep (held low and to the side; not to the right, where a
-        /// lower rod would pass closer to the hat). Within the rod's yaw limits (<see cref="RodMax"/> left,
-        /// <see cref="RodMaxRight"/> right of straight ahead): <see cref="SweepEff"/> is what is left of it.
+        /// that way), the head keeps looking at the rig / fish, and swept out to the rod hand's side (his left; left-handed
+        /// his right) the rod comes down <see cref="SweepDrop"/> towards the water at a full sweep (held low and to the side;
+        /// not across, where a lower rod would pass closer to the hat; held in the middle, either way). Within the rod's yaw
+        /// limits (<see cref="RodYawMin"/> .. <see cref="RodYawMax"/>): <see cref="SweepEff"/> is what is left of it.
         /// </summary>
         public float Sweep;
         public const float SweepMax = 30f;
@@ -191,11 +221,16 @@ namespace FishingKing
         float windIn;
         bool rodFrontOut;
 
-        /// <summary>The wind-up rod's pitch (x: degrees from upright, + = forward) and lean (y: degrees, + = top to his right) for a finger offset (see <see cref="WindUp"/>).</summary>
-        internal static Vector2 WindAngles(Vector2 off)
+        /// <summary>
+        /// The wind-up rod's pitch (x: degrees from upright, + = forward) and lean (y: degrees, + = top to his right) for a
+        /// finger offset (see <see cref="WindUp"/>); <paramref name="hand"/> -1 = left-handed (the rest lean and the limits
+        /// mirrored: the finger still leans the top towards itself).
+        /// </summary>
+        internal static Vector2 WindAngles(Vector2 off, float hand = 1f)
         {
             float pitch = off.y >= 0f ? -WindBack * Mathf.Clamp01(off.y / WindBackAt) : WindFwd * Mathf.Clamp01(-off.y / WindFwdAt);
-            float lean = Mathf.Clamp(-WindLeanOut + WindLean * Mathf.Clamp(off.x / WindLeanAt, -1f, 1f), -RodMax, RodMaxRight);
+            float lo = hand < 0f ? -RodMaxAcross : -RodMax, hi = hand < 0f ? RodMax : RodMaxAcross;
+            float lean = Mathf.Clamp(-hand * WindLeanOut + WindLean * Mathf.Clamp(off.x / WindLeanAt, -1f, 1f), lo, hi);
             return new Vector2(pitch, lean);
         }
 
@@ -206,13 +241,20 @@ namespace FishingKing
             return Quaternion.AngleAxis(-a.y, Vector3.forward) * new Vector3(0f, Mathf.Cos(p), Mathf.Sin(p));
         }
 
-        /// <summary>The rod hand (character space from the feet) for a wind-up pitch / lean.</summary>
-        static Vector3 WindHand(Vector2 a)
+        /// <summary>The rod hand (character space from the feet) for a wind-up pitch / lean (<paramref name="hand"/> -1: mirrored).</summary>
+        static Vector3 WindHand(Vector2 a, float hand = 1f)
         {
             float fwd = Mathf.InverseLerp(-WindBack, WindFwd, a.x);
-            float left = Mathf.Clamp01((-a.y - WindLeanOut) / (RodMax - WindLeanOut));
-            return WindHandBack + new Vector3(-WindHandOut * left, -WindHandFwdDrop * fwd * fwd, WindHandFwdZ * fwd);
+            float outward = Mathf.Clamp01((-hand * a.y - WindLeanOut) / (RodMax - WindLeanOut));
+            var h = WindHandBack + new Vector3(-WindHandOut * outward, -WindHandFwdDrop * fwd * fwd, WindHandFwdZ * fwd);
+            h.x *= hand;
+            return h;
         }
+
+        /// <summary>A character-space point / direction for the hand the rod is in (x mirrored left-handed).</summary>
+        Vector3 Mx(Vector3 v) => LeftHanded ? new Vector3(-v.x, v.y, v.z) : v;
+
+        static bool IsHold(string pose) => pose == "idle" || pose == "reel" || pose == "reel2" || pose == "fight";
 
         /// <summary>The rod's pitch (degrees from upright, + = forward) and lean (degrees, + = top to his right) this frame, before any lift / bend.</summary>
         internal Vector2 RodAngles { get; private set; }
@@ -321,13 +363,26 @@ namespace FishingKing
         /// (Static: the -fkarmtune test switch.)
         /// </summary>
         internal static Vector3? HoldIdle = new Vector3(-0.46f, 1.02f, 0.04f), HoldReel = HoldIdle, HoldFight = HoldIdle;
-        static Vector3? HoldHand(string pose) => pose switch
+        /// <summary>The 3D reeling hold's rod hand for a pose (mirrored left-handed; the middle hold with <see cref="RodCentre"/>), null = the pose's own.</summary>
+        Vector3? HoldHand(string pose)
         {
-            "idle" => HoldIdle,
-            "reel" or "reel2" => HoldReel,
-            "fight" => HoldFight,
-            _ => null,
-        };
+            if (!IsHold(pose)) return null;
+            if (RodCentre) return Mx(HoldCentre);
+            var h = pose == "idle" ? HoldIdle : pose == "fight" ? HoldFight : HoldReel;
+            return h.HasValue ? Mx(h.Value) : (Vector3?)null;
+        }
+
+        /// <summary>
+        /// The rod's direction (character space, before the yaw and the sweep's drop) for a pose: the pose's rod (with the
+        /// 3D hold's extra lean), mirrored left-handed; held in the middle, the same pitch with the tip straight ahead.
+        /// </summary>
+        Vector3 HoldDir(string pose, PoseAnchor anchor, bool lean)
+        {
+            var d = anchor.RodDir;
+            if (RodCentre && IsHold(pose)) return new Vector3(0f, d.y, d.z).normalized;
+            if (lean && HoldRodLean != 0f) d = Quaternion.AngleAxis(HoldRodLean, Vector3.forward) * d;
+            return Mx(d);
+        }
         /// <summary>Degrees the rod's top leans further out (to his left) in the 3D reeling hold. (Static: -fkarmtune.)</summary>
         internal static float HoldRodLean = 0f;
         /// <summary>The rod's direction on screen at the hand this frame (for measurements).</summary>
@@ -495,6 +550,37 @@ namespace FishingKing
             dangleBait.sortingOrder = dangle.sortingOrder + 1;
         }
 
+        /// <summary>
+        /// 설정 → 조작 (handedness, the rod's position), read from the save every frame so a change made in the settings
+        /// window (open over the fishing, even in a fight) applies at once. A change snaps the hand, the rod, the body's
+        /// posture and the hat guard to the new hold instead of gliding there: gliding from one hip to the other would
+        /// swing the rod through his head for a few frames. Everything drawn from the rod tip follows the same frame.
+        /// </summary>
+        void ReadSettings()
+        {
+            var d = Game.I != null ? Game.Data : null;
+            bool lh = d != null && d.leftHanded, rc = d != null && d.rodCentre;
+            if (settingsRead && lh == LeftHanded && rc == RodCentre) return;
+            bool changed = settingsRead;
+            settingsRead = true;
+            LeftHanded = lh;
+            RodCentre = rc;
+            smoothInit = false;
+            shownPose = null;
+            holdT = 0f;
+            hatTilt = 0f;
+            hatSideT = 99f;
+            body.flipX = lh;
+            reelSr.flipX = lh;
+            if (a3d != null)
+            {
+                a3d.Mirror = lh;
+                a3d.Centre = rc;
+                a3d.Snap();
+            }
+            Debug.Log($"[Angler] {(changed ? "hold changed" : "hold")}: {(lh ? "left" : "right")}-handed, rod {(rc ? "centre" : "side")} (yaw {RodYawMin:0}..{RodYawMax:+0})");
+        }
+
         public bool ShowDangle { get; set; } = true;
 
         /// <summary>
@@ -575,6 +661,7 @@ namespace FishingKing
         {
             float dt = Time.deltaTime;
             breathe += dt;
+            ReadSettings();
             ApplyTint();
             UpdateWalk(dt);
             // the ocean boat bobs on the swell (whole pixels): everything standing on its deck moves with it
@@ -588,14 +675,18 @@ namespace FishingKing
             faceS = Mathf.Lerp(faceS, FaceAngle(), 1f - Mathf.Exp(-dt / FaceTau));
             sweepS = Mathf.Lerp(sweepS, Mathf.Clamp(Sweep, -SweepMax, SweepMax), 1f - Mathf.Exp(-dt / SweepTau));
             if (Sweep == 0f && Mathf.Abs(sweepS) < 0.01f) sweepS = 0f;
-            float rodYawDeg = Mathf.Clamp(faceS + sweepS, -RodMax, RodMaxRight);
-            SweepEff = rodYawDeg - Mathf.Clamp(faceS, -RodMax, RodMaxRight);
+            float m = HandSign;
+            float rodYawDeg = Mathf.Clamp(faceS + sweepS, RodYawMin, RodYawMax);
+            SweepEff = rodYawDeg - Mathf.Clamp(faceS, RodYawMin, RodYawMax);
             RodYaw = rodYawDeg;
             float swSign = Mathf.Sign(sweepS);
             SweepLine = sweepS == 0f ? 0f : swSign * Mathf.Min(Mathf.Abs(sweepS), Mathf.Max(0f, swSign * (rodYawDeg - faceS)));
-            // (only swept out to his left: swept right, a lower rod would pass closer to the hat seen from behind; there it
-            // may instead come up a little, SweepRaiseRight)
-            var sweepDrop = Quaternion.AngleAxis((SideLow ? SweepDropLow : SweepDrop) * Mathf.Clamp01(-SweepEff / SweepMax) - SweepRaiseRight * Mathf.Clamp01(SweepEff / SweepMax), Vector3.right);
+            // (only swept out to the rod hand's side: swept across, a lower rod would pass closer to the hat seen from
+            // behind; there it may instead come up a little, SweepRaiseRight. Held in the middle it comes down either way:
+            // lower, its line on screen leans further off the hat)
+            float sweptOut = RodCentre ? Mathf.Abs(SweepEff) : Mathf.Max(0f, -m * SweepEff);
+            float sweptAcross = RodCentre ? 0f : Mathf.Max(0f, m * SweepEff);
+            var sweepDrop = Quaternion.AngleAxis((SideLow ? SweepDropLow : SweepDrop) * Mathf.Clamp01(sweptOut / SweepMax) - SweepRaiseRight * Mathf.Clamp01(sweptAcross / SweepMax), Vector3.right);
             if (Uses3D)
             {
                 // reel <-> fight <-> idle flicker from frame to frame while circling: only follow a pose that holds
@@ -611,18 +702,19 @@ namespace FishingKing
                 // he turns towards where he fishes: the body most of the way, the head and the rod a little further;
                 // the rod hand lives in the body frame, so it swings round the feet with the body. A sweep turns the body
                 // and the rod as a turn of his face would (the head stays on the rig / fish)
-                bodyYaw = Mathf.Clamp((faceS + sweepS) * BodyShare, -BodyMax, BodyMaxRight);
+                // (held in the middle the body turns as far either way: the hand stays in front of the belly)
+                bodyYaw = RodCentre ? Mathf.Clamp((faceS + sweepS) * BodyShare, -BodyMax, BodyMax)
+                    : m * Mathf.Clamp(m * (faceS + sweepS) * BodyShare, -BodyMax, BodyMaxAcross);
                 var rodYaw = Quaternion.Euler(0f, rodYawDeg, 0f);
                 upright = rodYaw * RodUpright;
                 jerkUp = rodYaw * RodJerkUp;
                 // the rod hand and the rod's angle glide to the new pose (the hand relative to the feet, so it never
                 // trails behind him while he walks); winding up, they follow the finger (WindUp)
                 bool wind = WindUp.HasValue && shownPose == "aim";
-                var wa = wind ? WindAngles(WindUp.Value) : Vector2.zero;
-                var poseHand = wind ? WindHand(wa) : HoldHand(shownPose) ?? anchor.Hand;
-                var wantHand = Quaternion.Euler(0f, bodyYaw > 0f ? bodyYaw * HandRight : bodyYaw, 0f) * poseHand;
-                var holdDir = wind ? WindDir(wa)
-                    : HoldHand(shownPose) != null && HoldRodLean != 0f ? Quaternion.AngleAxis(HoldRodLean, Vector3.forward) * anchor.RodDir : anchor.RodDir;
+                var wa = wind ? WindAngles(WindUp.Value, m) : Vector2.zero;
+                var poseHand = wind ? WindHand(wa, m) : HoldHand(shownPose) ?? Mx(anchor.Hand);
+                var wantHand = Quaternion.Euler(0f, !RodCentre && m * bodyYaw > 0f ? bodyYaw * HandAcross : bodyYaw, 0f) * poseHand;
+                var holdDir = wind ? WindDir(wa) : HoldDir(shownPose, anchor, HoldHand(shownPose) != null);
                 var wantDir = rodYaw * (wind ? holdDir : sweepDrop * holdDir);
                 float k = FollowRate(wind, dt);
                 handS = Vector3.Lerp(handS, wantHand, k);
@@ -646,13 +738,15 @@ namespace FishingKing
                 // (the sprites walk sideways without turning)
                 body.transform.position = P.To2D(feet) + bob;
                 HatPos2D = P.To2D(feet) + bob + SpriteHatPx / PixelView.PPU;
-                Hand = feet + anchor.Hand;
+                // (left-handed the sprite is flipped: its fist and painted hold mirror with it; held in the middle the rod
+                // comes from in front of the belly, hidden behind the sprite)
+                Hand = feet + (RodCentre && IsHold(Pose) ? Mx(HoldCentre) : Mx(anchor.Hand));
                 // the painted rod glides to the pose's angle like the 3D figure's (and follows the finger winding up); the
-                // pose sprites do not turn, so a sweep swings the painted rod alone: to his left as the 3D rod, to his right
-                // only SpriteSweepRight of it (the sprite's body does not turn with it, and further the rod crosses its hat)
+                // pose sprites do not turn, so a sweep swings the painted rod alone: out to the rod side as the 3D rod,
+                // across only SpriteSweepRight of it (the sprite's body does not turn with it, and further the rod crosses its hat)
                 bool wind = WindUp.HasValue && Pose == "aim";
-                float yaw2d = SweepEff > 0f ? SweepEff * SpriteSweepRight : SweepEff;
-                var wantDir = wind ? WindDir(WindAngles(WindUp.Value)) : Quaternion.Euler(0f, yaw2d, 0f) * (sweepDrop * anchor.RodDir);
+                float yaw2d = !RodCentre && m * SweepEff > 0f ? SweepEff * SpriteSweepRight : SweepEff;
+                var wantDir = wind ? WindDir(WindAngles(WindUp.Value, m)) : Quaternion.Euler(0f, yaw2d, 0f) * (sweepDrop * HoldDir(Pose, anchor, false));
                 float k = FollowRate(wind, dt);
                 dirS = k >= 1f ? wantDir : Vector3.Slerp(dirS, wantDir, k).normalized;
                 baseDir = dirS;
@@ -714,10 +808,12 @@ namespace FishingKing
                 var side = new Vector3(along.z, 0f, -along.x);
                 if (side.x < 0f) side = -side;
                 side = side.sqrMagnitude > 1e-6f ? side.normalized : Vector3.right;
-                float roll = ReelRoll * Mathf.Deg2Rad;
+                // (left-handed the roll is mirrored and so is the reel: its crank faces the left hand; held in the middle it
+                // hangs nearly straight under the rod)
+                float roll = ReelRoll * m * (RodCentre ? CentreRoll : 1f) * Mathf.Deg2Rad;
                 var up = (vert * Mathf.Cos(roll) + side * Mathf.Sin(roll)).normalized;
                 var foot = seat - up * (ReelUnderRodPx / Mathf.Max(1f, P.PixelsPerMetre(seat)));
-                reel3d.Place(foot, along, up, ReelRevs * 360f, ReelScale);
+                reel3d.Place(foot, along, up, ReelRevs * 360f, ReelScale, LeftHanded);
                 rodLine.positionCount = 1 + rod.Guides.Count;
                 rodLine.SetPosition(0, P.To2D(reel3d.Spool) + bob);
                 for (int i = 0; i < rod.Guides.Count; i++) rodLine.SetPosition(i + 1, rod.Guides[i]);
@@ -736,22 +832,22 @@ namespace FishingKing
                 reelSr.sprite = reelFrames[Pose == "reel2" || (Uses3D && Mathf.Repeat(ReelRevs, 1f) >= 0.5f) ? 1 : 0];
                 reelSr.transform.SetPositionAndRotation(Snap(reelPos), Quaternion.Euler(0, 0, reelDeg));
                 rodLine.positionCount = 1 + rod.Guides.Count;
-                rodLine.SetPosition(0, reelPos + (Vector2)(Quaternion.Euler(0, 0, reelDeg) * spoolPx) / PixelView.PPU);
+                rodLine.SetPosition(0, reelPos + (Vector2)(Quaternion.Euler(0, 0, reelDeg) * new Vector2(spoolPx.x * m, spoolPx.y)) / PixelView.PPU);
                 for (int i = 0; i < rod.Guides.Count; i++) rodLine.SetPosition(i + 1, rod.Guides[i]);
             }
 
             if (Uses3D)
             {
-                // left fist on the rod grip; right fist on the crank knob, or on the rod behind the left hand while
-                // swinging it (aim / cast), or up in the air (cheer)
-                Vector3 rightGrip;
-                var turned = Quaternion.Euler(0f, Angler3D.Yaw + bodyYaw, 0f);
-                if (shownPose == "aim") rightGrip = Hand + dir * -0.13f;
-                else if (shownPose == "cast") rightGrip = Hand + dir * -0.14f;
-                else if (shownPose == "cheer") rightGrip = feet + turned * Angler3D.CheerFist;
-                else if (reel3d != null) rightGrip = reel3d.Knob;
-                else rightGrip = Hand + dir * ReelS + turned * new Vector3(0.06f, -0.06f, 0f);
-                a3d.Pose(feet, shownPose, dt, Hand, rightGrip, P.CameraPos);
+                // the rod fist (left; left-handed the right) on the rod grip; the other on the crank knob, or on the rod
+                // behind the rod fist while swinging it (aim / cast), or up in the air (cheer)
+                Vector3 other;
+                var turned = Quaternion.Euler(0f, a3d.FigureYaw + bodyYaw, 0f);
+                if (shownPose == "aim") other = Hand + dir * -0.13f;
+                else if (shownPose == "cast") other = Hand + dir * -0.14f;
+                else if (shownPose == "cheer") other = feet + turned * Mx(Angler3D.CheerFist);
+                else if (reel3d != null) other = reel3d.Knob;
+                else other = Hand + dir * ReelS + turned * Mx(new Vector3(0.06f, -0.06f, 0f));
+                a3d.Pose(feet, shownPose, dt, LeftHanded ? other : Hand, LeftHanded ? Hand : other, P.CameraPos);
                 HatPos2D = P.To2D(a3d.HeadPos + Vector3.up * HatMid) + bob;
                 hatSeen = true;
             }
@@ -851,7 +947,7 @@ namespace FishingKing
         bool hatSeen;
         readonly System.Collections.Generic.List<Vector2> hatPts = new System.Collections.Generic.List<Vector2>(32);
         System.Collections.Generic.List<Vector2> hatHull;
-        /// <summary>Degrees the rod is tilted this frame to keep it off the hat (+ = up; for the tests).</summary>
+        /// <summary>Degrees the rod is tilted this frame to keep it off the hat (+ = up; held in the middle + = leant out to the rod hand's side, GuardTilt; for the tests).</summary>
         internal float HatTilt => hatTilt;
         /// <summary>The untilted rod's gap to the hat as the guard estimated it this frame (px; 999 = not checked; for the tests).</summary>
         internal float HatGapNow { get; private set; } = 999f;
@@ -863,10 +959,13 @@ namespace FishingKing
             float want = 0f;
             HatGapNow = 999f;
             hatSideT += dt;
-            if (hold && !WindUp.HasValue && RodLift01 <= 0f && jerk <= 0f && BuildHat(bob))
+            var toLine = Vector3.zero;
+            float bend = 0f;
+            bool guarded = hold && !WindUp.HasValue && RodLift01 <= 0f && jerk <= 0f && BuildHat(bob);
+            if (guarded)
             {
-                var toLine = LineTarget.HasValue ? (LineTarget.Value - Hand).normalized : Vector3.zero;
-                float bend = LineTarget.HasValue ? Mathf.Min(0.95f, Mathf.Pow(Mathf.Clamp01(Tension01), 0.8f) * (0.55f + rodDef.flex * 0.75f)) : 0f;
+                toLine = LineTarget.HasValue ? (LineTarget.Value - Hand).normalized : Vector3.zero;
+                bend = LineTarget.HasValue ? Mathf.Min(0.95f, Mathf.Pow(Mathf.Clamp01(Tension01), 0.8f) * (0.55f + rodDef.flex * 0.75f)) : 0f;
                 HatGapNow = HatGap(dir, bob, toLine, bend);
                 if (HatGapNow < HatKeepPx)
                 {
@@ -874,7 +973,7 @@ namespace FishingKing
                     float Least(float s)
                     {
                         for (int i = 1; i <= HatSteps; i++)
-                            if (HatGap(Tilt(dir, s * i * HatStep), bob, toLine, bend) >= HatKeepPx) return s * i * HatStep;
+                            if (HatGap(GuardTilt(dir, s * i * HatStep), bob, toLine, bend) >= HatKeepPx) return s * i * HatStep;
                         return 0f;
                     }
                     float side = hatTilt > 0f ? 1f : hatTilt < 0f ? -1f : 0f;
@@ -884,8 +983,8 @@ namespace FishingKing
                         // not tilted yet: the least tilt either way, up first at each step
                         for (int i = 1; i <= HatSteps && want == 0f; i++)
                         {
-                            if (HatGap(Tilt(dir, i * HatStep), bob, toLine, bend) >= HatKeepPx) want = i * HatStep;
-                            else if (HatGap(Tilt(dir, -i * HatStep), bob, toLine, bend) >= HatKeepPx) want = -i * HatStep;
+                            if (HatGap(GuardTilt(dir, i * HatStep), bob, toLine, bend) >= HatKeepPx) want = i * HatStep;
+                            else if (HatGap(GuardTilt(dir, -i * HatStep), bob, toLine, bend) >= HatKeepPx) want = -i * HatStep;
                         }
                     }
                     else if (want == 0f && hatSideT >= HatDwell) want = Least(-side);   // this side cannot: over to the other
@@ -898,9 +997,30 @@ namespace FishingKing
             bool over = want != 0f && want * hatTilt < 0f;
             if (over) hatSideT = 0f;
             if (want != 0f && (Mathf.Abs(want) > Mathf.Abs(hatTilt) || over)) hatTilt = want;
-            else hatTilt = Mathf.Lerp(hatTilt, want, 1f - Mathf.Exp(-dt / HatTauOff));
+            else
+            {
+                float eased = Mathf.Lerp(hatTilt, want, 1f - Mathf.Exp(-dt / HatTauOff));
+                // (held in the middle the sideways lean is not monotonic: easing back from a lean that took the rod out past
+                // the brim to one that runs it behind the hat's middle would sweep it across the brim's edge; it goes at once)
+                hatTilt = RodCentre && guarded && eased != want && HatGap(GuardTilt(dir, eased), bob, toLine, bend) < HatKeepPx ? want : eased;
+            }
             if (want == 0f && Mathf.Abs(hatTilt) < 0.05f) hatTilt = 0f;
-            return hatTilt != 0f ? Tilt(dir, hatTilt) : dir;
+            return hatTilt != 0f ? GuardTilt(dir, hatTilt) : dir;
+        }
+
+        /// <summary>
+        /// The hat guard's tilt of the rod's direction: up (+) / down (-) at the side; held in the middle its top leans
+        /// sideways about its heading instead, + out to the rod hand's side. A rod rising from in front of the belly near
+        /// straight ahead stands in the vertical plane through the grip, which on screen is a near-vertical line through
+        /// the hat whatever its pitch: tilting it up or down hardly moves it on screen (in a fight, with the fish ahead, a
+        /// rod skimming the brim's edge stayed there with the tilt at its most), leaning it sideways moves it across the hat.
+        /// </summary>
+        Vector3 GuardTilt(Vector3 d, float deg)
+        {
+            if (!RodCentre) return Tilt(d, deg);
+            var heading = new Vector3(d.x, 0f, d.z);
+            heading = heading.sqrMagnitude > 1e-6f ? heading.normalized : Vector3.forward;
+            return (Quaternion.AngleAxis(deg * HandSign, heading) * d).normalized;
         }
 
         /// <summary>The rod's direction tilted up towards upright (+ degrees) or down towards level (-).</summary>
@@ -943,15 +1063,40 @@ namespace FishingKing
             var tp = hand + bent * l;
             var k1 = hand + d * l * 0.5f;
             var k2 = tp - bent * l * 0.3f;
-            float best = HatDist((P.To2D(hand - d * 0.18f) + bob) * PixelView.PPU);
+            var gap = new HatGapAcc();
+            gap.Take(HatDist((P.To2D(hand - d * 0.18f) + bob) * PixelView.PPU));
             // (~2 px apart on screen, as the painter's axis is dense: a coarser sampling misses the closest point)
             for (int i = 0; i <= HatSamples; i++)
             {
                 float t = i / (float)HatSamples, u = 1f - t;
                 var p = u * u * u * hand + 3f * u * u * t * k1 + 3f * u * t * t * k2 + t * t * t * tp;
-                best = Mathf.Min(best, HatDist((P.To2D(p) + bob) * PixelView.PPU));
+                gap.Take(HatDist((P.To2D(p) + bob) * PixelView.PPU));
             }
-            return best;
+            return gap.Result(RodCentre);
+        }
+
+        /// <summary>
+        /// The rod's clearance from the hat over its samples (signed px, negative = on it). Held at the side the rod must
+        /// clear the hat's outline: the nearest sample. Held in the middle the rod rises from in front of his belly, so seen
+        /// from behind (the camera 3 m above the hat) any yaw near straight ahead runs it up behind his head and out over
+        /// the crown: there what must not happen is the rod skimming the outline (along the brim's edge, clipping a corner
+        /// of the crown); a rod passing behind the hat's middle reads as held in front of him. So held in the middle a rod
+        /// that crosses the hat counts as clear by how deep its deepest point is inside the outline (a chord through the
+        /// middle: the hat's half width; one clipping the edge: ~0), and one that misses it by its nearest sample.
+        /// </summary>
+        internal struct HatGapAcc
+        {
+            float near, deep;
+            bool any;
+
+            public void Take(float d)
+            {
+                if (!any) { near = d; any = true; }
+                else near = Mathf.Min(near, d);
+                if (d < 0f) deep = Mathf.Max(deep, -d);
+            }
+
+            public float Result(bool centre) => !any ? 999f : centre && near < 0f ? deep : near;
         }
 
         float HatDist(Vector2 q) => hatHull != null ? ScreenHull.SignedDist(hatHull, q) : (q - HatPos2D * PixelView.PPU).magnitude - SpriteHatRPx;

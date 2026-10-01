@@ -669,7 +669,7 @@ namespace FishingKing
             targetRing.enabled = show;
             foreach (var dd in dots) dd.enabled = show;
             if (!show) return;
-            var from = Angler.Feet + new Vector3(0.4f, 2.6f, 0.9f);
+            var from = Angler.Feet + new Vector3(0.4f * Angler.HandSign, 2.6f, 0.9f);
             float dist = Vector3.Distance(new Vector3(from.x, 0, from.z), aimTarget);
             float arc = 1.2f + dist * 0.28f;
             for (int i = 0; i < dots.Count; i++)

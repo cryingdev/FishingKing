@@ -53,10 +53,13 @@ namespace FishingKing
         /// <param name="up">the rod's "up": normal to the rod in its vertical plane (the reel hangs on the other side)</param>
         /// <param name="crankDeg">crank angle, 0 = knob up, + = winding in</param>
         /// <param name="scale">display scale of the model</param>
-        public void Place(Vector3 foot, Vector3 along, Vector3 up, float crankDeg, float scale)
+        /// <param name="mirror">left-handed: the model mirrored across its own YZ plane, so the crank is on the reel's other
+        /// side (a left-hand-wind reel; Unity flips the faces' winding for the negative scale). Turning about the mirrored X
+        /// axis still brings the knob forward over the top: winding in looks the same.</param>
+        public void Place(Vector3 foot, Vector3 along, Vector3 up, float crankDeg, float scale, bool mirror = false)
         {
             Go.transform.SetPositionAndRotation(foot, Quaternion.LookRotation(along, up));
-            Go.transform.localScale = Vector3.one * scale;
+            Go.transform.localScale = new Vector3(mirror ? -scale : scale, scale, scale);
             crank.localRotation = Quaternion.AngleAxis(crankDeg, Vector3.right) * crankRest;
         }
 

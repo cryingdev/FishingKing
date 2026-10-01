@@ -37,6 +37,20 @@ namespace FishingKing
         public Vector3 Velocity;
         public float Walk;
 
+        /// <summary>
+        /// 왼손 (Angler.LeftHanded): the posture mirrored — the rod in the RIGHT fist, the LEFT hand cranking (the caller
+        /// passes the grips that way round), the upper-body turn, the cranking shoulder's roll (Shoulder.L), the elbow
+        /// poles, the stance and the figure's 10 degree yaw all mirrored. The model itself is not mirrored (the hat, the
+        /// vest, the creel and its strap stay as they are).
+        /// </summary>
+        public bool Mirror;
+        /// <summary>가운데 (Angler.RodCentre): the reeling hold with the rod in front of the belly: the figure square to the front.</summary>
+        public bool Centre;
+        /// <summary>The figure's yaw on top of which the body and head turn (degrees, + = right): <see cref="Yaw"/>, mirrored left-handed, 0 held in the middle.</summary>
+        public float FigureYaw => Centre ? 0f : Mirror ? -Yaw : Yaw;
+        /// <summary>The next <see cref="Pose"/> takes the posture at once (the hold changed: no blend from the other side).</summary>
+        public void Snap() => started = false;
+
         struct Foot
         {
             public Vector3 at, from, pos;   // planted ankle, where the step started, the ankle this frame
@@ -49,7 +63,7 @@ namespace FishingKing
         public int StepCount { get; private set; }
 
         public readonly GameObject Go;
-        readonly Transform model, hips, spine, chest, neck, head, shoulderR, upperL, upperR, foreL, foreR, gripL, gripR,
+        readonly Transform model, hips, spine, chest, neck, head, shoulderL, shoulderR, upperL, upperR, foreL, foreR, gripL, gripR,
             thighL, thighR, shinL, shinR, footL, footR;
         readonly Transform[] bones;
         readonly Vector3[] restPos;
@@ -128,6 +142,34 @@ namespace FishingKing
             }
         }
 
+        // The middle hold (Angler.RodCentre: the rod fist on the grip in front of the belly, the reel under it): the upper
+        // body square to the front (no turn towards a reel at the hip), the cranking shoulder rolled a little forward, the
+        // rod arm's elbow out to its side and down, the cranking elbow out and down to its side. Static for -fkarmtune.
+        internal static float CentreTurn = 0f;
+        internal static Vector3 CentreRsh = new Vector3(-0.03f, -0.02f, 0.08f), CentrePoleR = new Vector3(0.7f, -1f, -0.1f), CentrePoleL = new Vector3(-0.8f, -1f, -0.25f);
+
+        /// <summary>The posture for a pose with the current hold: the middle hold's arms, mirrored left-handed.</summary>
+        Posture Want(string pose)
+        {
+            var p = For(pose);
+            if (Centre && (pose == "idle" || pose == "reel" || pose == "reel2" || pose == "fight"))
+            {
+                p.turn = CentreTurn;
+                p.rsh = CentreRsh;
+                p.poleL = CentrePoleL;
+                p.poleR = CentrePoleR;
+            }
+            if (!Mirror) return p;
+            static Vector3 X(Vector3 v) => new Vector3(-v.x, v.y, v.z);
+            return new Posture
+            {
+                lean = p.lean, crouch = p.crouch, turn = -p.turn,
+                rsh = X(p.rsh),                        // (the cranking shoulder: Shoulder.L left-handed)
+                footL = X(p.footR), footR = X(p.footL),
+                poleL = X(p.poleR), poleR = X(p.poleL),
+            };
+        }
+
         /// <summary>The cheering right fist (character space), the only pose whose right hand is not on the rod or reel.</summary>
         public static readonly Vector3 CheerFist = new Vector3(0.34f, 1.7f, 0.03f);
 
@@ -146,6 +188,7 @@ namespace FishingKing
             chest = F("Chest");
             neck = F("Neck");
             head = F("Head");
+            shoulderL = F("Shoulder.L");
             shoulderR = F("Shoulder.R");
             upperL = F("UpperArm.L");
             upperR = F("UpperArm.R");
@@ -215,7 +258,7 @@ namespace FishingKing
         /// <param name="cam">the stage camera position (out-of-reach targets slide along its rays)</param>
         public void Pose(Vector3 feet, string pose, float dt, Vector3 leftGrip, Vector3 rightGrip, Vector3 cam)
         {
-            var want = For(pose);
+            var want = Want(pose);
             cur = started ? Posture.Lerp(cur, want, 1f - Mathf.Exp(-Mathf.Max(0f, dt) / Tau)) : want;
             started = true;
 
@@ -225,9 +268,9 @@ namespace FishingKing
                 bones[i].localRotation = restRot[i];
             }
             // the feet pivot a share of the body turn, the hips, spine and chest add theirs (see BodyYaw)
-            var yaw = Quaternion.Euler(0f, Yaw + BodyYaw * FeetShare, 0f);
+            var yaw = Quaternion.Euler(0f, FigureYaw + BodyYaw * FeetShare, 0f);
             model.SetPositionAndRotation(feet, yaw);
-            var body = Quaternion.Euler(0f, Yaw + BodyYaw, 0f);
+            var body = Quaternion.Euler(0f, FigureYaw + BodyYaw, 0f);
             var right = body * Vector3.right;
 
             // torso: crouch, lean back shared by the pelvis and the spine, the upper body turned towards the reel
@@ -236,11 +279,16 @@ namespace FishingKing
             spine.rotation = Quaternion.AngleAxis(-cur.lean * 0.6f, right) * Quaternion.AngleAxis(-cur.turn * 0.4f + BodyYaw * SpineShare, Vector3.up) * spine.rotation;
             chest.rotation = Quaternion.AngleAxis(-cur.turn * 0.4f + BodyYaw * ChestShare, Vector3.up) * chest.rotation;
             // head looks ahead, or towards where he fishes
-            var look = Quaternion.Euler(0f, Yaw + HeadYaw, 0f);
+            var look = Quaternion.Euler(0f, FigureYaw + HeadYaw, 0f);
             neck.rotation = Quaternion.Slerp(neck.rotation, look * neckRest, 0.5f);
             head.rotation = look * headRest;
             // the right shoulder rolls forward / in to reach across to the reel
-            if (cur.rsh.sqrMagnitude > 1e-6f) Aim(shoulderR, upperR.position, upperR.position + body * cur.rsh);
+            // (left-handed the left shoulder: the cranking one)
+            if (cur.rsh.sqrMagnitude > 1e-6f)
+            {
+                if (Mirror) Aim(shoulderL, upperL.position, upperL.position + body * cur.rsh);
+                else Aim(shoulderR, upperR.position, upperR.position + body * cur.rsh);
+            }
 
             // legs: feet planted (stepping while he walks), knees forward
             var knee = yaw * new Vector3(0f, 0.25f, 1f);
