@@ -36,6 +36,8 @@ namespace FishingKing
             public bool lureKey, lureExpensive;
             /// <summary>The rub's and the float's distance from the hook along the line (m; -1: not a rub / no float).</summary>
             public float rubFromHook = -1f, floatFromHook = -1f;
+            /// <summary>Where the line parted (a rub: the point it wore through; else the mouth; the spool: the mouth) and the float and the mouth then (for the tests).</summary>
+            public Vector3 breakAt, floatAt, mouth;
             /// <summary>The toast shown (null: nothing lost, no toast; or not yet: <see cref="toastPending"/>) and its items' texts.</summary>
             public RectTransform toast;
             public bool toastPending;
@@ -89,7 +91,11 @@ namespace FishingKing
             r.floatLost = Tackle.FloatFight == Tackle.FightFloat.Line && above;
             Hooked.Flee();
             Hooked = null;
-            FishOff(r.off, mouth);
+            // (a rub below the float parted it where the line wore through; a tension break at the knot, at the mouth)
+            r.breakAt = r.cause == "rub" && rubAtOk ? rubAt : mouth;
+            r.floatAt = Tackle.FloatAt;
+            r.mouth = mouth;
+            FishOff(r.off, mouth, r.breakAt);
             ShowLoss(r);
         }
 
@@ -102,7 +108,7 @@ namespace FishingKing
             var mouth = Hooked.MouthPos;
             Hooked.Flee();
             Hooked = null;
-            FishOff(Off.Escape, mouth);
+            FishOff(Off.Escape, mouth, mouth);
         }
 
         /// <summary>
@@ -111,7 +117,7 @@ namespace FishingKing
         /// (<see cref="SpentRetrieve"/>); a float rig comes home with the bare hook. Gone (a lure parted; a float rig parted
         /// above the float): he is ready again at once, the line's end whipping back to the tip.
         /// </summary>
-        void FishOff(Off how, Vector3 mouth)
+        void FishOff(Off how, Vector3 mouth, Vector3 breakAt)
         {
             // (where the line met the water, or its end in the air, before the fight lets it go)
             var lineEnd = Angler.LineUnderwater ? Angler.WaterEntry : Angler.LineTarget ?? mouth;
@@ -128,7 +134,7 @@ namespace FishingKing
                 Angler.Slack01 = 0.45f;
                 retrieveWait = RetrieveWait;
                 spentRig = true;
-                if (how == Off.AtHook) snap.Recoil(mouth);
+                if (how == Off.AtHook) snap.Recoil(breakAt);
                 SetState(S.Retrieving);
             }
             else
@@ -257,10 +263,10 @@ namespace FishingKing
             }
         }
 
-        /// <summary>Test hook (-fkauto breaks): the waiting rig catches a hard snag where it is now (the zone nearest it). False unless waiting in the water.</summary>
+        /// <summary>Test hook (-fkauto breaks): the waiting (or homecoming) rig catches a hard snag where it is now (the zone nearest it). False unless it is in the water, waiting or being wound in.</summary>
         internal bool DebugSnag()
         {
-            if (State != S.Waiting || Tackle.State != Tackle.Mode.Water || Obst == null || Obst.Empty) return false;
+            if ((State != S.Waiting && State != S.Retrieving) || Tackle.State != Tackle.Mode.Water || Obst == null || Obst.Empty) return false;
             var h = Tackle.HookPos;
             Obstacle zone = null;
             float best = float.MaxValue;
@@ -275,6 +281,14 @@ namespace FishingKing
             }
             if (zone == null) return false;
             SnagAt(zone, h, false, "hard");
+            return true;
+        }
+
+        /// <summary>Test hook (-fkauto breaks): the snagged rig comes free now, as a freed snag does (back to waiting). False unless snagged.</summary>
+        internal bool DebugFreeSnag()
+        {
+            if (State != S.Snagged) return false;
+            FreeSnag("test");
             return true;
         }
     }

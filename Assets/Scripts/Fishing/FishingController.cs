@@ -369,8 +369,8 @@ namespace FishingKing
             else Slide.Update(Gesture, sweepIn);
             Angler.Sweep = sweepIn || sweepKeep ? Slide.Shown * Angler.SweepMax : 0f;
             Angler.SideLow = State == S.Fighting;   // side pressure: the rod held low to the side
-            // the legend's lurk point, cues and build-up (the meter runs while a lure soaks)
-            if (Watch != null && State != S.Encounter && Watch.Tick(dt, State == S.Waiting && Tackle.State == Tackle.Mode.Water && !NoBites))
+            // the legend's lurk point, cues and build-up (the meter runs while a lure soaks; never on a spent rig or a bare hook)
+            if (Watch != null && State != S.Encounter && Watch.Tick(dt, State == S.Waiting && Tackle.State == Tackle.Mode.Water && !NoBites && !spentRig && !Tackle.BareHook))
             {
                 StartEncounter();
                 return;
@@ -1219,7 +1219,7 @@ namespace FishingKing
             EndEncounter();
             Watch.Cool(e.Sp, e.Def.coolFight);
             // a natural bait (the golden carp's 황금 떡밥 / 옥수수) is eaten, as at an ordinary bite's hook set; a lure stays on
-            if (Tackle.UsesFloat) Game.I.ConsumeBait();
+            if (Tackle.UsesFloat && !Tackle.BaitGone) Game.I.ConsumeBait();
             var fish = Hooked;
             Hooked = null;
             if (fish == null) fish = Spawner.SpawnHooked(encSp, encCm, Tackle.HookPos);
@@ -1478,7 +1478,7 @@ namespace FishingKing
             var f = biter;
             biter = null;
             f.SetHooked();
-            if (Tackle.UsesFloat) Game.I.ConsumeBait();
+            if (Tackle.UsesFloat && !Tackle.BaitGone) Game.I.ConsumeBait();
             BeginFight(f, false);
             hud.Flash("걸었다! 원을 그려 릴을 감아요!", UIKit.Gold, 1.2f);
         }

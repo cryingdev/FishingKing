@@ -104,8 +104,10 @@ namespace FishingKing
             var sp = GameDatabase.GetFish(fishId);
             float homeX = Mathf.Clamp(0f, ctl.Angler.Range.x, ctl.Angler.Range.y);
             Log($"[ARROW] {ctl.Stage.Def.id}: {fishId} {cm:0}cm, rod {Game.I.Rod.id}, angler x {N(homeX)}");
+            arrowLetGos = 0;
             foreach (var (rig, bait) in new[] { ("float", "bait_paste"), ("lure", "bait_minnow") })
                 yield return ArrowFight(ctl, sp, cm, homeX, rig, bait);
+            SCheck($"arrow {ctl.Stage.Def.id}: the let-go after a fish shakes off was checked ({arrowLetGos} of 2 rigs released before landing)", arrowLetGos > 0);
         }
 
         IEnumerator ArrowShot(FishingController ctl, string name)
@@ -125,6 +127,8 @@ namespace FishingKing
             Log("shot " + p);
             yield return null;
         }
+
+        int arrowLetGos;
 
         IEnumerator ArrowFight(FishingController ctl, FishSpecies sp, float cm, float homeX, string rig, string bait)
         {
@@ -177,6 +181,8 @@ namespace FishingKing
                 // shows this frame's side pressure)
                 yield return new WaitForEndOfFrame();
                 if (ctl.Fight == null) break;
+                // (let the fish go before it can be landed: the shake-off check after the loop needs the fight still on)
+                if (f.Line <= f.LandDist + 4f) break;
                 // ---- the rules, every frame (after the fade in / out has had its time)
                 bool active = ctl.State == FishingController.S.Fighting && ctl.SideActive;
                 activeT = active ? activeT + Time.deltaTime : 0f;
@@ -275,6 +281,7 @@ namespace FishingKing
             // and a lure alike (the lure is no longer gone at once: it comes home from the fish's mouth)
             bool floatRig = rig == "float";
             var rigAt = ctl.Tackle.Surface;
+            if (released) arrowLetGos++;
             if (released) SCheck($"arrow {rig} {st}: after the fish is off the {(floatRig ? "float" : "lure")} stays in the water to be wound in ({ctl.State}, tackle {ctl.Tackle.State}, {N(rigAt.z, "0.0")} m out)",
                 ctl.State == FishingController.S.Retrieving && ctl.Tackle.State == Tackle.Mode.Water && rigAt.z > ctl.Stage.L.zNear + 1f);
             else Log($"[ARROW] {st} {rig}: the fight ended by itself ({ctl.State}): no let-go to check (-fkauto breaks shake_off covers a fish shaking the lure off)");

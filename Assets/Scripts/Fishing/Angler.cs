@@ -948,7 +948,7 @@ namespace FishingKing
         float HatDist(Vector2 q) => hatHull != null ? ScreenHull.SignedDist(hatHull, q) : (q - HatPos2D * PixelView.PPU).magnitude - SpriteHatRPx;
 
         /// <summary>Height a sagging line comes to rest on at p: the water, or the ice outside the fishing hole.</summary>
-        float SurfaceUnder(Vector3 p)
+        public float SurfaceUnder(Vector3 p)
         {
             var L = stage.L;
             if (!L.IsIce) return 0f;

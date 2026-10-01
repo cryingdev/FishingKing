@@ -203,6 +203,8 @@ namespace FishingKing
         readonly ReelDef reel;
         readonly LineDef line;
         readonly float sizeT, landDist;
+        /// <summary>The line out (m) at which the fish is landed.</summary>
+        public float LandDist => landDist;
         float phaseTime, slack, breakTimer, elapsed;
         // the tension without side pressure's extra load (smoothed as Tension): the stamina drain reads it, so the side
         // multipliers alone (SideDrainMult) set how much faster / slower the fish tires with the rod leant

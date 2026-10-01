@@ -17,7 +17,9 @@ namespace FishingKing
     /// Cases: a lure parted by the tension; a float rig hooked for real (the bite's hook set) and parted by the tension;
     /// a float rig whose spool empties; a rub above the float and one below it; a float rig snagged and forced until the
     /// line parts; the 끊기 button on a snagged lure; a fish shaking a lure off; the bait thief; a pad tearing the bait off;
-    /// the spent retrieve after a break against an intact rig's (snag checks, bites); a legend's key lure parted on the
+    /// the spent retrieve after a break against an intact rig's (snag checks, bites); a bare hook / a spent rig freed from a snag
+    /// and waiting again (no fish, no legend soak; an intact rig as the control); a float rig worn through on real structure
+    /// (the lake's boat below the float, the ice's rim); a toast stacked under the loss toast; a legend's key lure parted on the
     /// legend. Shots: breaks_snap_mid (+ _zoom), breaks_toast_lure, breaks_barehook (+ _zoom), breaks_toast_float,
     /// breaks_lure_home (+ _zoom), breaks_toast_legend.
     /// </summary>
@@ -85,7 +87,18 @@ namespace FishingKing
             yield return BrThief(ctl);
             yield return BrPadTear(ctl);
             yield return BrSpentRetrieve(ctl);
+            yield return BrBareWaiting(ctl, false);
+            yield return BrBareWaiting(ctl, true);
+            yield return BrRealRub(ctl, "real_rub_lake", "largemouth_bass", 32f, new Vector3(-6f, -1.2f, 14f), "boat.cover", 6f, 7808, 6f, true);   // (the float set 6 m up: the hull wears the line below it)
             yield return BrLegendKey(ctl);
+            yield return GoStage("ice", 3f);
+            ctl = FindAnyObjectByType<FishingController>();
+            if (ctl == null || !ctl.Stage.L.IsIce) BCheck("real_rub_ice", false, "no ice scene");
+            else
+            {
+                var L = ctl.Stage.L;
+                yield return BrRealRub(ctl, "real_rub_ice", "northern_pike", 70f, new Vector3(L.holeX, -3f, L.holeZ), null, 1.5f, 7909, 10f, false);
+            }
             FishingController.NoBites = false;
             PointerInput.SimLeft = PointerInput.SimRight = false;
             PointerInput.SimDown = false;
@@ -338,7 +351,15 @@ namespace FishingKing
                 $"the whole rig hidden at once {gone} (state {ctl.State}), retrieving frames {retrieving}, float drawn {floatShown} frames after, off {(r != null ? r.off.ToString() : "-")}");
             BCheck("spool_toast", shown && icons >= 1 && r.items.Contains("찌") && Game.I.BaitCount(bait.id) == n0 && snap.Plays == plays0 + 1 && snap.LastKind == LineSnap.Kind.Home,
                 $"toast '{(r != null ? string.Join(" | ", r.items) : "-")}' ({icons} icon(s)), {bait.id} {n0} -> {Game.I.BaitCount(bait.id)} (a test hook: no bite), snap {snap.LastKind}");
-            yield return new WaitForSeconds(2.5f);
+            // another toast while the loss toast is up (as the bait picker's refusal while the rig is wound in) goes under it
+            var next = shown ? Toast.Show("지금은 미끼를 바꿀 수 없어요", null, 1.2f) : null;
+            float lossBottom = shown ? r.toast.anchoredPosition.y - r.toast.sizeDelta.y : 0f;
+            bool clear = next != null && next.anchoredPosition.y <= lossBottom - 1f;
+            yield return new WaitForSeconds(0.3f);
+            if (next != null) yield return NamedShot("breaks_toast_stack");
+            BCheck("toast_stack", clear, string.Format(CIk, "loss toast y {0:0} .. {1:0}, the next toast's top at {2:0}",
+                shown ? r.toast.anchoredPosition.y : 0f, lossBottom, next != null ? next.anchoredPosition.y : 0f));
+            yield return new WaitForSeconds(2.2f);
         }
 
         // ------------------------------------------------------------------ 4. worn through above / below the float
@@ -400,12 +421,16 @@ namespace FishingKing
             else
             {
                 bool kept = ctl.State == FishingController.S.Retrieving && tk.State == Tackle.Mode.Water && tk.BareHook;
+                // (the hook springs back from where the line wore through, not from the mouth)
+                var sn = ctl.SnapFx;
+                float whipOff = r != null ? Vector3.Distance(sn.From, r.breakAt) : 99f, whipMouth = r != null ? Vector3.Distance(sn.From, r.mouth) : 0f;
+                bool whipFromRub = sn.LastKind == LineSnap.Kind.Recoil && whipOff < 0.01f && whipMouth > 0.05f;
                 var w = new RigWatch();
                 yield return WatchHome(ctl, bait, w);
                 bool noToast = r != null && r.toast == null && !r.toastPending && r.items.Count == 0;
                 BCheck(tag, parted && r != null && r.cause == "rub" && r.off == FishingController.Off.AtHook && !r.floatLost && noToast && kept && w.home && w.baitFrames == 0
-                            && Game.I.BaitCount(bait.id) == n0,
-                    $"{geo}; off {(r != null ? r.off.ToString() : "-")}, float kept and wound in {kept}, no toast {noToast}; {w.Brief}");
+                            && Game.I.BaitCount(bait.id) == n0 && whipFromRub,
+                    $"{geo}; off {(r != null ? r.off.ToString() : "-")}, float kept and wound in {kept}, no toast {noToast}; {w.Brief}; the hook whipped back from the rub point {whipFromRub} ({whipOff:0.000} m off it, {whipMouth:0.00} m from the mouth)");
             }
         }
 
@@ -565,6 +590,190 @@ namespace FishingKing
             BCheck("spent_control", ctlChecks > 0, $"an intact rig wound in from ({Fk(spot.x)}, {Fk(spot.z)}) at x999: {ctlChecks} snag checks, {ctlSnags} snag(s), ended {ctlState}");
             BCheck("spent_retrieve", parted && fresh && w2.home && w2.snagChecks == 0 && w2.snagged == 0 && ctl.SnagCount == s0 && w2.bites == 0 && w2.approaches == 0,
                 $"after the break: the snag reference reset {fresh}; {w2.Brief}");
+        }
+
+        /// <summary>Up to 3 wandering ordinary fish put 1.5-2.5 m from the hook, at its depth (to be sensed at once).</summary>
+        int BrFishNear(FishingController ctl, out FishAgent first)
+        {
+            var hook = ctl.Tackle.HookPos;
+            first = null;
+            int n = 0;
+            foreach (var x in ctl.Spawner.Fish)
+            {
+                if (x == null || x.State != FishAgent.St.Wander || x.Sp.encounter != null) continue;
+                float a = n * 2.1f;
+                float d = 1.5f + 0.5f * n;
+                x.Pos = new Vector3(hook.x + Mathf.Cos(a) * d, -Mathf.Max(0.5f, -hook.y), hook.z + Mathf.Sin(a) * d);
+                if (first == null) first = x;
+                if (++n >= 3) break;
+            }
+            return n;
+        }
+
+        // ------------------------------------------------------------------ 10b. a spent rig / a bare hook back in the water, waiting
+        /// <summary>
+        /// A float rig with the golden carp's key bait (황금 떡밥) left waiting with nothing to catch on: a bare hook (the
+        /// bait thief took it) or a spent rig (the line parted at the hook), caught on a snag on the way home and freed, so
+        /// it is waiting again. No fish may take it (CanFishEngage, approaches, bites over 4 s with fish put by it), the
+        /// legend's soak must not run (even under -fkencounter now's 1 s trigger) and no bait is taken. The control: the same
+        /// bait intact, waiting, fish by it: engaged, soaking, approached.
+        /// </summary>
+        IEnumerator BrBareWaiting(FishingController ctl, bool spent)
+        {
+            var bait = GameDatabase.GetItem<BaitDef>("bait_golden");
+            string tag = spent ? "spent_waiting" : "bare_waiting";
+            var spot = BrAt(ctl, 0.5f, 0f, 15f);
+            var watch = ctl.Watch;
+            // the control: the intact rig
+            if (!spent)
+            {
+                yield return BrPlace(ctl, bait.id, spot);
+                FishingController.NoBites = false;
+                int nNear = BrFishNear(ctl, out var near);
+                bool engage = near != null && ctl.CanFishEngage(near);
+                float soak0 = watch != null ? watch.Soak : 0f;
+                int a0 = ctl.Approaches, b0 = ctl.BiteCount;
+                float t = 0f;
+                for (; t < 10f && ctl.Approaches == a0 && ctl.BiteCount == b0 && ctl.State == FishingController.S.Waiting; t += Time.deltaTime) yield return null;
+                float soaked = watch != null ? watch.Soak - soak0 : 0f;
+                BCheck("waiting_control", engage && soaked > 0f && ctl.Approaches + ctl.BiteCount > a0 + b0,
+                    string.Format(CIk, "an intact {0} rig waiting, {1} fish put by it: engaged {2}, legend soak +{3:0.000} s, approached {4} / bit {5} within {6:0.0} s",
+                        bait.id, nNear, engage, soaked, ctl.Approaches - a0, ctl.BiteCount - b0, t));
+                FishingController.NoBites = true;
+                yield return ToReady(ctl);
+            }
+            yield return BrPlace(ctl, bait.id, spot);
+            var tk = ctl.Tackle;
+            int n0 = Game.I.BaitCount(bait.id);
+            if (spent)
+            {
+                yield return BrHook(ctl, "carp", 45f, new Vector3(spot.x, -1.5f, spot.z), 7616, 0.3f);
+                ctl.DebugPartLine("tension");
+            }
+            else
+            {
+                FishAgent f = null;
+                yield return BrForceBite(ctl, x => f = x);
+                for (float w = 0f; w < 3f && ctl.State == FishingController.S.Biting; w += Time.deltaTime) yield return null;
+            }
+            bool coming = ctl.State == FishingController.S.Retrieving && tk.BareHook && ctl.SpentRetrieve == spent;
+            yield return new WaitForSeconds(0.9f);   // (past the let-go's wait: wound in)
+            bool snagged = ctl.DebugSnag();
+            yield return null;
+            bool freed = ctl.DebugFreeSnag();
+            yield return null;
+            int n1 = Game.I.BaitCount(bait.id);
+            bool waiting = ctl.State == FishingController.S.Waiting && tk.State == Tackle.Mode.Water && tk.BareHook && ctl.SpentRetrieve == spent;
+            FishingController.NoBites = false;
+            int nFish = BrFishNear(ctl, out var near2);
+            bool engage2 = near2 != null && ctl.CanFishEngage(near2), wants2 = near2 != null && ctl.WantsToApproach(near2);
+            float soakB = watch != null ? watch.Soak : 0f;
+            int a1 = ctl.Approaches, b1 = ctl.BiteCount;
+            var modeWas = LegendWatch.DebugMode;
+            LegendWatch.DebugMode = "now";   // (an encounter 1 s into a soak, whatever the meter: none may start here)
+            bool encounter = false;
+            for (float w = 0f; w < 4f && ctl.State == FishingController.S.Waiting; w += Time.deltaTime)
+            {
+                yield return null;
+                encounter |= ctl.State == FishingController.S.Encounter;
+            }
+            encounter |= ctl.State == FishingController.S.Encounter;
+            LegendWatch.DebugMode = modeWas;
+            float soakedB = watch != null ? watch.Soak - soakB : 0f;
+            int n2 = Game.I.BaitCount(bait.id);
+            BCheck(tag, coming && snagged && freed && waiting && !engage2 && !wants2 && ctl.Approaches == a1 && ctl.BiteCount == b1 && !encounter && soakedB < 1e-4f && n2 == n1,
+                string.Format(CIk, "{0} coming home {1}, snagged on the way {2}, freed {3} -> waiting again with the bare hook {4} ({5}); {6} fish put by it: engaged {7}, wants to approach {8}, approaches {9}, bites {10} in 4 s; legend soak +{11:0.00} s, encounter {12}; {13} {14} -> {15} -> {16}",
+                    spent ? "spent rig" : "bare hook", coming, snagged, freed, waiting, ctl.State, nFish, engage2, wants2, ctl.Approaches - a1, ctl.BiteCount - b1, soakedB, encounter, bait.id, n0, n1, n2));
+            if (ctl.State == FishingController.S.Encounter) yield return new WaitForSeconds(8f);
+            FishingController.NoBites = true;
+            yield return ToReady(ctl);
+        }
+
+        // ------------------------------------------------------------------ 10c. a float rig worn through on real structure
+        /// <summary>
+        /// A float rig's fish run against structure (the lake: forced to <paramref name="cover"/> and left there; the ice: its
+        /// own rim runs) with the wear sped up <paramref name="rubMult"/> times, until FightModel parts the line by abrasion.
+        /// The real rub point (FightObstacles: the obstacle's contact, the rim's y -0.1 edge) decides: the test measures it
+        /// against the float itself (from the hook) and checks the outcome matches (above: the float lost, the rig gone; below:
+        /// the float kept, the bare hook whipping back from the rub point). <paramref name="wantBelow"/>: the geometry must be
+        /// a rub below the float. The ice: the rub point must be on the hole's rim.
+        /// </summary>
+        IEnumerator BrRealRub(FishingController ctl, string tag, string fishId, float cm, Vector3 at, string cover, float floatDepth, int seed, float rubMult, bool wantBelow)
+        {
+            var bait = GameDatabase.GetItem<BaitDef>("bait_worm");
+            string rod = Game.I.Rod.id, reel = Game.I.Reel.id, line = Game.I.Line.id;
+            if (cover != null) SteerGear("rod_glass", "reel_basic", "line_nylon2");
+            else SteerGear("rod_carbon", "reel_highgear", "line_pe3");
+            yield return BrPlace(ctl, bait.id, new Vector3(at.x, 0f, at.z), floatDepth);
+            var tk = ctl.Tackle;
+            var snap = ctl.SnapFx;
+            int breaks0 = ctl.Breaks, runs0 = ctl.CoverRuns, plays0 = snap.Plays;
+            FishingController.DebugRubMult = rubMult;
+            FishingController.DebugCover = cover;
+            if (!ctl.DebugHook(GameDatabase.GetFish(fishId), cm, seed, at))
+            {
+                BCheck(tag, false, $"no hook ({ctl.State})");
+                FishingController.DebugCover = null;
+                FishingController.DebugRubMult = 1f;
+                SteerGear(rod, reel, line);
+                yield break;
+            }
+            var f = ctl.Fight;
+            var centre = Scr(0.72f, 0.42f);
+            float rr = Screen.height * 0.13f, windSign = CircleGesture.Reversed ? -1f : 1f, t = 0f;
+            PointerInput.SimActive = true;
+            while (ctl.State == FishingController.S.Fighting && ctl.Fight == f && t < 60f)
+            {
+                t += Time.deltaTime;
+                circleAng -= windSign * Time.deltaTime * 0.3f * Mathf.PI * 2f;
+                PointerInput.SimDown = true;
+                PointerInput.SimPos = centre + new Vector2(Mathf.Cos(circleAng), Mathf.Sin(circleAng)) * rr;
+                // ignored: back to the cover whenever it is out of it
+                if (cover != null && !(f.CoverRun || f.CoverHold) && FishingController.DebugCover == null) FishingController.DebugCover = cover;
+                yield return null;
+            }
+            PointerInput.SimDown = false;
+            FishingController.DebugCover = null;
+            FishingController.DebugRubMult = 1f;
+            var r = ctl.LastLoss;
+            bool broke = ctl.Breaks == breaks0 + 1 && r != null && r.cause == "rub" && ctl.LastSnapCause == FightModel.Cause.Abrasion;
+            var state = ctl.State;
+            var mode = tk.State;
+            bool bare = tk.BareHook;
+            string where = "-";
+            bool ok = false;
+            if (broke)
+            {
+                // the test's own reading of the real rub point against the float, along the line from the hook
+                float dR = Vector3.Distance(r.breakAt, r.mouth), dF = Vector3.Distance(r.floatAt, r.mouth);
+                bool aboveSeen = dR > dF + 0.05f;
+                bool outcome = aboveSeen
+                    ? r.off == FishingController.Off.Above && r.floatLost && state == FishingController.S.Ready && mode == Tackle.Mode.Hidden
+                    : r.off == FishingController.Off.AtHook && !r.floatLost && state == FishingController.S.Retrieving && mode == Tackle.Mode.Water && bare
+                      && snap.Plays == plays0 + 1 && snap.LastKind == LineSnap.Kind.Recoil && Vector3.Distance(snap.From, r.breakAt) < 0.01f;
+                bool geometry = !wantBelow || !aboveSeen;
+                bool onRim = true;
+                if (ctl.Stage.L.IsIce)
+                {
+                    var L = ctl.Stage.L;
+                    float hd = new Vector2(r.breakAt.x - L.holeX, r.breakAt.z - L.holeZ).magnitude;
+                    onRim = Mathf.Abs(hd - L.holeR) < 0.05f && Mathf.Abs(r.breakAt.y + 0.1f) < 0.01f;
+                    where = string.Format(CIk, "{0:0.00} m from the hole's centre (rim {1:0.00}), y {2:0.00}", hd, L.holeR, r.breakAt.y);
+                }
+                else where = string.Format(CIk, "({0:0.00}, {1:0.00}, {2:0.00})", r.breakAt.x, r.breakAt.y, r.breakAt.z);
+                ok = outcome && geometry && onRim;
+                where += string.Format(CIk, "; rub {0:0.00} m / float {1:0.00} m from the hook -> {2} (report {3:0.00} / {4:0.00}); outcome as it should be {5}, on the rim {6}; snap {7} from {8:0.00} m off the rub",
+                    dR, dF, aboveSeen ? "above" : "below", r.rubFromHook, r.floatFromHook, outcome, onRim, snap.LastKind, Vector3.Distance(snap.From, r.breakAt));
+            }
+            BCheck(tag, broke && ok,
+                string.Format(CIk, "{0} {1:0}cm on {2} ({3}, wear x{4:0}): cover runs {5}, worn through {6} after {7:0.0} s ({8}, cause {9}); off {10}, float lost {11}, {12} / tackle {13}, bare hook {14}; rub at {15}",
+                    fishId, cm, Game.I.Line.id, ctl.Stage.Def.id, rubMult, ctl.CoverRuns - runs0, broke, t, state, ctl.LastSnapCause,
+                    r != null ? r.off.ToString() : "-", r != null && r.floatLost, state, mode, bare, where));
+            if (ctl.State == FishingController.S.Fighting) ctl.DebugRelease();
+            yield return new WaitForSeconds(0.6f);
+            yield return ToReady(ctl);
+            SteerGear(rod, reel, line);
+            yield return new WaitForSeconds(2.8f);   // (the toast gone before the next)
         }
 
         // ------------------------------------------------------------------ 11. a legend's key lure parted on the legend

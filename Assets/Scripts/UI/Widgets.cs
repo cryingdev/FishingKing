@@ -108,6 +108,24 @@ namespace FishingKing
             bottom.Clear();
         }
 
+        const float TopY = -84f, BottomY = 8f, StackGap = 6f;
+
+        /// <summary>
+        /// Where the next toast goes in a stack: past the farthest edge of those on screen (each toast's own height and
+        /// offset, so a taller or lowered one such as the loss toast is never overlapped), else at the stack's start.
+        /// </summary>
+        static float NextY(List<RectTransform> list, bool low)
+        {
+            float y = low ? BottomY : TopY;
+            foreach (var r in list)
+            {
+                if (r == null) continue;
+                float h = r.sizeDelta.y, at = r.anchoredPosition.y;
+                y = low ? Mathf.Max(y, at + h + StackGap) : Mathf.Min(y, at - h - StackGap);
+            }
+            return y;
+        }
+
         /// <summary>One entry of an item toast (<see cref="ShowItems"/>): its icon and text, gold and punched when highlighted.</summary>
         public struct Item
         {
@@ -166,8 +184,8 @@ namespace FishingKing
                 x += Space;
             }
             float w = Mathf.Clamp(x - Space + Pad, 220, 1100);
-            if (low) rt.At(new Vector2(0.5f, 0), new Vector2(0, 8 + list.Count * 56), new Vector2(w, H), new Vector2(0.5f, 0));
-            else rt.At(new Vector2(0.5f, 1), new Vector2(0, -84 - below - list.Count * 56), new Vector2(w, H), new Vector2(0.5f, 1));
+            if (low) rt.At(new Vector2(0.5f, 0), new Vector2(0, NextY(list, true)), new Vector2(w, H), new Vector2(0.5f, 0));
+            else rt.At(new Vector2(0.5f, 1), new Vector2(0, Mathf.Min(NextY(list, false), TopY - below)), new Vector2(w, H), new Vector2(0.5f, 1));
             list.Add(rt);
             Tween.Pop(rt, 0.7f);
             var cg = p.gameObject.AddComponent<CanvasGroup>();
@@ -188,7 +206,7 @@ namespace FishingKing
             return rt;
         }
 
-        public static void Show(string msg, Color? color = null, float time = 1.8f)
+        public static RectTransform Show(string msg, Color? color = null, float time = 1.8f)
         {
             top.RemoveAll(r => r == null);
             bottom.RemoveAll(r => r == null);
@@ -200,8 +218,8 @@ namespace FishingKing
             t.horizontalOverflow = HorizontalWrapMode.Overflow;
             t.rectTransform.Fill(14, 14, 4, 6);
             float w = Mathf.Clamp(t.preferredWidth + 48, 220, 860);
-            if (low) rt.At(new Vector2(0.5f, 0), new Vector2(0, 8 + list.Count * 56), new Vector2(w, 50), new Vector2(0.5f, 0));
-            else rt.At(new Vector2(0.5f, 1), new Vector2(0, -84 - list.Count * 56), new Vector2(w, 50), new Vector2(0.5f, 1));
+            if (low) rt.At(new Vector2(0.5f, 0), new Vector2(0, NextY(list, true)), new Vector2(w, 50), new Vector2(0.5f, 0));
+            else rt.At(new Vector2(0.5f, 1), new Vector2(0, NextY(list, false)), new Vector2(w, 50), new Vector2(0.5f, 1));
             list.Add(rt);
             Tween.Pop(rt, 0.7f);
             var cg = p.gameObject.AddComponent<CanvasGroup>();
@@ -217,6 +235,7 @@ namespace FishingKing
                     if (rt != null) UnityEngine.Object.Destroy(rt.gameObject);
                 });
             });
+            return rt;
         }
     }
     /// <summary>Modal dialogs.</summary>

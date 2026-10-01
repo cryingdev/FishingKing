@@ -43,6 +43,8 @@ namespace FishingKing
         public Kind LastKind { get; private set; }
         /// <summary>The free end now (game space; for the tests).</summary>
         public Vector3 FreeEnd => freeEnd;
+        /// <summary>Where the last snap started (the break point; game space; for the tests).</summary>
+        public Vector3 From => from;
 
         public static LineSnap Create(StageView s, Angler a, Tackle tk)
         {
@@ -159,7 +161,7 @@ namespace FishingKing
             {
                 float s = i / (Points - 1f);
                 var p = Vector3.Lerp(a, e, s);
-                if (home) p.y -= len * 0.12f * Mathf.Sin(Mathf.PI * s) * (0.4f + 0.6f * u);
+                if (home) p.y = Mathf.Max(p.y - len * 0.12f * Mathf.Sin(Mathf.PI * s) * (0.4f + 0.6f * u), angler.SurfaceUnder(p)); // (it sags onto the water or the ice, never through it)
                 var p2 = Proj(p, home, out float pd);
                 p2 += perp * (amp * Mathf.Pow(s, 1.4f) * Mathf.Sin(Mathf.PI * 2f * (1.6f * s - 2.4f * u)));
                 p2 += bob * (1f - s);

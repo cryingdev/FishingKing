@@ -28,6 +28,8 @@ namespace FishingKing
 
         /// <summary>Test hook (-fkauto obstacles): the next run of the hooked fish heads for this cover (its id), no roll.</summary>
         internal static string DebugCover;
+        /// <summary>Test hook (-fkauto breaks): the line wears this many times as fast on structure (1: normal).</summary>
+        internal static float DebugRubMult = 1f;
 
         Obstacles Obst => Stage.Obstacles;
         ObstacleOverlay overlay;
@@ -1013,7 +1015,7 @@ namespace FishingKing
             rubAtOk = true;
             float rough = o.Mat.rough * o.roughK;
             float rate = RubRate * rough * (0.4f + 0.6f * Mathf.Clamp01(f.TensionRatio)) * (0.5f + 0.5f * Mathf.Clamp01(fishSpeed / 1.5f))
-                         / Mathf.Max(0.1f, Game.I.Line.tough) * (f.Giving ? 0.5f : 1f);
+                         / Mathf.Max(0.1f, Game.I.Line.tough) * (f.Giving ? 0.5f : 1f) * DebugRubMult;
             f.Abrade(rate * dt);
             if (!rubTold)
             {
