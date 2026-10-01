@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.IO;
+using System.Linq;
 using UnityEngine;
 
 namespace FishingKing
@@ -25,7 +26,10 @@ namespace FishingKing
     /// wound in like the fish scenario) hooked far out on the right, the same per-frame checks; and the alignment: with
     /// the camera panned and time frozen, the render target must equal the home one shifted by the pan (stage layers,
     /// actor layers, the front layer's occlusion, the obstacle outlines, the water effects held as drawn: everything
-    /// moves together).
+    /// moves together). Last, on the lake (-fkpanenc off skips it): the legend encounter begun with the view panned out to
+    /// the rig: the window opens from (and, played wrong so it turns away, closes onto) the lure's point as the camera
+    /// has it now (<see cref="PanEncounter"/>; shot pan_enc_open). In 끔 a fish let go out there leaves its float, which
+    /// is followed while it is wound in (no frame with it out of view); home is timed from when it is in.
     /// [PAN] CHECK lines; ends with "pan test done: N failed".
     /// </summary>
     public partial class AutoPilot
@@ -163,6 +167,7 @@ namespace FishingKing
             sd.zoomMode = (int)(arg != null ? ZoomModeArg() : ZoomMode.X125);
             yield return PanNatural(ctl);
             yield return PanAlign(ctl);
+            if (Arg("-fkpanenc") != "off") yield return PanEncounter();
 
             FishingController.NoBites = false;
             Obstacles.Show = false;
@@ -284,10 +289,27 @@ namespace FishingKing
             yield return Move(x0, xR, 6f);
             yield return Stay(xR, 1.2f);
             float camOut = Mathf.Abs(z.CamPan.x) + Mathf.Abs(z.PanOne.x);
-            float t0 = Time.time, homeAt = -1f;
             if (mode == ZoomMode.Off) ctl.DebugRelease();
             else ctl.DebugLand();
             ctl.DebugFishHold = null;
+            if (mode == ZoomMode.Off)
+            {
+                // let go: the float stays out there and is wound in, the view following it back over the overscan
+                int rFrames = 0, rigOut = 0;
+                var rb = z.BoundsPx;
+                for (float tr = 0f; tr < 25f && ctl.State == FishingController.S.Retrieving; tr += Time.deltaTime)
+                {
+                    yield return new WaitForEndOfFrame();
+                    if (ctl.State != FishingController.S.Retrieving || ctl.Tackle.State != Tackle.Mode.Water) continue;
+                    rFrames++;
+                    var rp = z.WorldToPx(ctl.RigShown2D);
+                    if (rp.x > rb.xMin + 1f && rp.x < rb.xMax - 1f && !InCropPx(z, new Vector2(rp.x, Mathf.Clamp(rp.y, z.CropPx.yMin, z.CropPx.yMax)), 0f)) rigOut++;
+                }
+                PCheck(tag + "_retrieve_follow", rFrames > 30 && rigOut == 0,
+                    $"the float wound in from out there: {rFrames} frames, out of view {rigOut}; now {ctl.State}, {ZDesc(z)}");
+            }
+            // (home from the end of the fight: the landing; let go, from the float back in)
+            float t0 = Time.time, homeAt = -1f;
             int maxStepBack = 0, jumpsBack = 0;
             var lastCam = z.CamPan;
             while (Time.time - t0 < 6f)
@@ -301,8 +323,9 @@ namespace FishingKing
                 if (HasButton("판매") || (mode == ZoomMode.Off && ctl.State == FishingController.S.Ready && homeAt >= 0f)) break;
             }
             PCheck(tag + "_home", camOut > 0f && homeAt >= 0f && homeAt <= PanHomeMax && jumpsBack == 0,
-                string.Format(CIp, "panned {0:0} px when the fight ended ({1}), home (1x, camera and 1x pan at 0) {2:0.00} s later, the camera's steps back up to {3} px a frame ({4} jumps); now {5}",
-                    camOut, mode == ZoomMode.Off ? "let go" : "landed", homeAt, maxStepBack, jumpsBack, ZDesc(z)));
+                string.Format(CIp, "panned {0:0} px when the fight ended ({1}), home (1x, camera and 1x pan at 0) {2:0.00} s after {6}, the camera's steps back up to {3} px a frame ({4} jumps); now {5}",
+                    camOut, mode == ZoomMode.Off ? "let go" : "landed", homeAt, maxStepBack, jumpsBack, ZDesc(z),
+                    mode == ZoomMode.Off ? "the float came in" : "the landing began"));
             if (HasButton("판매"))
             {
                 PCheck(tag + "_card_home", z.AtHome && z.Level == 0f && z.UV == new Rect(0f, 0f, 1f, 1f), ZDesc(z));
@@ -353,6 +376,8 @@ namespace FishingKing
             PCheck("natural_smooth", st.jumps == 0 && st.maxSpeed <= PanSpeedMax, st.ToString());
             Log($"[PAN] natural: the fish went past the home frame in {st.beyondHome} of {st.frames} frames (shot {shot})");
             if (ctl.State == FishingController.S.Fighting) ctl.DebugRelease();
+            // (a float let go out there is followed while it is wound in: home from when it is in)
+            for (float tr = 0f; tr < 25f && ctl.State == FishingController.S.Retrieving; tr += Time.deltaTime) yield return null;
             float t0 = Time.time, homeAt = -1f;
             while (Time.time - t0 < 6f && homeAt < 0f)
             {
@@ -444,8 +469,10 @@ namespace FishingKing
                     if (p.r != s.r || p.g != s.g || p.b != s.b)
                         if (diff++ == 0) first = $" first at ({x},{y}) panned #{p.r:x2}{p.g:x2}{p.b:x2} vs home ({hx},{hy}) #{s.r:x2}{s.g:x2}{s.b:x2}";
                 }
-                PCheck("align", overlap > w * h / 2 && diff == 0 && noise < w * h / 50,
-                    $"camera panned {pan.x},{pan.y} px: {diff} of {overlap} overlapping px differ from the home target shifted by the pan (frame-to-frame noise {noise} left out){first}");
+                // (a thin diagonal drawn at fractional places, the fishing line, may round one staircase pixel the other way
+                // when the camera sits elsewhere: up to 1 in 10000 isolated ties; a layer out of place moves whole edges)
+                PCheck("align", overlap > w * h / 2 && diff <= overlap / 10000 && noise < w * h / 50,
+                    $"camera panned {pan.x},{pan.y} px: {diff} of {overlap} overlapping px differ from the home target shifted by the pan (<= {overlap / 10000}: rounding ties on the line; frame-to-frame noise {noise} left out){first}");
                 File.WriteAllBytes(Path.Combine(shots, "pan_align_panned_rt.png"), a.EncodeToPNG());
                 File.WriteAllBytes(Path.Combine(shots, "pan_align_home_rt.png"), home.EncodeToPNG());
             }
@@ -455,6 +482,139 @@ namespace FishingKing
             Obstacles.Show = false;
             ctl.DebugFishHold = null;
             ctl.DebugRelease();
+            yield return ToReady(ctl);
+        }
+
+        /// <summary>
+        /// The legend encounter begun with the view panned (the lake, 끔: the rig put out past the home frame's right edge,
+        /// the view following it; the legend comes 1 s into the soak, -fkencounter now's way): the camera eases home under
+        /// the encounter, and the window must open from where the lure is on the render target now (its crop the
+        /// Open phase's ease from the lure's 8 px box to the window, the box at the lure's point less the camera's pan
+        /// now), not from where it was when the encounter began; the close (if it turns away) onto the same.
+        /// </summary>
+        IEnumerator PanEncounter()
+        {
+            yield return GoStage("lake", 3f);
+            var ctl = FindAnyObjectByType<FishingController>();
+            if (ctl == null || ctl.Watch == null || ctl.Watch.Legends.Count == 0)
+            {
+                PCheck("enc_scene", false, "no lake / no legend");
+                yield break;
+            }
+            var z = ZoomNow;
+            var pv = PixelView.Current;
+            Game.Data.zoomMode = (int)ZoomMode.Off;
+            var sp = ctl.Watch.Legends[0];
+            var ed = sp.encounter;
+            var key = GameDatabase.GetItem<BaitDef>(ed.keyLures.OrderByDescending(kv => kv.Value).First().Key);
+            if (Game.I.Line.strength < ed.minLine)
+            {
+                var line = GameDatabase.Lines.Where(l => l.strength >= ed.minLine).OrderBy(l => l.strength).FirstOrDefault() ?? GameDatabase.Lines[^1];
+                if (!Game.I.Owns(line.id)) Game.Data.ownedItems.Add(line.id);
+                Game.I.Equip(line);
+            }
+            yield return ToReady(ctl);
+            if (key.isLure) { if (!Game.I.Owns(key.id)) Game.Data.ownedItems.Add(key.id); }
+            else Game.I.AddBait(key.id, 20);
+            ctl.EquipBait(key);
+            yield return null;
+            LegendWatch.ClearCooldowns();
+            LegendWatch.DebugMode = "now";
+            LegendWatch.DebugLegend = sp.id;
+            FishingController.NoBites = false;   // (the watch only soaks with bites on)
+            float W = pv.Target.width;
+            const float Z = 16f;
+            var at = new Vector3(XForPx(ctl, W + 40f, 0f, Z), 0f, Z);
+            if (!ctl.DebugPlaceRig(at))
+            {
+                PCheck("enc_rig", false, $"state {ctl.State}");
+                yield break;
+            }
+            Log(string.Format(CIp, "[PAN] encounter: {0} with {1}, the rig at ({2:0.0}, {3:0.0}) m = home px {4}", sp.id, key.id, at.x, at.z, ZV(z.WorldToPx(ctl.RigShown2D))));
+            for (float w = 0f; w < 8f && ctl.State != FishingController.S.Encounter; w += Time.deltaTime) yield return null;
+            if (ctl.State != FishingController.S.Encounter)
+            {
+                PCheck("enc_start", false, $"no encounter (state {ctl.State})");
+                LegendWatch.DebugMode = null;
+                FishingController.NoBites = true;
+                yield break;
+            }
+            var panStart = z.CamPan;
+            var lureWorld = ctl.Stage.P.To2D(ctl.Stage.P.Apparent(ctl.Tackle.HookPos));
+            int RW = pv.Target.width, RH = pv.Target.height;
+            Vector2 LureNow() => (lureWorld - pv.BaseCenter) * PixelView.PPU + new Vector2(RW * 0.5f, RH * 0.5f) - (Vector2)pv.Pan;
+            Vector2 lureStart = LureNow();
+            Rect Expect(Rect from, Rect to, float k) => new Rect(Mathf.Round(Mathf.Lerp(from.x, to.x, k)), Mathf.Round(Mathf.Lerp(from.y, to.y, k)),
+                Mathf.Max(1f, Mathf.Round(Mathf.Lerp(from.width, to.width, k))), Mathf.Max(0f, Mathf.Round(Mathf.Lerp(from.height, to.height, k))));
+            Rect Box(Vector2 p) => new Rect(p.x - 4f, p.y - 4f, 8f, 8f);
+            // the crop the view draws (rounded like UpdateCrop) against the one eased from / onto the lure's point now, and
+            // the one the lure's point as the encounter began would give
+            float RectErr(Rect a, Rect b) => Mathf.Max(Mathf.Max(Mathf.Abs(a.x - b.x), Mathf.Abs(a.y - b.y)), Mathf.Max(Mathf.Abs(a.width - b.width), Mathf.Abs(a.height - b.height)));
+            int openFrames = 0, closeFrames = 0;
+            float openErr = 0f, openOld = 0f, closeErr = 0f, closeOld = 0f, ang = 0f, te = 0f;
+            bool shot = false;
+            var panAtOpen = Vector2Int.zero;
+            var centre = Scr(0.72f, 0.4f);
+            float radius = Screen.height * 0.12f, windSign = CircleGesture.Reversed ? -1f : 1f;
+            PointerInput.SimActive = true;
+            while (ctl.State == FishingController.S.Encounter && te < 60f)
+            {
+                var e = ctl.Encounter;
+                // (the wrong play, so it turns away and closes onto the lure: too fast in the tease, -fkencplay bad's way)
+                if (e != null && e.Ph == LegendEncounter.Phase.Tease)
+                {
+                    var md = e.MoodDef;
+                    float fast = md.tooFast < 90f ? md.tooFast + 0.8f : 0f;
+                    if (fast > 0f) Circle(ref ang, fast, windSign, centre, radius, Time.deltaTime);
+                    else PointerInput.SimDown = false;
+                }
+                else PointerInput.SimDown = false;
+                yield return new WaitForEndOfFrame();
+                te += Time.deltaTime;
+                var v = ctl.EncounterView;
+                if (e == null || v == null || ctl.State != FishingController.S.Encounter) break;
+                float k = Mathf.Clamp01(e.PhaseT / Mathf.Max(1e-3f, e.PhaseLen));
+                if (e.Ph == LegendEncounter.Phase.Open)
+                {
+                    if (openFrames++ == 0) panAtOpen = z.CamPan;
+                    float ke = 1f - (1f - k) * (1f - k) * (1f - k);
+                    var want = Expect(Box(LureNow()), v.Window, ke);
+                    openErr = Mathf.Max(openErr, RectErr(v.Crop, want));
+                    openOld = Mathf.Max(openOld, RectErr(Expect(Box(lureStart), v.Window, ke), want));
+                    if (!shot && k >= 0.25f)
+                    {
+                        shot = true;
+                        yield return PanShot(ctl, "pan_enc_open");
+                    }
+                }
+                else if (e.Ph == LegendEncounter.Phase.Close)
+                {
+                    closeFrames++;
+                    var want = Expect(v.Window, Box(LureNow()), k * k);
+                    closeErr = Mathf.Max(closeErr, RectErr(v.Crop, want));
+                    closeOld = Mathf.Max(closeOld, RectErr(Expect(v.Window, Box(lureStart), k * k), want));
+                }
+            }
+            PointerInput.SimDown = false;
+            PCheck("enc_open_on_lure", panStart.x != 0 && openFrames > 3 && openErr <= 1f,
+                string.Format(CIp, "the camera panned {0} px as it began, {1} px as the window opened ({2} Open frames): the crop off the ease from the lure's point now by up to {3:0.0} px (from the lure's point as it began it would be off by {4:0.0} px)",
+                    panStart.x, panAtOpen.x, openFrames, openErr, openOld));
+            if (closeFrames > 0)
+                PCheck("enc_close_on_lure", closeErr <= 1f,
+                    string.Format(CIp, "{0} Close frames: the crop off the ease onto the lure's point now by up to {1:0.0} px (onto the point as it began: {2:0.0} px)",
+                        closeFrames, closeErr, closeOld));
+            else Log("[PAN] encounter: no close (it did not turn away)");
+            LegendWatch.DebugMode = null;
+            LegendWatch.DebugLegend = null;
+            FishingController.NoBites = true;
+            while (ctl.State == FishingController.S.Landing) yield return null;
+            if (ctl.State == FishingController.S.Result)
+            {
+                for (float w = 0f; w < 4f && !HasButton("판매"); w += Time.deltaTime) yield return null;
+                Click("판매");
+                yield return new WaitForSeconds(0.6f);
+            }
+            if (ctl.State == FishingController.S.Fighting) ctl.DebugRelease();
             yield return ToReady(ctl);
         }
 

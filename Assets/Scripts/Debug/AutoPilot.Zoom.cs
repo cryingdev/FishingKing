@@ -1197,9 +1197,9 @@ namespace FishingKing
         }
 
         /// <summary>
-        /// Freezes the moment and draws it zoomed, at 1x (the display only) and zoomed again: the render target must be the
-        /// same (the zoom never moves what is drawn: the side arrow over its anchor, the occlusion behind the pier, the
-        /// outlines); frame-to-frame changes (zoomed vs zoomed) are left out. With <paramref name="arrow"/> the side arrow's
+        /// Freezes the moment and draws it zoomed, at 1x (the display only), zoomed again and at 1x again: the render target
+        /// must be the same (the zoom never moves what is drawn: the side arrow over its anchor, the occlusion behind the
+        /// pier, the outlines); frame-to-frame changes (zoomed vs zoomed, 1x vs 1x) are left out. With <paramref name="arrow"/> the side arrow's
         /// screen offset from its anchor must be its world offset x the zoom, both frames.
         /// </summary>
         IEnumerator FreezeCompare(FishingController ctl, string tag, bool arrow)
@@ -1235,10 +1235,19 @@ namespace FishingKing
             yield return new WaitForEndOfFrame();
             if ((Time.frameCount & 1) != 0) yield return new WaitForEndOfFrame();
             var c = GrabRT();
+            // (and 1x once more: a frozen scene's few animated pixels, e.g. a held fish's shiver, may repeat every few
+            // frames and come back the same in both zoomed grabs; what changes between either pair is left out)
+            z.Hold(0f);
+            yield return null;
+            yield return new WaitForEndOfFrame();
+            if ((Time.frameCount & 1) != 0) yield return new WaitForEndOfFrame();
+            var d = GrabRT();
+            z.Hold(1f);
+            yield return null;
             z.Release();
             Time.timeScale = ts;
             CurrentField.DebugFreeze = false;
-            if (a == null || b == null || c == null)
+            if (a == null || b == null || c == null || d == null)
             {
                 ZCheck(tag + "_rt_same", false, "no render target");
                 yield break;
@@ -1246,10 +1255,12 @@ namespace FishingKing
             var pa = a.GetPixels32();
             var pb = b.GetPixels32();
             var pc = c.GetPixels32();
+            var pd = d.GetPixels32();
             int diff = 0, noise = 0;
             for (int i = 0; i < pa.Length; i++)
             {
-                bool same = pa[i].r == pc[i].r && pa[i].g == pc[i].g && pa[i].b == pc[i].b;
+                bool same = pa[i].r == pc[i].r && pa[i].g == pc[i].g && pa[i].b == pc[i].b
+                            && pb[i].r == pd[i].r && pb[i].g == pd[i].g && pb[i].b == pd[i].b;
                 if (!same)
                 {
                     noise++;
@@ -1266,6 +1277,7 @@ namespace FishingKing
             Destroy(a);
             Destroy(b);
             Destroy(c);
+            Destroy(d);
         }
 
         /// <summary>The side arrow's offset from its anchor: world (game px) vs screen (px) / the scale now; the error in screen px.</summary>
