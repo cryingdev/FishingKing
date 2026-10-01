@@ -737,8 +737,11 @@ values in `PROFILE` for the preview mock, and list their lure billboards:
 - **ceiling:** the ice underside — dark blue-grey ice `#1a2640` … `#2a3a5a` with cracks, pressure ridges and frost
   texture.
 - **uw_ice_ray** (64×256): the **hole** as a bright ellipse (48×10, `#bfe8ff` / `#ffffff`) at the top, with a
-  vertical light column fading down. It is placed with its top centre on the projected hole point (set (0, 4.3, 0)),
-  directly above the lure. It is not a top-right god-ray.
+  vertical light column fading down. It runs from the projected hole point (set (0, 4.3, 0)), directly above the lure,
+  along the light (−`keyDir`: straight down) to the projected floor under it. It is not a top-right god-ray. It is
+  drawn as a sheared mesh, not a sprite: in the level rest view it stays vertical; when the camera pitches (the lunge's
+  close-up looking down at the bite) it leans the way the 3D column projects. Each row keeps its 64 texels 1:1 (point
+  filtering), shifted by whole pixels, and the rows are spread along it by their 3D height.
 - **bg:** from `#1a2438` (just under the ice) through `#0e1628` and `#080e1c` to `#04080f`; far bottom-slope
   silhouettes; the haze band.
 - **mid:** boulders, sunken dead branches and weed, `#101a2c` … `#24344e`.

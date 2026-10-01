@@ -599,9 +599,11 @@ namespace FishingKing
             Destroy(tex);
             var e = ctl.Encounter;
             var v = ctl.EncounterView;
-            Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "shot {0} phase={1} gauge={2:0} mood={3} fishDist={4:0.00} crop={5}",
+            // (a light column: its ends, the hole's first; the lean is their x difference)
+            string col = v != null && v.ColumnEnds(out var ct, out var cb) ? $" column=({ct.x:0},{ct.y:0})->({cb.x:0},{cb.y:0}) lean={ct.x - cb.x:0}px" : "";
+            Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "shot {0} phase={1} gauge={2:0} mood={3} fishDist={4:0.00} crop={5}{6}",
                 p, e != null ? e.Ph.ToString() : "-", e != null ? e.Gauge : 0f, e != null ? LegendEncounter.MoodName(e.Mood) : "-",
-                v != null ? v.FishCamDist : -1f, v != null ? v.Crop.ToString() : "-"));
+                v != null ? v.FishCamDist : -1f, v != null ? v.Crop.ToString() : "-", col));
         }
     }
 }

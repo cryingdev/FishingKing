@@ -69,8 +69,15 @@ namespace FishingKing
         static readonly int RimStrengthId = Shader.PropertyToID("_RimStrength");
 
         SpriteRenderer dim, frame, timer, flashSr, waterline;
-        SpriteRenderer bg, ceilSr, ceilFillSr, mid, floorSr, fore, halo, lureSr, eyeSrL, eyeSrR, eyeCoreL, eyeCoreR, rayCol, veil;
+        SpriteRenderer bg, ceilSr, ceilFillSr, mid, floorSr, fore, halo, lureSr, eyeSrL, eyeSrR, eyeCoreL, eyeCoreR, veil;
         readonly List<SpriteRenderer> rays = new List<SpriteRenderer>();
+        // the ice's light column: a mesh (a sprite can't shear) over uw_<id>_ray, its art's uv rect and the sheared ends
+        MeshRenderer rayCol;
+        Mesh rayColMesh;
+        Material rayColMat;
+        Rect rayColUv;
+        int rayColW;
+        Vector2 rayColTop, rayColBot;
         LineRenderer line;
         Sprite[] lureFrames, silt;
         Sprite bubbleS, bubbleM;
@@ -258,11 +265,7 @@ namespace FishingKing
                 sr.color = Art.Hex(r.tint, r.alpha);
                 rays.Add(sr);
             }
-            if (set.rayAnchored)
-            {
-                rayCol = Optional("RayColumn", bd + "_ray", URayCol);
-                if (rayCol != null) rayCol.color = Color.white;
-            }
+            if (set.rayAnchored) MakeColumn(bd + "_ray");
             mid = PixelSprite("Mid", Enc(bd + "_mid", "uw_cave_mid"), UMid, uwRoot, UwLayer);
             floorSr = set.hasFloor ? (cave ? PixelSprite("Floor", Enc(bd + "_floor", "uw_cave_floor"), UFloor, uwRoot, UwLayer) : Optional("Floor", bd + "_floor", UFloor)) : null;
             fore = PixelSprite("Fore", Enc(bd + "_fore", "uw_cave_fore"), UFore, uwRoot, UwLayer);
@@ -417,7 +420,7 @@ namespace FishingKing
                 col.a = r.alpha * pRays;
                 rays[i].color = col;
             }
-            if (rayCol != null) rayCol.color = new Color(pTint.r, pTint.g, pTint.b, pColumn);
+            if (rayColMat != null) rayColMat.color = new Color(pTint.r, pTint.g, pTint.b, pColumn);
             if (b.From != Period.Day || b.To != Period.Day)
                 Debug.Log($"[ENC] period {b}: tint #{ColorUtility.ToHtmlStringRGB(pTint)} rays x{pRays:0.00} sun x{pSun:0.00} light x{pLight:0.00}");
         }
@@ -438,6 +441,35 @@ namespace FishingKing
                 return null;
             }
             return PixelSprite(name, s, order, uwRoot, UwLayer);
+        }
+
+        /// <summary>The hole's light column (left out when its art is missing): a mesh over the sprite's texture, placed by <see cref="PlaceColumn"/>.</summary>
+        void MakeColumn(string sprite)
+        {
+            var s = Resources.Load<Sprite>("Sprites/Encounter/" + sprite);
+            if (s == null)
+            {
+                Debug.Log($"[ENC] view: no {sprite}, layer left out");
+                return;
+            }
+            var go = new GameObject("RayColumn");
+            go.transform.SetParent(uwRoot, false);
+            go.layer = UwLayer;
+            rayCol = go.AddComponent<MeshRenderer>();
+            rayColMesh = new Mesh { name = "EncRayColumn" };
+            rayColMesh.MarkDynamic();
+            go.AddComponent<MeshFilter>().sharedMesh = rayColMesh;
+            rayColMat = new Material(Angler.LineMaterial) { name = "EncRayColumnMat", mainTexture = s.texture };
+            SetupQuad(rayCol, rayColMat, URayCol);
+            // the sprite's rect in its texture (point-filtered: one texel per render-target pixel across)
+            Vector2 lo = Vector2.one, hi = Vector2.zero;
+            foreach (var uv in s.uv)
+            {
+                lo = Vector2.Min(lo, uv);
+                hi = Vector2.Max(hi, uv);
+            }
+            rayColUv = Rect.MinMaxRect(lo.x, lo.y, hi.x, hi.y);
+            rayColW = Mathf.RoundToInt(s.rect.width);
         }
 
         static Sprite eyeCoreSprite;
@@ -607,6 +639,8 @@ namespace FishingKing
             if (fishMat != null) Destroy(fishMat);
             if (cropMesh != null) Destroy(cropMesh);
             if (fishMesh != null) Destroy(fishMesh);
+            if (rayColMat != null) Destroy(rayColMat);
+            if (rayColMesh != null) Destroy(rayColMesh);
         }
 
         // ================================================================== coordinates
@@ -2278,15 +2312,7 @@ namespace FishingKing
             float pulse = 1f + set.midPulse * Mathf.Sin(time * Mathf.PI * 2f * 0.3f);
             mid.color = new Color(pulse * pTint.r, pulse * pTint.g, pulse * pTint.b, 1f);
             if (floorSr != null) Place(floorSr, new Vector2(w * 0.5f - 0.8f * yp, horizon - 60f));
-            if (rayCol != null)
-            {
-                // the hole's light column: from the projected hole straight down to the floor under it
-                var top = Proj(new Vector3(0f, set.surfaceY, 0f));
-                var bot = Proj(new Vector3(0f, set.floorY, 0f));
-                float len = Mathf.Max(8f, top.y - bot.y);
-                rayCol.transform.localScale = new Vector3(1f, len / rayCol.sprite.rect.height, 1f);
-                rayCol.transform.position = U(new Vector2(Mathf.Round(bot.x), Mathf.Round((top.y + bot.y) * 0.5f)));   // (at the floor: where it shows)
-            }
+            if (rayCol != null) PlaceColumn();
             Place(fore, new Vector2(set.foreX + 128f - 1.3f * yp, 64f));
             // the Eyes beat's veil over the back layers, gone over the first 1.5 s of the approach
             if (veil != null)
@@ -2335,6 +2361,94 @@ namespace FishingKing
                 uwShake = new Vector2(Mathf.Round(Random.Range(-a, a)), Mathf.Round(Random.Range(-a, a)));
             }
             else uwShake = shakeT >= 0f && shakeT < 0.8f ? new Vector2(Mathf.Round(Mathf.Sin(shakeT * 60f)), 0f) : Vector2.zero;
+        }
+
+        const int ColumnStrips = 16;
+        readonly Vector3[] colVerts = new Vector3[(ColumnStrips + 1) * 2];
+        readonly Vector2[] colUvs = new Vector2[(ColumnStrips + 1) * 2];
+        bool colBuilt;
+
+        /// <summary>
+        /// The hole's light column, through the fish camera: from the hole (set (0, surfaceY, 0)) along the light
+        /// (-keyDir; straight down under the ice) to the floor, clipped at the camera's near plane. A vertical column
+        /// only looks vertical while the camera looks level (the rest view); pitched (the lunge's close-up looking down
+        /// at the bite) it leans towards the vertical vanishing point, so the art is sheared along the projected line:
+        /// every row keeps its texels 1:1 across, shifted by whole pixels (the ends are whole pixels), and the rows are
+        /// spread along it by the 3D height (perspective-correct in 16 strips: the far end packs tighter).
+        /// </summary>
+        void PlaceColumn()
+        {
+            var hole = new Vector3(0f, set.surfaceY, 0f);
+            var down = -set.keyDir.normalized;
+            if (down.y > -0.2f) down = Vector3.down;
+            var span = down * ((set.surfaceY - set.floorY) / -down.y);
+            const float near = 0.1f;
+            float dA = Proj(hole).z, dB = Proj(hole + span).z;
+            if (dA < near && dB < near)
+            {
+                rayCol.enabled = false;
+                return;
+            }
+            float tA = 0f, tB = 1f;
+            if (dA < near) tA = (near - dA) / (dB - dA);
+            else if (dB < near) tB = (near - dA) / (dB - dA);
+            Vector3 pA = Proj(hole + span * tA), pB = Proj(hole + span * tB);
+            // the foot's end on a whole pixel (as before: where it shows), the hole's end a whole number of pixels off it
+            float xB = Mathf.Round(pB.x), yB = Mathf.Round(pB.y);
+            float xA = xB + Mathf.Round(pA.x - pB.x), yA = Mathf.Round(pA.y);
+            if (Mathf.Abs(yA - yB) < 2f || Mathf.Abs(pA.y - pB.y) < 0.01f)
+            {
+                rayCol.enabled = false;
+                return;
+            }
+            rayColTop = new Vector2(xA, yA);
+            rayColBot = new Vector2(xB, yB);
+            float half = rayColW * 0.5f, odd = rayColW % 2 == 1 ? 0.5f : 0f;
+            for (int i = 0; i <= ColumnStrips; i++)
+            {
+                float t = Mathf.Lerp(tA, tB, i / (float)ColumnStrips);
+                // this strip edge's projected height, mapped onto the snapped ends; x on the line between them
+                float k = i == 0 ? 0f : i == ColumnStrips ? 1f : (Proj(hole + span * t).y - pA.y) / (pB.y - pA.y);
+                float y = Mathf.Lerp(yA, yB, k), x = Mathf.Lerp(xA, xB, k) + odd;
+                float v = rayColUv.yMax - rayColUv.height * t;
+                colVerts[i * 2] = new Vector3((x - half - w * 0.5f) / PPU, (y - h * 0.5f) / PPU, 0f);
+                colVerts[i * 2 + 1] = new Vector3((x + half - w * 0.5f) / PPU, (y - h * 0.5f) / PPU, 0f);
+                colUvs[i * 2] = new Vector2(rayColUv.xMin, v);
+                colUvs[i * 2 + 1] = new Vector2(rayColUv.xMax, v);
+            }
+            rayColMesh.vertices = colVerts;
+            rayColMesh.uv = colUvs;
+            if (!colBuilt)
+            {
+                colBuilt = true;
+                var cols = new Color32[colVerts.Length];
+                for (int i = 0; i < cols.Length; i++) cols[i] = new Color32(255, 255, 255, 255);
+                rayColMesh.colors32 = cols;
+                var tris = new int[ColumnStrips * 6];
+                for (int i = 0; i < ColumnStrips; i++)
+                {
+                    // (the fish quad's winding: bottom-left, top-left, bottom-right; top-left, top-right, bottom-right)
+                    int a = i * 2 + 2, b = i * 2;   // a: the lower edge (towards the floor), b: the upper
+                    tris[i * 6] = a;
+                    tris[i * 6 + 1] = b;
+                    tris[i * 6 + 2] = a + 1;
+                    tris[i * 6 + 3] = b;
+                    tris[i * 6 + 4] = b + 1;
+                    tris[i * 6 + 5] = a + 1;
+                }
+                rayColMesh.triangles = tris;
+            }
+            rayColMesh.RecalculateBounds();
+            rayCol.transform.SetPositionAndRotation(UwOrigin, Quaternion.identity);
+            rayCol.enabled = true;
+        }
+
+        /// <summary>For the autopilot: the light column's ends (render-target pixels; the hole's end first), false without one.</summary>
+        public bool ColumnEnds(out Vector2 top, out Vector2 bottom)
+        {
+            top = rayColTop;
+            bottom = rayColBot;
+            return rayCol != null && rayCol.enabled;
         }
 
         /// <summary>Puts a sprite's centre at a render-target pixel (odd-sized sprites on pixel centres).</summary>
