@@ -406,8 +406,8 @@ W = 화면 폭입니다.
 |---|---|---|
 | 최대 스윕 | 30° | `Angler.SweepMax` (`Angler.Sweep = Slide.Shown × SweepMax`) |
 | 스윕 스무딩 | 0.07 s (약 0.2 s에 95%) | `Angler.SweepTau` |
-| 낚싯대 회전 한계 | 왼쪽 40°, 오른쪽 30° (바라보는 방향 + 스윕 합) | `Angler.RodMax`, `Angler.RodMaxRight` |
-| 왼쪽 끝까지 기울 때 끝이 내려가는 각도 | 10°, 파이트 중(`SideLow`) 25° | `Angler.SweepDrop`, `Angler.SweepDropLow` |
+| 낚싯대 회전 한계 | 왼쪽 40°, 오른쪽 30° (바라보는 방향 + 스윕 합; 오른손·옆 기준 — 왼손이면 왼쪽 30°·오른쪽 40°, 가운데면 양쪽 35°) | `Angler.RodMax`(낚싯대 든 손 쪽), `Angler.RodMaxAcross`(몸을 가로지르는 쪽), `Angler.RodMaxCentre`; 그 프레임의 한계 `Angler.RodYawMin` / `RodYawMax` |
+| 바깥쪽(낚싯대 든 손 쪽, 오른손이면 왼쪽; 가운데면 양쪽) 끝까지 기울 때 끝이 내려가는 각도 | 10°, 파이트 중(`SideLow`) 25° | `Angler.SweepDrop`, `Angler.SweepDropLow` |
 
 - `FishingController.Lean` = `Angler.SweepReq / SweepMax` — 회전 한계 **전**의 요청값이라, 물고기가 한계 밖에 있어 그려진 낚싯대가 끝에 붙어 있어도 사이드 프레셔는 기울인 만큼 인정됩니다.
 - `FishingController.SweepSin` = `sin(Angler.SweepLine)` — 채비로 가는 줄에서 초릿대가 벗어난 각도(스윕 방향). 채비가 한쪽 멀리 있어 낚싯대가 한계에 붙은 상태에서 바깥쪽으로 더 미는 건 0으로 칩니다.
