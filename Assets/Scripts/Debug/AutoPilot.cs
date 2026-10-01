@@ -62,7 +62,7 @@ namespace FishingKing
                 : scenario == "windup" ? ap.WindupShots() : scenario == "lure" ? ap.LureTest() : scenario == "encounter" ? ap.EncounterTest()
                 : scenario == "steer" ? ap.SteerTest() : scenario == "periods" ? ap.PeriodsTest() : scenario == "current" ? ap.CurrentTest()
                 : scenario == "obstacles" ? ap.ObstaclesTest() : scenario == "occlusion" ? ap.OcclusionTest()
-                : scenario == "zoom" ? ap.ZoomTest() : ap.Fish());
+                : scenario == "zoom" ? ap.ZoomTest() : scenario == "music" ? ap.MusicTest() : ap.Fish());
         }
 
         /// <summary>-fkflick &lt;speed&gt;[:&lt;deg&gt;]: the flick of the fish / walk scenarios' casts (angle null = not given).</summary>

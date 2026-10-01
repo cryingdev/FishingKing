@@ -23,7 +23,7 @@
    "beatsPerBar": 4,
    "bars": 16,
    "loopSamples": 2822400,
-   "desc": "Legend encounter (underwater): lurk = drone pad, contrabass, sparse low piano clusters and reverse cymbals; approach = cello eighth pulse and violas; tease = high tremolo strings, celesta figures and crystal bells, rising to a climax in bar 13. D minor with a Phrygian bII",
+   "desc": "Legend encounter (underwater): lurk = drone pad, contrabass, sparse low piano clusters and reverse cymbals; approach = cello eighth pulse and violas; tease = high tremolo strings, celesta figures (the MOTIF head in D minor) and crystal bells, rising to a climax in bar 13. D minor with a Phrygian bII",
    "stems": [
     {
      "name": "lurk",
@@ -46,7 +46,7 @@
    "beatsPerBar": 4,
    "bars": 32,
    "loopSamples": 2822400,
-   "desc": "Arapaima fight: primal 3+3+2 engine of taiko, low toms, congas and shaker under a low bassoon riff and tuba; the arapaima's rising-fourth theme in trombone and horn, a broad clarinet tune and choir in the B section, a Cm-Ab-D turnaround back into the theme",
+   "desc": "Arapaima fight: primal 3+3+2 engine of taiko, low toms, congas and shaker under a low bassoon riff and tuba; the arapaima's rising-fourth theme in trombone and horn, a choir from the A' climax, a broad clarinet tune in the lighter B section, a Cm-Ab-D turnaround back into the theme",
    "stems": [
     {
      "name": "main",

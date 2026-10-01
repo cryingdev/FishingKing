@@ -26,10 +26,12 @@ namespace FishingKing
     /// </summary>
     public partial class FishingController
     {
-        const float PeriodFade = 8f, FightDown = 3f, FightMin = 0.55f;
+        internal const float PeriodFade = 8f, FightDown = 3f, FightMin = 0.55f;
         /// <summary>The line's tension is smoothed over this long (s) before it sets the fight stem.</summary>
-        const float TensionTau = 0.5f;
-        const float BiteDuck = 0.55f, BuildDuck = 0.65f;
+        internal const float TensionTau = 0.5f;
+        /// <summary>The stage under a bite and under the legend's build-up; under the stings of a catch (common / uncommon,
+        /// rare / epic), of a fish off and of a forced snag break (a legend's stings: 0, the stage comes back after them).</summary>
+        internal const float BiteDuck = 0.55f, BuildDuck = 0.65f, CatchDuck = 0.35f, RareDuck = 0.25f, EscapeDuck = 0.4f, SnagDuck = 0.45f;
         /// <summary>The stage fading out at the omen, and back in under the sting that ended an encounter / a legend fight.</summary>
         const float OmenFade = 1.2f, StageBack = 1f;
 
@@ -216,13 +218,13 @@ namespace FishingKing
         {
             bool legend = sp.encounter != null || sp.rarity == Rarity.Legendary;
             bool rare = sp.rarity == Rarity.Rare || sp.rarity == Rarity.Epic;
-            Music.Sting(legend ? "sting_legend" : rare ? "sting_rare" : "sting_catch", legend ? 0f : rare ? 0.25f : 0.35f);
+            Music.Sting(legend ? "sting_legend" : rare ? "sting_rare" : "sting_catch", legend ? 0f : rare ? RareDuck : CatchDuck);
         }
 
         /// <summary>The fish is off (shaken off, the line broken): sting_escape (after a legend fight the stage comes back under it).</summary>
-        void FishOffMusic() => Music.Sting("sting_escape", musMode == Mus.Legend ? 0f : 0.4f);
+        void FishOffMusic() => Music.Sting("sting_escape", musMode == Mus.Legend ? 0f : EscapeDuck);
 
         /// <summary>A snag forced until the line broke (not the 끊기 button): the line lost, sting_escape.</summary>
-        void SnagBreakMusic() => Music.Sting("sting_escape", 0.45f);
+        void SnagBreakMusic() => Music.Sting("sting_escape", SnagDuck);
     }
 }

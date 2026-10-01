@@ -6,8 +6,9 @@ Form (8 + 8 + 8 bars). Every stem reads the same chord map (PROG), so day / nigh
   A' (8-15)   C#m  Aadd9  E  B     | A  E/G#  F#m7  Bsus4-B       bass falls A-G#-F#, then V of E
   B  (16-23)  E  G#m7  Aadd9  B    | C#m  A  F#m7  G#sus4-G#      I-iii-IV-V of E major, deceptive to C#m (climax E6
                                                                  in bar 20), iv7-V back to bar 0 (B# leads to C#)
-day    low marimba bass, rolling marimba arpeggios with a lot of reverb, crystal pad, kalimba melody,
-       glockenspiel glints in the kalimba's rests (and doubling its long notes at the climax)
+day    low marimba bass, rolling marimba arpeggios with a lot of reverb, crystal pad (rolled, with a soft halo pad
+       under it for body), kalimba melody, glockenspiel glints in the kalimba's rests (and doubling its long notes
+       at the climax)
 night  the same bass thinned out, a few marimba "drips", a lower choir pad, vibraphone keeping only the long notes
        (lower and without the climax in B)
 fight  low floor toms + woodblocks (3-3-2 accents), synth bass eighths on the roots under the base bass,
@@ -113,14 +114,14 @@ def clip(bar, beat, dur):
     return max(0.1, min(dur, seg_at(bar, beat)[1] - beat - 0.05))
 
 
-def approach(bar, target, lo, hi):
+def approach(bar, target, lo, hi, fallback=None):
     """An off-beat note leading into `target` (next bar's bass): a chord tone of this bar's last chord a step
-    or a whole tone away (below first), else this chord's bass."""
+    or a whole tone away (below first), else `fallback` (default: this chord's bass)."""
     ch = seg_at(bar, 3.5)[2]
     for p in (target - 1, target + 1, target - 2, target + 2):
         if lo <= p <= hi and p % 12 in tones(ch, color=True):
             return p
-    return seg_at(bar, 3.5)[3]
+    return seg_at(bar, 3.5)[3] if fallback is None else fallback
 
 
 def bass_pitch(bar, beat, what, lo=36, hi=54):
@@ -218,17 +219,18 @@ ARP = {
 
 
 def day(s):
-    mlo = s.track("marimba_bass", GM["marimba"], stem="day", vol=112, pan=-4, reverb=58)
+    mlo = s.track("marimba_bass", GM["marimba"], stem="day", vol=104, pan=-4, reverb=58)
     arp = s.track("marimba", GM["marimba"], stem="day", vol=96, pan=-22, reverb=100)
-    pad = s.track("crystal", GM["crystal"], stem="day", vol=74, pan=8, reverb=96, chorus=30)
-    kal = s.track("kalimba", GM["kalimba"], stem="day", vol=112, pan=16, reverb=80)
-    glk = s.track("glock", GM["glockenspiel"], stem="day", vol=64, pan=30, reverb=100)
+    pad = s.track("crystal", GM["crystal"], stem="day", vol=104, pan=8, reverb=96, chorus=30)
+    kal = s.track("kalimba", GM["kalimba"], stem="day", vol=100, pan=16, reverb=80)
+    glk = s.track("glock", GM["glockenspiel"], stem="day", vol=95, pan=30, reverb=100)
+    halo = s.track("halo", GM["halo_pad"], stem="day", vol=60, pan=-8, reverb=100)   # soft body under the crystal
 
     for bar in range(BARS):
         sec = section(bar)
         # bass: two notes in A, a pickup and an approach note later
         for (bt, what, d) in DAY_BASS[sec]:
-            mlo.note(bar, bt, bass_pitch(bar, bt, what), clip(bar, bt, d), 74 if bt == 0 else (66 if bt % 1 == 0 else 60))
+            mlo.note(bar, bt, bass_pitch(bar, bt, what), clip(bar, bt, d), 70 if bt == 0 else (64 if bt % 1 == 0 else 58))
 
         # arpeggio: eighths, accented on the beats, a little louder each section
         base = {"A": 44, "A2": 48, "B": 52}[sec]
@@ -249,15 +251,16 @@ def day(s):
                 while top % 12 != col[0]:
                     top += 1
                 vc = vc + [top]
-            pad.chord(bar, st, vc, en - st - 0.08, {"A": 44, "A2": 48, "B": 52}[sec])
+            pad.chord(bar, st, vc, en - st - 0.08, {"A": 48, "A2": 52, "B": 52}[sec], strum=0.07)   # rolled upwards
+            halo.chord(bar, st, voicing(ch, 55, 3, triad=True), en - st - 0.06, {"A": 40, "A2": 44, "B": 48}[sec])
 
     write_line(kal, MELODY)
     write_line(glk, GLOCK, shift=-18, slope=0.3)
 
     # the pad breathes up into B and back down by the loop point
     pad.cc(0, 0, 11, 96)
-    pad.swell(16, 0, 16, 96, 120)
-    pad.swell(20, 0, 16, 120, 96)
+    pad.swell(16, 0, 16, 96, 110)
+    pad.swell(20, 0, 16, 110, 96)
 
 
 # ----------------------------------------------------------------------------------------------- night stem
@@ -275,10 +278,10 @@ DRIPS = {
 
 
 def night(s):
-    mlo = s.track("n_marimba_bass", GM["marimba"], stem="night", vol=108, pan=-4, reverb=62)
-    drp = s.track("n_drips", GM["marimba"], stem="night", vol=86, pan=-22, reverb=112)
-    cho = s.track("choir", GM["choir_pad"], stem="night", vol=100, pan=-6, reverb=100)
-    vib = s.track("vibes", GM["vibraphone"], stem="night", vol=92, pan=16, reverb=86)
+    mlo = s.track("n_marimba_bass", GM["marimba"], stem="night", vol=104, pan=-4, reverb=62)
+    drp = s.track("n_drips", GM["marimba"], stem="night", vol=96, pan=-22, reverb=112)
+    cho = s.track("choir", GM["choir_pad"], stem="night", vol=80, pan=-6, reverb=100)
+    vib = s.track("vibes", GM["vibraphone"], stem="night", vol=120, pan=16, reverb=86)
 
     for bar in range(BARS):
         sec = section(bar)
@@ -311,7 +314,7 @@ DRUM_PATS = {
            "lo_wood": "..x.......x....."},
     "B": {"low_tom": "X.....x.X.....x.", "tom2": "....x.......x...", "hi_wood": "XxxXxxXxXxxXxxXx"},
 }
-DRUM_VEL = {"low_tom": 84, "tom2": 68, "hi_wood": 46, "lo_wood": 56}
+DRUM_VEL = {"low_tom": 78, "tom2": 68, "hi_wood": 46, "lo_wood": 56}
 # synth bass eighths: 'R' root, 'O' octave, '5' a fourth / fifth up (a chord tone), 'N' approach
 FBASS = {
     "A": ["R", "R", "R", "R", "R", "R", "R", "N"],
@@ -338,9 +341,9 @@ def fight_root(p):
 
 
 def fight(s):
-    dr = s.track("drums", DRUMS, stem="fight", vol=98, pan=0, reverb=44)
-    bs = s.track("synth_bass", GM["synth_bass"], stem="fight", vol=80, pan=0, reverb=12)
-    ost = s.track("ostinato", GM["marimba"], stem="fight", vol=92, pan=24, reverb=64)
+    dr = s.track("drums", DRUMS, stem="fight", vol=60, pan=0, reverb=44)
+    bs = s.track("synth_bass", GM["synth_bass"], stem="fight", vol=52, pan=0, reverb=12)
+    ost = s.track("ostinato", GM["marimba"], stem="fight", vol=60, pan=24, reverb=64)
 
     for bar in range(BARS):
         sec = section(bar)
@@ -375,7 +378,7 @@ def fight(s):
             elif what == "5":
                 p = next(q for q in range(root + 5, root + 9) if q % 12 in tones(ch, triad=True))
             elif what == "N":
-                p = approach(bar, fight_root(segs(bar + 1)[0][3]), 30, 45)
+                p = approach(bar, fight_root(segs(bar + 1)[0][3]), 30, 45, root)
             else:
                 p = root
             if bar == 23 and bt >= 2:

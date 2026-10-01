@@ -4,7 +4,8 @@ a seamless loop, one `main` stem.
 
 Primal and tribal. The engine is a 3+3+2 groove: low toms in tresillo, congas filling the gaps, a 16th shaker, taiko
 on the downbeats, and a low bassoon riff in the same tresillo (16ths: 0 .75 1.5 | 2 2.75 3.5) that sits on a G pedal
-and bends to the chord; tuba roots in dotted quarters (3+3+2 in eighths) lock under it.
+and bends to the chord; tuba (and taiko) roots in dotted quarters (3+3+2 in eighths) lock under it, kept in
+Bb1..A2 so the root is never above the riff's anchor (Bb1 under its F2, not a Bb2 over it).
 The arapaima's own theme is in trombone + horn: a stark rising fourth and minor third (D G Bb) in the riff's rhythm,
 answered by a falling tail.
 
@@ -15,7 +16,8 @@ Form (one chord per bar):
   B   16-23 Eb F Bb Gm | Cm F Bb D       lighter: taiko + congas + clave, the riff thins out, a broad clarinet tune
                                          in the relative major (horn second voice from 20), choir pad; trombones rest
   B'  24-31 Gm Gm Eb Eb | Cm Ab D D      the build: the theme returns in sequence, toms thicken to 16ths, the riff
-                                         drives in eighths, Cm-Ab-D (bII-V) and a tom / taiko fill into bar 0
+                                         drives in eighths, Cm-Ab-D (bII-V) and a tom / taiko fill into bar 0,
+                                         which lands on a crash, a china and one short choir "hah" on Gm
 """
 
 from fk_music import Song, Key, GM, DRUMS, DR, n, triad
@@ -42,6 +44,11 @@ def root_in(ch, lo):
     while p < lo:
         p += 12
     return p
+
+
+def low_root(ch):
+    """Tuba / taiko root in Bb1..A2: never above the riff's anchor (Bb1 under the F2 anchor, not Bb2 over it)."""
+    return root_in(ch, n("Bb1"))
 
 
 def below(p, ch):
@@ -97,8 +104,8 @@ def sounding(tracks, t0, t1):
 
 
 def riff_bar(tr, bar, pattern, vel, octave=0, bass=()):
-    """One bar of the riff. A neighbour note that would rub a semitone against a low drum / bass note held under it
-    (bass = tracks already written) falls back to the chord tone c1."""
+    """One bar of the riff. A neighbour note that would rub a semitone or a tritone against a low drum / bass note
+    held under it (bass = tracks already written) falls back to the chord tone c1."""
     a, c1, c2 = RIFF[PROG[bar]]
     nxt = RIFF[PROG[(bar + 1) % 32]][0]
     dn = next(p for p in range(n(c2) - 1, n(c2) - 3, -1) if KEY.in_key(p))
@@ -107,7 +114,7 @@ def riff_bar(tr, bar, pattern, vel, octave=0, bass=()):
         p = role[r]
         if r in ("up", "lo", "dn"):
             t0 = tr.t(bar, beat)
-            if any(abs(p - q) % 12 in (1, 11) for q in sounding(bass, t0, t0 + int(d * .9 * 480))):
+            if any(abs(p - q) % 12 in (1, 6, 11) for q in sounding(bass, t0, t0 + int(d * .9 * 480))):
                 p = role["c1"]
         tr.note(bar, beat, p + 12 * octave, d * .9, vel + acc)
 
@@ -142,8 +149,9 @@ THEME = {
     30: [("A4", .75), ("A4", .75), ("C5", .5), ("D5", 1.5), ("Eb5", .5)],
     31: [("D5", 3), ("C5", .5), ("A4", .5)],                                    # held, swelling into bar 0
 }
-THEME_VEL = {**{b: 90 for b in range(0, 8)}, **{b: 96 for b in range(8, 12)}, **{b: 102 for b in range(12, 16)},
-             **{b: 92 for b in range(24, 28)}, **{b: 100 for b in range(28, 32)}}
+# base velocity per bar: each 4-bar phrase leans toward its high point (Eb5 at 6, F5 at 13, the held D5 at 31)
+THEME_VEL = dict(zip(range(0, 16), [88, 90, 93, 90, 90, 93, 97, 92, 94, 96, 99, 96, 100, 106, 103, 98]))
+THEME_VEL.update(zip(range(24, 32), [90, 93, 94, 97, 98, 101, 102, 100]))   # 31: the swell does the rest
 
 # the B tune (clarinet): broad, in the relative major, peak F5 at bar 21
 TUNE = {
@@ -174,8 +182,8 @@ def play(tr, bar, items, vel, legato=.92, harmony=None, hvel=None):
 def songs():
     s = Song("legend_arapaima", bpm=120, bars=32, key=KEY, stems=["main"], loudness=-17.0,
              desc="Arapaima fight: primal 3+3+2 engine of taiko, low toms, congas and shaker under a low bassoon "
-                  "riff and tuba; the arapaima's rising-fourth theme in trombone and horn, a broad clarinet tune "
-                  "and choir in the B section, a Cm-Ab-D turnaround back into the theme")
+                  "riff and tuba; the arapaima's rising-fourth theme in trombone and horn, a choir from the A' climax, "
+                  "a broad clarinet tune in the lighter B section, a Cm-Ab-D turnaround back into the theme")
 
     drums = s.track("drums", DRUMS, vol=112, pan=0, reverb=32)
     taiko = s.track("taiko", GM["taiko"], vol=96, pan=-6, reverb=50)
@@ -186,9 +194,9 @@ def songs():
     hn = s.track("horn", GM["french_horn"], vol=106, pan=14, reverb=56)
     choir = s.track("choir", GM["choir"], vol=96, pan=0, reverb=72)
 
-    # --- tuba: roots (C2..B2) in dotted quarters; long notes in B; the riff's 16th tresillo in the turnaround
+    # --- tuba: roots (Bb1..A2) in dotted quarters; long notes in B; the riff's 16th tresillo in the turnaround
     for b in range(32):
-        r = root_in(PROG[b], n("C2"))
+        r = low_root(PROG[b])
         if 16 <= b < 24:
             v = 70 if b < 20 else 76
             tuba.note(b, 0, r, 1.9, v + 8).note(b, 2, r, 1.9, v)
@@ -198,8 +206,8 @@ def songs():
         else:
             v = 82 if b < 8 or b >= 24 else 86
             tuba.note(b, 0, r, 1.4, v + 12).note(b, 1.5, r, 1.4, v)
-            if b in (9, 11, 13):   # A': the fifth below on beat 4, short, leaving room for the riff's pickup
-                tuba.note(b, 3, r - 5, .45, v - 4)
+            if b in (9, 11, 13):   # A': the fifth (below, or above Bb1) on beat 4, short, room for the riff's pickup
+                tuba.note(b, 3, r - 5 if r - 5 >= n("C2") else r + 7, .45, v - 4)
             else:
                 tuba.note(b, 3, r, .9, v - 2)
 
@@ -229,10 +237,12 @@ def songs():
         prev, b = v, e
     choir.swell(12, 0, 8, 55, 108).cc(16, 0, 11, 92).swell(20, 0, 8, 92, 104).cc(24, 0, 11, 104)
     choir.swell(28, 0, 15.5, 104, 127)
+    # the loop lands: one short Gm "hah" on bar 0 (expression still 127 from the turnaround), then A stays bare
+    choir.chord(0, 0, voicing("Gm", prev), 1.5, 86)
 
-    # --- taiko: chord roots (C2..B2)
+    # --- taiko: chord roots (Bb1..A2, with the tuba)
     def tk(b, beat, v, d=None):   # on-beat hits ring a beat, off-beat ones are cut before the next beat
-        taiko.note(b, beat, root_in(PROG[b], n("C2")), d or (1.0 if beat % 1 == 0 else .5), v)
+        taiko.note(b, beat, low_root(PROG[b]), d or (1.0 if beat % 1 == 0 else .5), v)
     for b in range(32):
         if b < 8:
             tk(b, 0, 114 if b % 2 == 0 else 100)

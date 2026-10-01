@@ -3,12 +3,13 @@ stage_lake — 고요한 호수 (calm lake, daytime shore). D major, 80 bpm, 24 
 
 Form (8 + 8 + 8 bars). Every stem reads the same chord map (PROG), so day / night / fight line up bar for bar:
   A  (0-7)    D  A/C#  Bm  F#m/A | G  D/F#  Em7  Asus4-A       descending bass, half cadence
-  A' (8-15)   the same, ending Em7-A7 | D, bass walk D-A-F# up into B
-  B  (16-23)  G  A  F#m  Bm | Em7  F#m7  G  Asus4-A7           IV-V-iii-vi, climax (E6) in bar 17, V back to bar 0
+  A' (8-15)   the same, ending Em7-A7 | D (melody lands on the tonic), bass walk D-A-F# up into B
+  B  (16-23)  G  A  F#m  Bm | Em7  F#m7  G  Asus4-A7           IV-V-iii-vi, a new neighbour-note idea sequenced up
+                                                               to the climax (E6) in bar 17, V back to bar 0
 day    nylon guitar fingerpicking (carries the bass), flute melody, light pad, steel-guitar strums from A'
 night  electric piano (bass + broken chords), soft strings, music box (a thinner copy of the melody)
 fight  folk-rock kit, pick bass in eighths an octave under the base bass, string ostinato in eighths
-The flute rests in bars 3, 7, 11, 15, 19, 22, 23 (the music box in more) so the lake ambience can breathe.
+The flute rests in bars 3, 7, 11, 19, 22, 23 and half of 0, 8, 15 (the music box in more) so the lake ambience can breathe.
 Only chord tones sit on the beats in every track (passing tones on off-beat eighths), so the stems never clash.
 """
 
@@ -50,6 +51,16 @@ B_SEC = [
 ]
 PROG = A_SEC + A2_SEC + B_SEC
 BARS = len(PROG)
+
+# extra bass notes leading into the next bar: (beat, pitch); the bass before them is cut so they never stack
+WALK = {15: (3, "F#2"), 23: (3.5, "C#3")}      # D3 - A2 - F#2 -> G2 (into B); C#3 -> D3 (loop to bar 0)
+
+
+def bass_dur(bar, beat, dur):
+    """A bass note's length, stopped before this bar's walk note."""
+    if bar in WALK and beat < WALK[bar][0]:
+        dur = min(dur, WALK[bar][0] - beat - 0.04)
+    return dur
 
 
 def section(bar):
@@ -113,16 +124,18 @@ MELODY = {
     4: [("D5", 1), ("G5", 1), ("B5", 2)],
     5: [("A5", 1.5), ("G5", .5), ("F#5", 1), ("D5", 1)],
     6: [("G5", 1.5), ("F#5", .5), ("E5", 2)],
-    # A': the same shapes a third higher, reaching D6; E5 over A7 is left for the guitar to resolve
+    # A': the same shapes a third higher, reaching D6; G-F#-E | D closes the 16 bars on the tonic (V7-I)
     8: [(None, 1), ("F#5", .5), ("G5", .5), ("A5", 1.5), ("B5", .5)],
     9: [("A5", 1.5), ("G5", .5), ("E5", 1), ("C#5", 1)],
     10: [("D5", 1.5), ("E5", .5), ("F#5", 2)],
     12: [("B4", .5), ("D5", .5), ("G5", 1), ("B5", 2)],
     13: [("A5", 1), ("D6", 1), ("A5", 1), ("F#5", 1)],
     14: [("G5", 1.5), ("F#5", .5), ("E5", 2)],
-    # B: the climax (E6 over A), then a lower answer ending on E over F#m7
-    16: [("D5", .5), ("E5", .5), ("G5", 1), ("B5", 2)],
-    17: [("A5", 1), ("C#6", 1), ("E6", 1.5), ("D6", .5)],
+    15: [("D5", 2)],
+    # B: a new idea starting high (lower-neighbour figure + leap), sequenced a step up to the climax (E6 over A),
+    # then falling sequences (bar 20 = bar 18 a step lower) ending on E over F#m7
+    16: [("B5", .5), ("A5", .5), ("B5", 1), ("D6", 2)],
+    17: [("C#6", .5), ("B5", .5), ("C#6", 1), ("E6", 1.5), ("D6", .5)],
     18: [("C#6", 1.5), ("B5", .5), ("A5", 1), ("F#5", 1)],
     20: [("B5", 1.5), ("A5", .5), ("G5", 1), ("E5", 1)],
     21: [("F#5", 1.5), ("A5", .5), ("E5", 2)],
@@ -139,8 +152,10 @@ NIGHT_MELODY = {
     12: [(None, 1), ("G5", 1), ("B5", 2)],
     13: [("A5", 1), ("D6", 1), ("A5", 2)],
     14: [("G5", 2), ("E5", 2)],
-    16: [(None, 1), ("G5", 1), ("B5", 2)],
-    17: [("A5", 2), ("C#6", 2)],
+    15: [("D5", 2)],
+    # B: the skeleton of the flute's figure, without the E6 peak (night stays lower and quieter)
+    16: [("B5", 2), ("D6", 2)],
+    17: [("C#6", 3)],
     18: [("A5", 2), ("F#5", 2)],
     20: [("B5", 2), ("G5", 2)],
     21: [("F#5", 2), ("E5", 2)],
@@ -186,18 +201,17 @@ def day(s):
         for (bt, which, d) in PICK[sec]:
             st, en, ch, bass, alt = seg_at(bar, bt)
             if which == "B":
-                p, v = bass, 66
+                p, v, d = bass, 66, bass_dur(bar, bt, d)
             elif which == "A":
-                p, v = alt, 60
+                p, v, d = alt, 60, bass_dur(bar, bt, d)
             else:
                 vc = voicing(ch, 54, 3)
                 p = vc[0] + 12 if which == 3 else vc[which]
                 v = 52 if bt % 1 else 56
             gtr.note(bar, bt, p, clip(bar, bt, d), v + (4 if sec == "B" else 0))
-        if bar == 15:
-            gtr.note(bar, 3, n("F#2"), 0.96, 62)          # walk D3 - A2 - F#2 -> G2
-        if bar == 23:
-            gtr.note(bar, 3.5, n("C#3"), 0.48, 60)        # leading tone back to D3 at bar 0
+        if bar in WALK:
+            bt, p = WALK[bar]
+            gtr.note(bar, bt, n(p), 4 - bt - 0.04, 62)
 
         # pad: thin in A, fuller later; one note per chord
         for (st, en, ch, bass, alt) in segs(bar):
@@ -236,16 +250,19 @@ def night(s):
             if sec == "B" and en - st == 4:
                 ep.note(bar, st, bass, 1.9, 58)
                 ep.note(bar, 2, alt, 1.9, 52)
+            elif bar == 15:
+                ep.note(bar, st, bass, 1.95, 58)        # D3 - A2 - F#2 walk (below)
             else:
-                ep.note(bar, st, bass, en - st - 0.05, 58)
+                ep.note(bar, st, bass, bass_dur(bar, st, en - st - 0.05), 58)
             # right hand: a late chord in A, two softer hits in A', a slow broken chord in B
+            # (three notes per bar, leaving beat 3 open: night stays sparser than the day guitar's eighths)
             if sec == "A":
                 hits = [(st + 1, vc, 2.8, 44)] if en - st >= 2 else []
             elif sec == "A2":
                 hits = [(st + 1, vc, 1.4, 46), (st + 2.5, vc[1:], 1.4, 40)] if en - st == 4 else [(st + 1, vc, 0.9, 44)]
             else:
-                hits = [(st + b, [vc[k]], 1.2, v) for (b, k, v) in [(0.5, 0, 44), (1, 1, 42), (1.5, 2, 46),
-                                                                    (2.5, 1, 40), (3, 2, 42)] if st + b < en]
+                hits = [(st + b, [vc[k]], d, v) for (b, k, d, v) in [(0.5, 0, 1.4, 44), (1.5, 2, 1.4, 46),
+                                                                       (2.5, 1, 1.4, 40)] if st + b < en]
             for (bt, ps, d, v) in hits:
                 ep.chord(bar, bt, ps, clip(bar, bt, d), v)
 
@@ -255,11 +272,11 @@ def night(s):
             st_.chord(bar, st, vc, en - st - 0.06, {"A": 40, "A2": 44, "B": 48}[sec])
         if bar == 15:
             ep.note(bar, 2, n("A2"), 0.95, 50)
-            ep.note(bar, 3, n("F#2"), 0.95, 52)
-        if bar == 23:
-            ep.note(bar, 3.5, n("C#3"), 0.45, 46)
+        if bar in WALK:
+            bt, p = WALK[bar]
+            ep.note(bar, bt, n(p), 4 - bt - 0.05, 50)
 
-    write_melody(mb, NIGHT_MELODY, shift=-2, legato=0.98)
+    write_melody(mb, NIGHT_MELODY, shift=-6, legato=0.98)   # softer: the bell tone is the brightest sound at night
 
     # strings breathe in two-bar waves
     for bar in range(0, BARS, 4):
@@ -293,6 +310,9 @@ def fight(s):
             hat = hat[:8] + "........"
             snare = "....x..."
             kick = "x.....x........."
+        if bar in (3, 11, 19):
+            hat = hat[:14] + ".."                      # an open hat marks the middle of each 8-bar section
+            dr.note(bar, 3.5, DR["open_hat"], 0.45, 62)
         dr.hits(bar, kick, "kick", vel=88, accent=8)
         dr.hits(bar, snare, "snare", vel=84)
         if sec == "B":

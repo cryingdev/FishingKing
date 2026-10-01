@@ -205,7 +205,7 @@ namespace FishingKing
             // the stings are short and come at moments that must not wait for a load: kept in memory from the start
             foreach (var c in cues.Values.Where(c => !c.Loop))
             {
-                var clip = Resources.Load<AudioClip>(c.stems[0].clip);
+                var clip = string.IsNullOrEmpty(c.stems[0].clip) ? null : Resources.Load<AudioClip>(c.stems[0].clip);
                 if (clip == null) continue;
                 if (clip.loadState == AudioDataLoadState.Unloaded) clip.LoadAudioData();
                 stingClips[c.id] = clip;
@@ -239,7 +239,8 @@ namespace FishingKing
         {
             if (I == null || string.IsNullOrEmpty(name)) return;
             level = Mathf.Clamp01(level);
-            I.wantLevels[name] = level;
+            var wc = I.Find(I.wanted, true);
+            if (wc != null && wc.stems.Any(s => s.name == name)) I.wantLevels[name] = level;
             var d = I.current;
             if (d == null) return;
             int i = d.Index(name);
@@ -324,29 +325,45 @@ namespace FishingKing
             return d.fade.v * d.level[i].v * I.duck.v * I.sduck.v;
         }
 
-        /// <summary>The widest gap between the current deck's playing stems (ms, the loop's wrap taken into account); -1 with fewer than two.</summary>
+        /// <summary>The decks alive (the current one and those still fading out).</summary>
+        internal static int DeckCount => I != null ? I.decks.Count : 0;
+
+        /// <summary>The manifest's cue ids.</summary>
+        internal static IEnumerable<string> CueIds => I != null ? I.cues.Keys : Enumerable.Empty<string>();
+
+        /// <summary>The manifest has this sting and its clip.</summary>
+        internal static bool HasSting(string cue) => I != null && I.Find(cue, false) != null && I.stingClips.ContainsKey(cue);
+
+        /// <summary>
+        /// The widest gap between the current deck's playing stems (ms, the loop's wrap taken into account); -1 with fewer
+        /// than two. (The mixer moves every position on its own thread, a block at a time: a read that a block landed in
+        /// the middle of — the first stem's position changed by the end — is taken again.)
+        /// </summary>
         internal static float SyncMs()
         {
             var d = I?.current;
             if (d == null || !d.started) return -1f;
-            int n = 0, first = 0, spread = 0, len = 1, rate = 44100;
-            for (int i = 0; i < d.src.Length; i++)
+            int first = -1;
+            for (int i = 0; i < d.src.Length && first < 0; i++)
+                if (d.src[i] != null && d.src[i].isPlaying) first = i;
+            if (first < 0) return -1f;
+            var a = d.src[first];
+            int len = Mathf.Max(1, d.clip[first].samples), rate = Mathf.Max(1, d.clip[first].frequency);
+            int n = 0, spread = 0;
+            for (int attempt = 0; attempt < 4; attempt++)
             {
-                var s = d.src[i];
-                if (s == null || !s.isPlaying) continue;
-                int ts = s.timeSamples;
-                if (n == 0)
+                int p0 = a.timeSamples;
+                n = 1;
+                spread = 0;
+                for (int i = first + 1; i < d.src.Length; i++)
                 {
-                    first = ts;
-                    len = Mathf.Max(1, d.clip[i].samples);
-                    rate = Mathf.Max(1, d.clip[i].frequency);
-                }
-                else
-                {
-                    int gap = Mathf.Abs(ts - first);
+                    var s = d.src[i];
+                    if (s == null || !s.isPlaying) continue;
+                    int gap = Mathf.Abs(s.timeSamples - p0);
                     spread = Mathf.Max(spread, Mathf.Min(gap, len - gap));
+                    n++;
                 }
-                n++;
+                if (a.timeSamples == p0) break;
             }
             return n < 2 ? -1f : spread * 1000f / rate;
         }
@@ -419,10 +436,11 @@ namespace FishingKing
             var d = new Deck { cue = c, go = go, src = new AudioSource[n], clip = new AudioClip[n], level = new Ramp[n], fadeIn = fade };
             for (int i = 0; i < n; i++)
             {
-                var clip = Resources.Load<AudioClip>(c.stems[i].clip);
+                string path = c.stems[i].clip;
+                var clip = string.IsNullOrEmpty(path) ? null : Resources.Load<AudioClip>(path);
                 if (clip == null)
                 {
-                    Missing($"clip {c.stems[i].clip} ({c.id}.{c.stems[i].name})");
+                    Missing($"clip {path} ({c.id}.{c.stems[i].name})");
                     continue;
                 }
                 if (c.loopSamples > 0 && clip.samples != c.loopSamples && told.Add("len " + clip.name))

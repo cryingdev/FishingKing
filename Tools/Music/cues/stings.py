@@ -26,9 +26,11 @@ in D minor, the key of `encounter`.
 Positions are absolute beats from the start of the sting (bar 0); `bars` just covers the music for the piano roll.
 Lengths: FluidSynth 2.3 keeps rendering after the MIDI ends until every voice has died, so Song.tail cuts nothing
 here (it is still set to the intended release, for renderers that stop at the end of the file). A sting ends where
-the raw render falls below -62 dBFS, and the global reverb adds about 1-1.5 s of quiet tail after the music stops,
-so the endings are shaped with expression (CC11) fades placed about that much before the target length; the escape
-also keeps its raw mix quiet (track vol) so its tail crosses the threshold sooner. The levels are normalized anyway.
+the raw render falls below -62 dBFS, so the endings are shaped with expression (CC11): the fanfares' last chords
+are held until their flourishes have arrived and then die away at an even rate in dB (ring_out), the others fade
+(fade). Every sting also keeps its raw mix quiet (low track vols, or quieter(); the build normalizes the level), so
+the cut lands about 45-50 dB below the peak instead of 55-60: the game brings the music back at the clip's end
+(Music.cs), and a long inaudible reverb tail would only keep it waiting.
 Dissonance (omen, fail) lives inside one track (a choir or string cluster); between tracks only consonances,
 tritones and intervals wider than two octaves meet, so the lint's clash check stays meaningful.
 """
@@ -56,6 +58,26 @@ def fade(tracks, beat, beats, v0=127, v1=0):
     """An expression (CC11) ramp on several tracks: shapes a sting's release (rings, held chords, cymbals)."""
     for t in tracks:
         t.swell(0, beat, beats, v0, v1)
+
+
+def ring_out(tracks, beat, beats, db=40):
+    """A fanfare's last chord dying away: expression (CC11) falls `db` dB at an even rate, like a natural decay
+    (FluidSynth's CC11 gain is about 40*log10(v/127) dB, so a linear CC ramp would hold and then drop), then
+    cuts to 0 so that no voice rings on."""
+    steps = max(4, int(beats * 16))
+    for t in tracks:
+        for i in range(steps + 1):
+            t.cc(0, beat + beats * i / steps, 11, 127 * 10 ** (-db * i / steps / 40))
+        t.cc(0, beat + beats + 1 / 16, 11, 0)
+
+
+def quieter(song, db):
+    """Lower the raw render by `db` dB (every track's CC7; FluidSynth's volume curve is about 40*log10(v/127) dB).
+    The build normalizes the level back, so the mix is unchanged; the only effect is that the end-of-sting cut
+    (where the raw render falls below -62 dBFS) moves `db` dB up the inaudible reverb tail."""
+    k = 10 ** (-db / 40)
+    for t in song.tracks:
+        t.vol = int(round(t.vol * k))
 
 
 def glide(tr, beat, beats, semis):
@@ -90,13 +112,13 @@ def catch():
     bs = s.track("bass", GM["acoustic_bass"], vol=94, pan=0, reverb=20)
     pc = s.track("perc", DRUMS, vol=92, pan=10, reverb=36)
 
-    # the tune: a reel-up run sol la ti do (D5 E5 F#5 G5), then MOTIF bar 4 with its last do a little shorter
+    # the tune: a reel-up run sol la ti do (D5 E5 F#5 G5), then MOTIF bar 4, its last do left to ring
     run = [(-3, .25, 74), (-2, .25, 78), (-1, .25, 82), (0, .25, 86)]
-    cadence = [(1, 1.0, 94), (2, .5, 88), (1, .5, 84), (0, 1.5, 96)]     # = MOTIF[3], do 1.5 beats
+    cadence = [(1, 1.0, 94), (2, .5, 88), (1, .5, 84), (0, 3.5, 96)]     # MOTIF[3], the do held to ring
     assert [x[0] for x in cadence] == [d for d, _ in MOTIF[3]]
     gl.degs(0, 0, key, run + cadence, octave=5, legato=0.95)
     mb.degs(0, 0, key, run + cadence[:-1], octave=4, vel=80, legato=0.9)  # marimba doubles it an octave down
-    mb.chord(0, 3, P("G3 B3 D4 G4"), 1.5, 62, strum=0.05)                 # ... and rolls the tonic chord
+    mb.chord(0, 3, P("G3 B3 D4 G4"), 3.5, 62, strum=0.05)                 # ... and rolls the tonic chord
 
     # harmony: D (V) for the run and re, G/D (the cadential six-four) under mi, D under re, G under do
     D, G64, G = P("D3 A3 D4 F#4"), P("D3 G3 B3 D4 G4"), P("G2 B2 D3 G3 B3 G4")
@@ -105,17 +127,18 @@ def catch():
     strum_up(gt, 1.5, D[1:], 0.45, 60)
     gt.chord(0, 2.0, G64, 0.45, 74, strum=0.02)
     strum_up(gt, 2.5, D[1:], 0.45, 62)
-    gt.chord(0, 3.0, G, 1.5, 72, strum=0.035)
+    gt.chord(0, 3.0, G, 3.5, 72, strum=0.035)
 
-    bs.seq(0, 0, [("D2", 1, 86), ("F#2", 1, 80), ("D2", 1, 82), ("G2", 1.5, 92)], legato=0.92)
+    bs.seq(0, 0, [("D2", 1, 86), ("F#2", 1, 80), ("D2", 1, 82), ("G2", 3.5, 92)], legato=0.92)
 
     pc.note(0, 0, DR["bell_tree"], 1.0, 62)        # sparkle as the fish comes out of the water
     pc.note(0, 1.0, DR["shaker"], 0.2, 40)
     pc.note(0, 2.0, DR["shaker"], 0.2, 44)
     pc.note(0, 2.5, DR["shaker"], 0.2, 36)
-    pc.note(0, 3.0, DR["triangle"], 1.5, 64)       # ding on the tonic
+    pc.note(0, 3.0, DR["triangle"], 3.5, 64)       # ding on the tonic
 
-    fade(s.tracks, 3.5, 0.75)                       # let the last chord ring a moment, then let it go
+    ring_out(s.tracks, 4.0, 2.5)                    # the tonic rings a beat, then dies away
+    quieter(s, 6)                                   # ... and the inaudible reverb tail is cut sooner
     s.humanize(timing=0.01, velocity=5)
     return s
 
@@ -124,11 +147,11 @@ def catch():
 
 # brass harmony under MOTIF bars 3-4 (beats from the start): I vi V7/ii ii I6/4 V7 I
 RARE_HORNS = [(1.0, 2.0, "E4 G4"), (3.0, 1.0, "E4 A4"), (4.0, 1.0, "E4 G4"), (5.0, 1.0, "D4 F4"),
-              (6.0, 0.5, "C4 E4"), (6.5, 0.5, "B3 F4"), (7.0, 2.0, "C4 E4 G4")]
+              (6.0, 0.5, "C4 E4"), (6.5, 0.5, "B3 F4"), (7.0, 3.0, "C4 E4 G4")]
 RARE_TBNS = [(1.0, 2.0, "E3 G3"), (3.0, 1.0, "E3 A3"), (4.0, 1.0, "E3 A3"), (5.0, 1.0, "F3 A3"),
-             (6.0, 0.5, "E3 G3"), (6.5, 0.5, "D3 G3"), (7.0, 2.0, "C3 G3")]
+             (6.0, 0.5, "E3 G3"), (6.5, 0.5, "D3 G3"), (7.0, 3.0, "C3 G3")]
 # bass: G under the pick-up, then C A C# (the V7/ii in first inversion) D G C
-RARE_BASS = [("G1", 1), ("C2", 2), ("A1", 1), ("C#2", 1), ("D2", 1), ("G1", 1), ("C2", 2)]
+RARE_BASS = [("G1", 1), ("C2", 2), ("A1", 1), ("C#2", 1), ("D2", 1), ("G1", 1), ("C2", 3)]
 
 
 def rare():
@@ -137,16 +160,18 @@ def rare():
              desc="Rare / heroic fish: MOTIF bars 3-4 on trumpets over horns, trombones and tuba in C, string and "
                   "harp flourishes, a snare-roll pick-up and a crash on the final major chord")
     tp = s.track("trumpets", GM["trumpet"], vol=108, pan=6, reverb=42)
-    hn = s.track("horns", GM["french_horn"], vol=96, pan=-22, reverb=50)
+    hn = s.track("horns", GM["french_horn"], vol=86, pan=-22, reverb=50)        # under the trumpets' MOTIF
     tb = s.track("trombones", GM["trombone"], vol=88, pan=20, reverb=44)
     tu = s.track("tuba", GM["tuba"], vol=92, pan=4, reverb=34)
     st = s.track("strings", GM["strings"], vol=98, pan=-34, reverb=48)
     hp = s.track("harp", GM["harp"], vol=94, pan=34, reverb=50)
     pc = s.track("perc", DRUMS, vol=96, pan=0, reverb=38)
 
-    # trumpets: MOTIF bars 3-4 from beat 1 (sol do re mi- sol mi | re mi re do--), climbing to G5 then home
+    # trumpets: MOTIF bars 3-4 from beat 1 (sol do re mi- sol mi | re mi re do--), climbing to G5 then home;
+    # the last do is held on (3 beats) under the sweeps and the ring-out
     vels = [86, 90, 94, 100, 108, 98, 96, 98, 92, 110]
     tune = [(d, b, v) for (d, b), v in zip(MOTIF[2] + MOTIF[3], vels)]
+    tune[-1] = (0, 3.0, vels[-1])
     tp.degs(0, 1.0, key, tune, octave=5, legato=0.9)
 
     blocks(hn, RARE_HORNS, 78)
@@ -161,7 +186,7 @@ def rare():
                     ("C#6", .25, 80), ("A5", .25, 74), ("G5", .25, 72), ("E5", .25, 70),     # A7: down
                     ("F5", .25, 72), ("A5", .25, 76), ("D6", .25, 80), ("F6", .25, 86),      # Dm: up again
                     ("E6", .5, 84), ("D6", .25, 78), ("B5", .25, 76),                        # I6/4  V7
-                    ("C6", .25, 84), ("E6", .25, 88), ("G6", .25, 92), ("C7", 1.25, 96)],    # I: sweep to C7
+                    ("C6", .25, 84), ("E6", .25, 88), ("G6", .25, 92), ("C7", 2.25, 96)],    # I: sweep to C7
            legato=0.95)
 
     # harp: doubles the run (pluck definition), marks the chord changes, and glisses up the final chord
@@ -169,7 +194,7 @@ def rare():
     for (beat, voicing, v) in ((1.0, "C3 G3 C4", 74), (3.0, "A2 E3 A3", 66), (5.0, "D3 A3 D4", 68)):
         hp.chord(0, beat, P(voicing), 1.0, v, strum=0.04)
     gl = P("C4 E4 G4 C5 E5 G5 C6 E6")
-    hp.seq(0, 7.0, [(p, .125 if i < 7 else 1.0, 70 + 3 * i) for i, p in enumerate(gl)], legato=1.0)
+    hp.seq(0, 7.0, [(p, .125 if i < 7 else 2.0, 70 + 3 * i) for i, p in enumerate(gl)], legato=1.0)
 
     # percussion: snare roll into the motif, bass drum + splash on it, crash on the last chord
     roll(pc, 0.0, 1.0, DR["snare"], 30, 74)
@@ -178,7 +203,10 @@ def rare():
     pc.note(0, 7.0, DR["kick2"], 0.5, 96)
     pc.note(0, 7.0, DR["crash"], 1.0, 104)
 
-    fade(s.tracks, 7.5, 0.75)                       # the last chord sings, then dies away with the crash
+    # the last chord sings until the string sweep and the harp glissando have arrived (C7, E6 at beat 7.9),
+    # then dies away with the crash
+    ring_out(s.tracks, 8.25, 1.5)
+    quieter(s, 7)                                   # the inaudible reverb tail is cut sooner
     s.humanize(timing=0.01, velocity=5)
     return s
 
@@ -188,12 +216,12 @@ def rare():
 # harmony (beats from the start): A (V, the roll) | D | Bm | G | Em7 | A7 | A  D/A  A7 | D
 LEG_HORNS = [(1.0, 1.0, "C#4 E4 A4"), (2.0, 2.0, "D4 F#4 A4"), (4.0, 1.0, "D4 F#4 B4"), (5.0, 2.0, "D4 G4 B4"),
              (7.0, 1.0, "E4 G4 B4"), (8.0, 1.0, "E4 G4 C#5"), (9.0, 1.0, "E4 A4 C#5"), (10.0, 0.5, "F#4 A4 D5"),
-             (10.5, 0.5, "E4 G4 C#5"), (11.0, 2.0, "F#4 A4 D5")]
+             (10.5, 0.5, "E4 G4 C#5"), (11.0, 4.0, "F#4 A4 D5")]
 LEG_TBNS = [(1.0, 1.0, "A2 E3"), (2.0, 2.0, "D3 F#3 A3"), (4.0, 1.0, "D3 F#3 B3"), (5.0, 2.0, "D3 G3 B3"),
             (7.0, 1.0, "E3 G3 B3"), (8.0, 1.0, "E3 G3 A3"), (9.0, 1.0, "E3 A3 C#4"), (10.0, 0.5, "F#3 A3 D4"),
-            (10.5, 0.5, "E3 G3 C#4"), (11.0, 2.0, "F#3 A3 D4")]
+            (10.5, 0.5, "E3 G3 C#4"), (11.0, 4.0, "F#3 A3 D4")]
 # bass: the A pedal, then falling thirds D B G E into A, and home to D
-LEG_BASS = [("A1", 2), ("D2", 2), ("B1", 1), ("G1", 2), ("E1", 1), ("A1", 3), ("D2", 2)]
+LEG_BASS = [("A1", 2), ("D2", 2), ("B1", 1), ("G1", 2), ("E1", 1), ("A1", 3), ("D2", 4)]
 
 
 def legend():
@@ -202,9 +230,10 @@ def legend():
              desc="Legendary catch: orchestral fanfare in D - timpani roll and reverse cymbal into a tutti, MOTIF "
                   "bar 1 on trumpets, its head sequenced up to the climax, MOTIF bar 4 as the cadence, timpani "
                   "roll, crash and tubular bells")
-    tp = s.track("trumpets", GM["trumpet"], vol=99, pan=8, reverb=52)
-    hn = s.track("horns", GM["french_horn"], vol=90, pan=-24, reverb=64)
-    tb = s.track("trombones", GM["trombone"], vol=81, pan=22, reverb=56)
+    # the trumpets carry MOTIF: they sit a little above the horn and trombone chords
+    tp = s.track("trumpets", GM["trumpet"], vol=108, pan=8, reverb=52)
+    hn = s.track("horns", GM["french_horn"], vol=78, pan=-24, reverb=64)
+    tb = s.track("trombones", GM["trombone"], vol=74, pan=22, reverb=56)
     tu = s.track("tuba", GM["tuba"], vol=81, pan=6, reverb=46)
     cb = s.track("basses", GM["contrabass"], vol=83, pan=-6, reverb=50)
     st = s.track("violins", GM["strings"], vol=88, pan=-36, reverb=62)
@@ -216,10 +245,10 @@ def legend():
     pc = s.track("perc", DRUMS, vol=90, pan=0, reverb=55)
 
     # --- trumpets: MOTIF bar 1 from the pick-up (its do held as the next pick-up), the head of the motif on IV
-    # rising to B5 (the climax over Em7), then MOTIF bar 4 as the cadence
+    # rising to B5 (the climax over Em7), then MOTIF bar 4 as the cadence, its last do held through the ring-out
     bar1 = MOTIF[0][:-1] + [(0, 1.0)]                                  # its last do lengthened to a beat
     seq_iv = [(3, .5), (4, .5), (5, 1.5), (4, .5)]                     # do re mi re of G (MOTIF head + 3 degrees)
-    tune = bar1 + seq_iv + MOTIF[3]
+    tune = bar1 + seq_iv + MOTIF[3][:-1] + [(0, 4.0)]
     vels = [84, 104, 96, 104, 92, 96, 98, 102, 114, 100, 102, 104, 98, 118]
     tp.degs(0, 1.5, key, [(d, b, v) for (d, b), v in zip(tune, vels)], octave=5, legato=0.9)
 
@@ -229,28 +258,28 @@ def legend():
     for t in (hn, tb):
         t.swell(0, 1.0, 1.0, 50, 127)              # the horns and trombones swell in on the V
     tu.seq(0, 0, [(p, d, 64 if i == 0 else 90) for i, (p, d) in enumerate(LEG_BASS)], legato=0.96)
-    tu.note(0, 11.0, "D1", 2.0, 80)                # the final low octave (tuba only)
+    tu.note(0, 11.0, "D1", 4.0, 80)                # the final low octave (tuba only)
     cb.seq(0, 0, [(p, d, 70 if i == 0 else 90) for i, (p, d) in enumerate(LEG_BASS)], legato=0.96)
     cb.swell(0, 0, 2.0, 60, 127)
 
     # --- strings: tremolo on the V in the intro and on the final chord; violins flourish over the trumpets
     tr.chord(0, 0, P("A2 E3 A3"), 2.0, 80)
     tr.swell(0, 0, 2.0, 50, 127)
-    tr.chord(0, 11.0, P("D3 A3 D4 F#4"), 2.0, 86)
+    tr.chord(0, 11.0, P("D3 A3 D4 F#4"), 4.0, 86)
     st.seq(0, 2.0, [("D5", .25, 78), ("F#5", .25, 82), ("A5", .25, 86), ("D6", .25, 90),       # up into the tutti
                     ("F#6", 1.5, 92), ("E6", .5, 84), ("D6", 1.0, 82),                       # doubling mi re do
                     ("G5", .25, 80), ("B5", .25, 84), ("D6", .25, 88), ("G6", .25, 92),      # up the IV
                     ("B6", 1.5, 100), ("A6", .5, 90),                                        # the climax
                     ("E6", 1.0, 88), ("F#6", .5, 90), ("E6", .5, 86),                        # the cadence
-                    ("D6", .25, 98), ("F#6", .25, 100), ("A6", 1.5, 104)], legato=0.95)      # home, up to A6
+                    ("D6", .25, 98), ("F#6", .25, 100), ("A6", 3.5, 104)], legato=0.95)      # home, up to A6
 
     # --- harp glisses (chord tones) on the tutti and on the last chord; tubular bells mark the big moments
     gl = P("D4 F#4 A4 D5 F#5 A5 D6 F#6")
     hp.seq(0, 2.0, [(p, .125 if i < 7 else .75, 64 + 3 * i) for i, p in enumerate(gl)], legato=1.0)
-    hp.seq(0, 11.0, [(p, .125 if i < 7 else 1.5, 70 + 3 * i) for i, p in enumerate(gl)], legato=1.0)
+    hp.seq(0, 11.0, [(p, .125 if i < 7 else 3.0, 70 + 3 * i) for i, p in enumerate(gl)], legato=1.0)
     bl.note(0, 2.0, "D5", 2.0, 92)
     bl.note(0, 7.0, "B4", 1.0, 86)
-    bl.chord(0, 11.0, P("A4 D5"), 2.0, 100)
+    bl.chord(0, 11.0, P("A4 D5"), 4.0, 100)
 
     # --- intro swell: a reverse cymbal (A5 peaks after ~1 s) over the timpani roll on A
     rc.note(0, 0, "A5", 2.0, 96)
@@ -261,7 +290,7 @@ def legend():
                          (10.5, "A2", 90), (11.0, "D2", 124)):
         ti.note(0, beat, p, 0.9, v)
     roll(ti, 8.0, 1.0, n("A2"), 60, 108)
-    roll(ti, 11.25, 1.75, n("D2"), 92, 60)
+    roll(ti, 11.25, 3.5, n("D2"), 92, 52)
 
     # --- percussion: crash + gran cassa on the tutti, crash on the climax, snare roll on V7, two cymbals at the end
     pc.note(0, 2.0, DR["kick2"], 0.5, 104)
@@ -274,7 +303,9 @@ def legend():
     pc.note(0, 11.0, DR["crash"], 1.0, 114)
     pc.note(0, 11.0, DR["crash2"], 1.0, 96)
 
-    fade(s.tracks, 12.0, 1.0)                       # the last chord holds a beat, then fades with the roll
+    # the last chord holds (the harp and the violins arrive on top), then dies away over the timpani roll
+    ring_out(s.tracks, 12.75, 2.0)
+    quieter(s, 9)                                   # the inaudible reverb tail is cut sooner
     s.humanize(timing=0.01, velocity=5)
     return s
 
@@ -286,8 +317,9 @@ def escape():
     s = Song("sting_escape", bpm=144, bars=1, key=key, kind="sting", loudness=LOUD, tail=1.0,
              desc="Fish got away / line broke: muted trumpet falls chromatically to a drooping Bb over pizzicato "
                   "i - iv - i6 in G minor, a low pizzicato plunk to close")
-    # dry, and quiet in the raw render so the tail crosses the -62 dBFS cut sooner (the build normalizes)
-    mt = s.track("muted_tpt", GM["muted_trumpet"], vol=72, pan=10, reverb=18)
+    # dry, and quiet in the raw render so the tail crosses the -62 dBFS cut sooner (the build normalizes);
+    # the muted trumpet leads, the pizzicato chords stay under it (only the closing plunk is big)
+    mt = s.track("muted_tpt", GM["muted_trumpet"], vol=78, pan=10, reverb=18)
     pz = s.track("pizz", GM["pizzicato"], vol=68, pan=-16, reverb=16)
 
     # muted trumpet: D C# C B (chromatic, a little detached) onto Bb, which droops and wobbles ("aww")
@@ -298,7 +330,7 @@ def escape():
         mt.bend(0, 2.1 + 0.5 * x, -3000 * x * x + 700 * x * math.sin(2 * math.pi * 3 * x))
 
     # pizzicato: Gm, Cm, Gm/Bb on the beats, then the plunk (G2 + G3)
-    for (beat, voicing, v) in ((0.0, "G2 D3 Bb3", 82), (1.0, "C3 Eb3 G3", 74), (2.0, "Bb2 D3 G3", 72),
+    for (beat, voicing, v) in ((0.0, "G2 D3 Bb3", 68), (1.0, "C3 Eb3 G3", 62), (2.0, "Bb2 D3 G3", 60),
                                (2.75, "G2 G3", 96)):
         pz.chord(0, beat, P(voicing), 0.4, v)
     fade(s.tracks, 2.9, 0.35)                      # damp the plunk
@@ -401,6 +433,7 @@ def hook():
     pc.note(0, 2.0, DR["crash"], 1.0, 100)
 
     fade(s.tracks, 2.4, 0.6)
+    quieter(s, 8)                                   # the legend's cue follows the clip's end: no dead tail
     s.humanize(timing=0.01, velocity=5)
     return s
 
@@ -423,6 +456,7 @@ def fail():
         glide(t, 1.0, 1.6, -2)                     # everything sinks a whole tone ...
     fade([st, cb], 0.0, 0.9, 127, 112)
     fade([st, cb], 0.9, 1.7, 112, 0)               # ... and fades away
+    quieter(s, 5)                                   # the stage comes back at the clip's end: no dead tail
 
     s.humanize(timing=0.01, velocity=5)
     return s

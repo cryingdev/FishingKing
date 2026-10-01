@@ -243,7 +243,7 @@ FIGS = {
     9: [(0.25, "up", "Eb5", 5), (2.5, "turn", "Bb5", 4)],
     10: [(0.5, "turn", "G5", 4), (1.75, "up", "E5", 5)],
     11: [(0.25, "up", "D5", 4), (2.25, "up", "A5", 5)],
-    12: [(0.25, "up", "D5", 7), (2.5, "up", "Bb5", 6)],          # climbing ...
+    12: [(0.25, "up", "D5", 7), (2.5, "up", "Bb5", 5)],          # climbing ... (a breath before the top)
     13: [(0.0, "down", "G7", 8), (2.25, "turn", "G6", 4)],        # ... the cascade from G7 (climax)
     14: [(0.5, "down", "E6", 4), (2.25, "turn", "E6", 4)],
     15: [(0.75, "down", "Bb6", 4), (2.5, "down", "E6", 3)],
@@ -330,7 +330,8 @@ def songs():
              ref=["lurk", "approach"],
              desc="Legend encounter (underwater): lurk = drone pad, contrabass, sparse low piano clusters and "
                   "reverse cymbals; approach = cello eighth pulse and violas; tease = high tremolo strings, "
-                  "celesta figures and crystal bells, rising to a climax in bar 13. D minor with a Phrygian bII")
+                  "celesta figures (the MOTIF head in D minor) and crystal bells, rising to a climax in bar 13. "
+                  "D minor with a Phrygian bII")
     lurk(s)
     approach(s)
     tease(s)

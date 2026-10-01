@@ -15,8 +15,8 @@ Form (one stem "main"):
             shakuhachi / pan flute answer in the held bars
   B2 24-27  climax: strings + shakuhachi in unison take the leap up to G#6, horns hold the harmony, driving 8th
             taiko, backbeat snare
-  T  28-31  turnaround: the leap motif in a rising sequence over F#m G#m A B, horns swell, taiko/snare crescendo,
-            tom fill into the gong at bar 0
+  T  28-31  turnaround: the leap motif in a rising sequence over F#m G#m A B (contrabass F#1 G#1 A1 B1), the horns
+            swell while stepping down against it (a widening wedge), taiko/snare crescendo, tom fill into the gong
 """
 
 from fk_music import Song, Key, GM, DRUMS, DR, n
@@ -49,6 +49,16 @@ CH = {
 # the pizzicato's upper / lower tones for an inverted chord (the root-position default is octave + fifth)
 BASS_TONES = {"E/G#": ("E3", "B2")}
 
+# turnaround horns: a wedge against the rising bass (F# G# A B up, the horns' three voices step down), so the
+# held chords do not plane in parallel fifths / octaves with the bass and the climbing theme
+TURN_HORNS = {28: ["C#4", "F#4", "A4"], 29: ["B3", "D#4", "G#4"], 30: ["A3", "C#4", "E4"], 31: ["F#3", "B3", "D#4"]}
+
+
+def low_root(p, lo=n("F1")):
+    """The contrabass root: the pitch class of p placed in F1..E2, so its line moves by step, fourth or fifth
+    (F#1 G#1 A1 B1 -> E2 in the turnaround) instead of jumping between octaves."""
+    return lo + (p - lo) % 12
+
 # melody lines, one string per bar: "pitch/beats" tokens, r = rest
 LEAD = {  # shakuhachi
     0: "B4/.5 E5/.5 B5/1.5 C#6/.25 B5/.25 G#5/.5 F#5/.5",     # the leap
@@ -58,7 +68,7 @@ LEAD = {  # shakuhachi
     4: "G#4/.5 C#5/.5 G#5/1.5 B5/.25 G#5/.25 E5/.5 C#5/.5",   # the leap a third lower
     5: "B4/1 C#5/.5 D#5/.5 G#5/1 B5/1",
     6: "C#6/1 E6/1.5 C#6/.5 B5/.5 C#6/.5",
-    7: "B5/.5 C#6/.5 B5/.5 G#5/.5 F#5/2",                       # half cadence
+    7: "B5/.5 C#6/.5 B5/.5 G#5/.5 F#5/1.5 D#5/.5",              # half cadence; D# picks up into A2's E5
     8: "E5/.5 B5/.5 E6/1.5 F#6/.25 E6/.25 B5/.5 G#5/.5",       # the leap, higher
     9: "B5/1.5 C#6/.5 B5/1 G#5/.5 F#5/.5",
     10: "A5/.5 C#6/.5 E6/1 C#6/.5 B5/.5 C#6/.5 E6/.5",
@@ -178,8 +188,8 @@ def songs():
             for i in range(steps):
                 on_beat = i % 2 == 0
                 pizz.note(bar, beat + i * 0.5, pat[i], 0.4, (84 if on_beat else 70) + (6 if climax or turn else 0))
-            # contrabass: the root held, an octave lower when the pizzicato sits high
-            cb.note(bar, beat, r - 12 if r > n("G#2") else r, d * 0.98, 66 if A else 72)
+            # contrabass: the root held under the pizzicato (in F1..E2, see low_root)
+            cb.note(bar, beat, low_root(r), d * 0.98, 66 if A else 72)
             # koto ostinato: 8ths, 16ths at the climax and the end of the turnaround
             kp = [n(x) for x in kv]
             if climax or bar >= 30:
@@ -192,7 +202,8 @@ def songs():
             if A or B:
                 pad.chord(bar, beat, [n(x) for x in voicing], d * 0.98, 56 if A else 60)
             else:
-                horns.chord(bar, beat, [n(x) for x in voicing], d * 0.97, 74 if climax else 68)
+                hv = TURN_HORNS.get(bar, voicing)
+                horns.chord(bar, beat, [n(x) for x in hv], d * 0.97, 74 if climax else 68)
     pad.cc(0, 0, 11, 96)
     for b in (3, 7, 11):
         pad.swell(b, 0, 4, 96, 118)
@@ -214,7 +225,7 @@ def songs():
     for bar in range(BARS):
         if bar < 8:          # A1: taiko groove + woodblock offbeats, a splash on every other bar
             taiko.hits(bar, "X.....x.X.x.....", DON, vel=86)
-            taiko.hits(bar, "....x.......x..x", KA, vel=70)
+            taiko.hits(bar, "....x..........." if bar == 7 else "....x.......x..x", KA, vel=70)  # bar 7: the roll
             kit.hits(bar, "..x...x...x...x.", "hi_wood", vel=50)
             if bar % 2 == 1:
                 kit.hits(bar, "............x...", "splash", vel=62)
@@ -226,17 +237,18 @@ def songs():
         elif bar < 24:       # B1: half time, snare on 3, hats
             taiko.hits(bar, "X.....x...x.....", DON, vel=88)
             taiko.hits(bar, "..............x.", KA, vel=70)
-            kit.hits(bar, "........X.......", "snare", vel=66)
+            if bar != 23:                                       # bar 23: the fill starts on that beat
+                kit.hits(bar, "........X.......", "snare", vel=66)
             kit.hits(bar, "x.x.x.x.x.x.x.x.", "hat", vel=46, accent=4)
         elif bar < 28:       # B2: driving 8ths, kick, backbeat
             taiko.hits(bar, "X.x.X.x.X.x.X.x.", DON, vel=80)
             kit.hits(bar, "X.......X.......", "kick", vel=72)
-            kit.hits(bar, "....X.......X...", "snare", vel=66)
+            kit.hits(bar, "....X..........." if bar == 27 else "....X.......X...", "snare", vel=66)  # 27: fill
             kit.hits(bar, "x.x.x.x.x.x.x.x.", "ride", vel=52, accent=4)
         else:                # T: building
             k = bar - 28
-            taiko.hits(bar, "X.x.X.x.X.x.X.x.", DON, vel=74 + 6 * k)
-            if k < 3:                                           # bar 31 leaves room for the roll
+            if k < 3:                                           # bar 31 leaves room for the roll / build
+                taiko.hits(bar, "X.x.X.x.X.x.X.x.", DON, vel=74 + 6 * k)
                 kit.hits(bar, "x.x.x.x.x.x.x.x.", "hat", vel=44 + 3 * k, accent=4)
             if k == 1:
                 taiko.hits(bar, "...x...x...x...x", KA, vel=66)
@@ -260,7 +272,8 @@ def songs():
             kit.note(bar, beat + i * 0.25, DR[nm], 0.2, v0 + (v1 - v0) * i / max(1, len(names) - 1))
 
     fill(3, 3, ["mid_tom", "mid_tom", "low_tom", "low_tom"], 66, 82)
-    taiko.hits(7, "........xxxxxxxx", KA, vel=62)                 # taiko roll into A2
+    for i in range(8):                                          # taiko roll into A2, crescendo
+        taiko.note(7, 2 + 0.25 * i, KA, 0.225, 58 + 3 * i)
     fill(11, 3, ["high_tom", "mid_tom", "mid_tom", "low_tom"], 66, 84)
     fill(15, 2, ["snare"] * 4 + ["high_tom", "high_tom", "mid_tom", "low_tom"], 64, 96)
     fill(19, 3, ["high_tom", "mid_tom", "low_tom", "low_tom"], 64, 80)
@@ -268,7 +281,8 @@ def songs():
     fill(27, 3, ["snare"] * 4, 70, 92)
     fill(31, 0, ["snare"] * 8, 46, 76)                           # snare roll ...
     fill(31, 2, ["high_tom", "high_tom", "high_tom2", "high_tom2", "mid_tom", "mid_tom", "low_tom", "low_tom"], 64, 88)
-    taiko.hits(31, "X...X...X..xX.xx", DON, vel=70)              # ... over a taiko build into bar 0
+    for i, bt in enumerate([0, 0.5, 1, 1.5, 2, 2.5, 2.75, 3, 3.25, 3.5, 3.75]):   # ... over a taiko build:
+        taiko.note(31, bt, DON, 0.225, 78 + 2 * i + (8 if bt % 1 == 0 else 0))  # 8ths into 16ths, to bar 0
 
     s.humanize(timing=0.01, velocity=5)
     return [s]
