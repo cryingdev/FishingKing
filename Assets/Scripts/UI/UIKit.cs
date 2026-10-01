@@ -386,9 +386,27 @@ namespace FishingKing
             if (t != null) t.localScale = Vector3.one;
         }
 
-        public static void Punch(Transform t, float amount = 0.15f, float time = 0.18f)
+        /// <summary>How long a <see cref="Punch"/> takes by default (s, unscaled).</summary>
+        public const float PunchTime = 0.18f;
+
+        public static void Punch(Transform t, float amount = 0.15f, float time = PunchTime)
         {
             if (t != null) Run(PunchCo(t, amount, time));
+        }
+
+        /// <summary>The largest scale a <see cref="Punch"/> of this amount reaches (about 1 + 0.855 x amount).</summary>
+        public static float PunchPeak(float amount) => 1f + amount * PunchCurveMax;
+
+        // the punch's swell over its time (0..1), and its peak
+        static float PunchCurve(float k) => Mathf.Sin(k * Mathf.PI) * (1 - k * 0.3f);
+
+        static readonly float PunchCurveMax = MaxOfPunchCurve();
+
+        static float MaxOfPunchCurve()
+        {
+            float m = 0f;
+            for (int i = 0; i <= 1000; i++) m = Mathf.Max(m, PunchCurve(i / 1000f));
+            return m + 0.001f;
         }
 
         static IEnumerator PunchCo(Transform t, float amount, float time)
@@ -397,8 +415,7 @@ namespace FishingKing
             while (e < time && t != null)
             {
                 e += Time.unscaledDeltaTime;
-                float k = e / time;
-                float s = 1 + amount * Mathf.Sin(k * Mathf.PI) * (1 - k * 0.3f);
+                float s = 1 + amount * PunchCurve(e / time);
                 t.localScale = new Vector3(s, s, 1);
                 yield return null;
             }

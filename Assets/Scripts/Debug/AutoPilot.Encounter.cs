@@ -28,7 +28,8 @@ namespace FishingKing
     /// NoseIn, hook perfect=..., fight species=&lt;the legend&gt;, and for bad "failed -> Waiting, lure kept". A hooked
     /// legend is fought out and sold. One capture set into -fkshots: enc_&lt;id&gt;_1_eyes, _2_approach, _3_pass (nearest the
     /// camera while curious), _4_excited, _5_bite_full, _5a_col_1x / _5a_col_now (a light column, the ice's, in the bite's
-    /// close-up: two frames in a row at its art's 1x and at the close-up scale), _5b_hookset, _6_wipe, _7_fight, _8_fail; a tease watched from
+    /// close-up: two frames in a row at its art's 1x and at the close-up scale), _5b_hookset, _6_wipe, _7_fight, _8a_fail_pop (the fail caption at its
+    /// pop-in's peak), _8_fail; a tease watched from
     /// above adds _2b_rise (through the waterline), _3a_top_wary (the lure swimming), _4c_nosein, and its _3_pass is the
     /// curious "퐁" (the spray up); its caption check also keeps captions off the top view's lure. The caption check
     /// (<see cref="EncCaptionCheck"/>) logs every captioned frame against the legend's face (with -fkcapshots also one
@@ -95,7 +96,7 @@ namespace FishingKing
                     sp != null && rec != null && rec.coolLen == Mathf.CeilToInt(sp.encounter.coolFail) && left > 0 && ctl.Watch.AwayOf(sp));
                 Game.I.Save();
             }
-            Log($"[CAP] total: {capFrames} captioned frames, caption on the face {capHits}, overlays on the face {capOverlays}, spot changes while a caption showed {capMoves}" +
+            Log($"[CAP] total: {capFrames} captioned frames, caption on the face {capHits}, overlays on the face {capOverlays}, spot changes while a caption showed {capMoves}, outside the window {capOutside}" +
                 $"; top view: {capTopFrames} captioned frames, caption on the lure {capFrogHits}, overlays on the lure {capFrogOverlays}");
             EncCheck($"no caption on the legend's face ({capHits} of {capFrames} captioned frames)", capFrames > 0 && capHits == 0);
             if (capTopFrames > 0) EncCheck($"no caption on the top view's lure ({capFrogHits} of {capTopFrames} captioned frames)", capFrogHits == 0);
@@ -477,6 +478,8 @@ namespace FishingKing
                     else if (ph == LegendEncounter.Phase.Lunge && e.PhaseT >= e.PhaseLen - 0.035f) shot = "5_bite_full";
                     else if (ph == LegendEncounter.Phase.Hooked && e.PhaseT >= 0.2f) shot = "5b_hookset";
                     else if (ph == LegendEncounter.Phase.Surface && e.PhaseT >= 0.2f) shot = "6_wipe";
+                    // (the fail caption at its pop-in's peak, then settled)
+                    else if (ph == LegendEncounter.Phase.TurnAway && e.PhaseT >= 0.06f && e.PhaseT < 0.15f) shot = "8a_fail_pop";
                     else if (ph == LegendEncounter.Phase.TurnAway && e.PhaseT >= 0.5f) shot = "8_fail";
                     if (ph != LegendEncounter.Phase.Tease || e.Mood != 1) prevD = 99f;
                     if (ph == LegendEncounter.Phase.Surface) success = true;
@@ -491,7 +494,7 @@ namespace FishingKing
             }
         }
 
-        int capFrames, capHits, capOverlays, capMoves, capTopFrames, capFrogHits, capFrogOverlays;
+        int capFrames, capHits, capOverlays, capMoves, capTopFrames, capFrogHits, capFrogOverlays, capOutside;
         int gaugeTopFrames, gaugeFrogHits, gaugeMovesMax, gaugeMovesTotal, gaugeShots, gaugeFrames, gaugeOutside;
         const int GaugeMovesCap = 4;
         // the prompt's verb icon: tease frames with the prompt up, wrong ones, RunPause ones right; one zoomed crop
@@ -550,6 +553,7 @@ namespace FishingKing
                         if (hit) capHits++;
                         if (frog) capTopFrames++;
                         if (onFrog) capFrogHits++;
+                        if (spot == "below" || spot == "above") capOutside++;
                         string one = text.Replace("\n", " / ");
                         Log(string.Format(inv, "[CAP] ph={0} t={1:0.00} '{2}' spot={3} cap={4} face={5} hit={6}{7}", e.Ph, e.PhaseT, one,
                             hud.CaptionSpotName, R(cr), face ? R(fr) : "-", hit ? "YES" : "no",

@@ -13,10 +13,13 @@ namespace FishingKing
     /// <para>Nothing may cover the legend's face (its eyes, mouth and head: <see cref="EncounterView.FaceRect"/>, every
     /// frame). Captions sit one line (or a line and a tip) on a dark translucent plate in a band: the window's bottom, just
     /// above the gauge, or from the lunge on the screen's lower third. When the face would fall under the band they flip
-    /// to the top band (under the prompt / the screen's upper band), else slide to a side; the prompt, the gauge and the
-    /// name card step aside the same way. Every overlay also keeps clear of the ones placed before it, the lure and the
-    /// reel. A spot is left at once when the face reaches it, but only taken back (the preferred one) when clear by an
-    /// extra margin for a while, so nothing jumps back and forth.</para>
+    /// to the top band (under the prompt / the screen's upper band), else slide to a side, and only when every spot in the
+    /// window is on the face or the frog (a narrow window: the frog across every band) go just outside its frame, below or
+    /// above it; the prompt, the gauge and the name card step aside the same way. Every overlay also keeps clear of the
+    /// ones placed before it, the lure and the reel. While a caption pops in, a spot is also judged by all it will reach
+    /// (its punch's peak, growing from the band's edge) against the face and the frog themselves, so not one frame of the
+    /// pop-in covers them. A spot is left at once when the face reaches it, but only taken back (the preferred one) when
+    /// clear by an extra margin for a while, so nothing jumps back and forth.</para>
     /// <para>The gauge has eight spots (<see cref="GaugeSpots"/>): inside the window's bottom edge (centred or slid to
     /// a side), under the prompt (the same three), and as a last resort just outside the window's frame, below it or above
     /// it, so one is always clear of the face and of the top view's frog. Each is kept inside the screen's safe area. It
@@ -34,8 +37,12 @@ namespace FishingKing
         const float BarW = 180f * Px, BarH = 7f * Px;
         // around the face this much stays clear (canvas units); a spot the overlay is not on must be clear by Hyst more
         const float FacePad = 10f, Hyst = 14f;
-        static readonly string[] CaptionSpots = { "bottom", "top", "bottom-left", "bottom-right", "top-left", "top-right" };
-        static readonly float[] CaptionPrefs = { 0f, 4f, 6f, 6f, 8f, 8f };
+        // the caption: its band in the window (0-5; from the lunge on the screen's), else just outside the window's frame
+        // (6-7, the window's captions only)
+        static readonly string[] CaptionSpots = { "bottom", "top", "bottom-left", "bottom-right", "top-left", "top-right", "below", "above" };
+        // (outside: a last resort, only when every spot in the window is on the face or the frog, 1000 and up)
+        static readonly float[] CaptionPrefs = { 0f, 4f, 6f, 6f, 8f, 8f, 900f, 901f };
+        const float CaptionPop = 0.1f, CaptionPopBig = 0.18f;   // the caption's pop-in (Tween.Punch amount; large ones)
         // the gauge: the window's bottom band (0-2), the band under the prompt (3-5), just outside the window's frame (6-7)
         static readonly string[] GaugeSpots = { "bottom", "bottom-left", "bottom-right", "top", "top-left", "top-right", "below", "above" };
         static readonly float[] GaugePrefs = { 0f, 2f, 2f, 6f, 7f, 7f, 10f, 11f };
@@ -52,6 +59,7 @@ namespace FishingKing
         Text captionText => big ? captionBig : captionSmall;
         CanvasGroup promptGroup, gaugeGroup, captionGroup, cardGroup;
         float captionT, captionLen, redT = -1f, goldT = -1f, cardT = -1f, cardShow, cardWait;
+        float captionPopT = 99f;                   // since the caption's pop-in began (unscaled s, like the punch)
         bool cardClear = true;
         bool big, named, revealed;
 
@@ -67,6 +75,8 @@ namespace FishingKing
             public float held, better;
             public readonly List<Rect> rects = new List<Rect>();
             public readonly List<float> prefs = new List<float>();
+            // (the caption's: all a spot takes while it pops in, kept off the face and the frog themselves)
+            public readonly List<Rect> reach = new List<Rect>();
 
             public Spot(float hold, bool steady = false)
             {
@@ -80,12 +90,19 @@ namespace FishingKing
             {
                 rects.Clear();
                 prefs.Clear();
+                reach.Clear();
             }
 
             public void Add(Rect r, float pref)
             {
                 rects.Add(r);
                 prefs.Add(pref);
+            }
+
+            public void Add(Rect r, float pref, Rect reaches)
+            {
+                Add(r, pref);
+                reach.Add(reaches);
             }
 
             public Rect Chosen => rects[Mathf.Clamp(cur, 0, rects.Count - 1)];
@@ -346,7 +363,8 @@ namespace FishingKing
             FitCaption();
             captionSpot.cur = -1; // a new caption takes the best spot for it now
             CaptionSerial++;
-            Tween.Punch(caption, big ? 0.18f : 0.1f);
+            captionPopT = 0f;
+            Tween.Punch(caption, big ? CaptionPopBig : CaptionPop);
         }
 
         /// <summary>The plate hugs the text: 14 units each side, 6 above and below (large: 20 and 8).</summary>
@@ -415,6 +433,28 @@ namespace FishingKing
         }
 
         /// <summary>
+        /// A spot's <see cref="Cost"/>, and for the caption also what it reaches while it pops in: 1000 and up on the face
+        /// or the frog themselves (a unit round them, for the drawn position's rounding).
+        /// </summary>
+        float Cost(Spot s, int i, bool current)
+        {
+            float c = Cost(s.rects[i], current);
+            if (i >= s.reach.Count) return c;
+            var r = s.reach[i];
+            if (hasFace)
+            {
+                float a = Area(r, Grow(face, 1f));
+                if (a > 0f) c += 1000f + a / 100f;
+            }
+            if (hasFrog)
+            {
+                float a = Area(r, Grow(frog, 1f));
+                if (a > 0f) c += 1000f + a / 100f;
+            }
+            return c;
+        }
+
+        /// <summary>
         /// Picks the spot: the cheapest (its preference plus <see cref="Cost"/>) at first; after that the current one is
         /// left at once when it is on the face or an overlay, otherwise only for a clearly better one after holding a while.
         /// </summary>
@@ -427,7 +467,7 @@ namespace FishingKing
                 float best = float.MaxValue;
                 for (int i = 0; i < n; i++)
                 {
-                    float c = s.prefs[i] + Cost(s.rects[i], true);
+                    float c = s.prefs[i] + Cost(s, i, true);
                     if (c < best)
                     {
                         best = c;
@@ -437,13 +477,13 @@ namespace FishingKing
                 s.held = s.better = 0f;
                 return;
             }
-            float hit = Cost(s.rects[s.cur], true), cc = s.prefs[s.cur] + hit;
+            float hit = Cost(s, s.cur, true), cc = s.prefs[s.cur] + hit;
             int bi = s.cur;
             float bc = cc;
             for (int i = 0; i < n; i++)
             {
                 if (i == s.cur) continue;
-                float c = s.prefs[i] + Cost(s.rects[i], false);
+                float c = s.prefs[i] + Cost(s, i, false);
                 if (c < bc)
                 {
                     bc = c;
@@ -512,6 +552,7 @@ namespace FishingKing
             }
             else cardGroup.alpha = 0f;
             Place(dt, ph, windowUp && tease);
+            captionPopT += Time.unscaledDeltaTime;
             if (captionT > 0f)
             {
                 captionT -= dt;
@@ -542,6 +583,8 @@ namespace FishingKing
             bool whole = ph <= LegendEncounter.Phase.Open || ph >= LegendEncounter.Phase.Close;
             var win = LocalRect(whole ? view.Window : view.Crop);
             var scr = root.rect;
+            var safe = SafeRect();
+            float frame = 4f * k + 4f;   // the window's frame and its corner studs reach about this far out
             blocks.Clear();
             bool gaugeLow, gaugeHigh;
             // (only what is showing, or coming up, is in the way: an overlay fading out is not)
@@ -566,10 +609,8 @@ namespace FishingKing
                 // the top edge when the prompt has dropped), centred or slid to a side; else just outside the window's
                 // frame, below or above it. All kept inside the safe area.
                 var gs = gauge.sizeDelta + new Vector2(12f, 8f);
-                var safe = SafeRect();
                 float gx = win.center.x + 10f * k - gs.x * 0.5f, gxl = win.xMin + 6f * k, gxr = win.xMax - 6f * k - gs.x;
                 float gyLow = win.yMin + 5f * k - 4f, gyHigh = (promptSpot.cur <= 2 ? pr.yMin - 4f : win.yMax - 4f * k) - gs.y;
-                float frame = 4f * k + 4f;   // the window's frame and its corner studs reach about this far out
                 gaugeSpot.Clear();
                 for (int i = 0; i < 6; i++)
                     gaugeSpot.Add(Inside(new Rect(i % 3 == 0 ? gx : i % 3 == 1 ? gxl : gxr, i < 3 ? gyLow : gyHigh, gs.x, gs.y), safe), GaugePrefs[i]);
@@ -619,10 +660,18 @@ namespace FishingKing
             }
 
             // the caption: the window's band just above the gauge (or its bottom edge) / under the prompt, or from the
-            // lunge on the screen's lower third / upper band; clear of the lure and the reel too
+            // lunge on the screen's lower third / upper band; clear of the lure and the reel too. Only when every spot in
+            // the window is on the face or the frog (a narrow window: the frog across every band) it goes just outside
+            // the window's frame, below it or above it (stacked past the gauge when that is there), like the gauge.
             if (view.LureShown) blocks.Add(LureRect(k));
             blocks.Add(ReelRect(scr));
+            // (drawn at its size now, growing from its band's edge as it pops in, and kept off the overlays and the
+            // face's margin as drawn; while it pops in a spot is also judged by all it will reach, its punch's peak, so
+            // not one frame of the pop-in covers the face or the frog)
             var size = caption.sizeDelta * Mathf.Max(1f, caption.localScale.x);
+            var peak = captionPopT < Tween.PunchTime
+                ? caption.sizeDelta * Mathf.Max(Tween.PunchPeak(big ? CaptionPopBig : CaptionPop), caption.localScale.x)
+                : size;
             float lowY, highY, left, right;
             if (big)
             {
@@ -640,19 +689,49 @@ namespace FishingKing
                 right = win.xMax - 6f * k;
             }
             float cx = big ? scr.center.x : win.center.x;
-            float lx = left + size.x * 0.5f, rx = right - size.x * 0.5f;
-            float by = lowY + size.y * 0.5f, ty = highY - size.y * 0.5f;
+            // just outside the window's frame, or past the gauge when it is drawn there during the tease
+            float belowTop = teaseUp && gaugeDrawn == 6 ? gaugeAt.yMin - 4f : win.yMin - frame;
+            float aboveBottom = teaseUp && gaugeDrawn == 7 ? gaugeAt.yMax + 4f : win.yMax + frame;
+            int spots = big ? 6 : CaptionSpots.Length;
             captionSpot.Clear();
-            captionSpot.Add(Box(cx, by, size), CaptionPrefs[0]);
-            captionSpot.Add(Box(cx, ty, size), CaptionPrefs[1]);
-            captionSpot.Add(Box(lx, by, size), CaptionPrefs[2]);
-            captionSpot.Add(Box(rx, by, size), CaptionPrefs[3]);
-            captionSpot.Add(Box(lx, ty, size), CaptionPrefs[4]);
-            captionSpot.Add(Box(rx, ty, size), CaptionPrefs[5]);
+            for (int i = 0; i < spots; i++)
+            {
+                Rect r = CaptionBox(i, size), reach = CaptionBox(i, peak);
+                float pref = CaptionPrefs[i];
+                // (outside the window: inside the safe area, and only where it fits; one the safe area pushes back
+                // towards the window is all but ruled out)
+                if (i >= 6)
+                {
+                    var r1 = Inside(r, safe);
+                    if ((r1.position - r.position).sqrMagnitude > 4f) pref += 500f;
+                    reach.position += r1.position - r.position;
+                    r = r1;
+                }
+                captionSpot.Add(r, pref, reach);
+            }
             Choose(captionSpot, dt);
             caption.anchorMin = caption.anchorMax = new Vector2(0.5f, 0.5f);
             var at = captionSpot.Chosen.center;
             caption.anchoredPosition = new Vector2(Mathf.Round(at.x), Mathf.Round(at.y));
+
+            // a spot's rect for a caption of this size: anchored at its band's edge (the bottom band's bottom, the top
+            // band's top, a side's side; below the window its top, above it its bottom), so it grows away from there
+            Rect CaptionBox(int i, Vector2 sz)
+            {
+                float lx = left + sz.x * 0.5f, rx = right - sz.x * 0.5f;
+                float by = lowY + sz.y * 0.5f, ty = highY - sz.y * 0.5f;
+                switch (i)
+                {
+                    case 0: return Box(cx, by, sz);
+                    case 1: return Box(cx, ty, sz);
+                    case 2: return Box(lx, by, sz);
+                    case 3: return Box(rx, by, sz);
+                    case 4: return Box(lx, ty, sz);
+                    case 5: return Box(rx, ty, sz);
+                    case 6: return Box(cx, belowTop - sz.y * 0.5f, sz);
+                    default: return Box(cx, aboveBottom + sz.y * 0.5f, sz);
+                }
+            }
         }
 
         /// <summary>The lure and its halo (10 render-target pixels around it; the top view's frog and its spray), root-local.</summary>
