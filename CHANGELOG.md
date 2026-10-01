@@ -12,6 +12,10 @@
 
 ## 이후 변경
 
+### 릴 클릭음 (녹음)
+- 추가: `Assets/Resources/Audio/Sfx/reel_click_1..N.wav`(`Sfx.ReelClick`): 감기 시작(0.35초 넘게 멈춘 뒤) 첫 클릭은 1번, 이어서 2번부터 순서대로 돌고 끝나면 2번으로.
+  있는 번호까지 자동으로 읽음(1번부터 빈 번호 전까지). 핸들 1바퀴에 4클릭(예전과 같음). 파일이 없으면 예전 합성 `ReelTick`.
+
 ### 녹음한 효과음 2개
 - 추가: `Assets/Resources/Audio/Sfx/cast_swing.wav`(앞으로 휘두르는 캐스팅 소리, `Sfx.CastSwing`)와 `float_land.wav`(찌가 물에 떨어지는 소리, `Sfx.FloatLand`).
   앞 무음과 꼬리를 잘라 모노·피크 −1 dB로 정리. 캐스팅은 세기에 따라 음량·음높이가 바뀌고, 찌 채비 착수에만 쓰며(루어는 예전 `Plop`), 파일이 없으면 예전 합성음.

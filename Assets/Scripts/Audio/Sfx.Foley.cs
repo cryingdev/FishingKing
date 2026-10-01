@@ -16,6 +16,15 @@ namespace FishingKing
         /// water. Null when the file is missing; the callers then use the synthesized Cast / Whoosh / Plop as before.
         /// </summary>
         public static AudioClip CastSwing, FloatLand;
+        /// <summary>
+        /// The reel's recorded clicks (Resources/Audio/Sfx/reel_click_1..N, as many as there are): click 1 starts a turn of
+        /// the handle, then 2..N follow in order and wrap (<see cref="ReelClick"/>). Empty: the synthesized ReelTick.
+        /// </summary>
+        static readonly System.Collections.Generic.List<AudioClip> reelClicks = new System.Collections.Generic.List<AudioClip>();
+        /// <summary>Seconds without a click after which the next one counts as starting to wind again (click 1).</summary>
+        const float ReelRestart = 0.35f;
+        static int reelNext;
+        static float reelLast = -99f;
 
         /// <summary>Ambience volume (the old single loop's level) and the time-of-day layers' level at full weight.</summary>
         const float AmbBase = 0.35f, AmbLayer = 0.3f;
@@ -35,6 +44,12 @@ namespace FishingKing
             drag.clip = DragLoop;
             CastSwing = Resources.Load<AudioClip>("Audio/Sfx/cast_swing");
             FloatLand = Resources.Load<AudioClip>("Audio/Sfx/float_land");
+            for (int k = 1; ; k++)
+            {
+                var c = Resources.Load<AudioClip>("Audio/Sfx/reel_click_" + k);
+                if (c == null) break;
+                reelClicks.Add(c);
+            }
         }
 
         AudioSource Loop(float vol)
@@ -57,6 +72,22 @@ namespace FishingKing
         }
 
         // ------------------------------------------------------------------ API
+
+        /// <summary>One click of the reel as it winds: the recorded sequence (click 1 after a pause, then 2..N in turn), else ReelTick.</summary>
+        public static void ReelClick(float vol = 0.35f)
+        {
+            if (reelClicks.Count == 0)
+            {
+                PlayVar(ReelTick, vol, 0.15f);
+                return;
+            }
+            float now = Time.unscaledTime;
+            if (now - reelLast > ReelRestart) reelNext = 0;                                   // starting to wind: click 1
+            else if (reelNext >= reelClicks.Count) reelNext = reelClicks.Count > 1 ? 1 : 0;   // wrap to click 2
+            reelLast = now;
+            PlayVar(reelClicks[reelNext], vol, 0.03f);
+            reelNext++;
+        }
 
         /// <summary>One footstep on this stage's ground (the pier's planks, rock, snow, the boat's deck).</summary>
         public static void Step(string stageId, float vol = 0.35f)

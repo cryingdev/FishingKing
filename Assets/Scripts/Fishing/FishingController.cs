@@ -833,7 +833,7 @@ namespace FishingKing
             if (tickAcc >= 0.25f)
             {
                 tickAcc = 0;
-                Sfx.PlayVar(Sfx.ReelTick, 0.35f, 0.15f);
+                Sfx.ReelClick(0.35f);
             }
         }
 
