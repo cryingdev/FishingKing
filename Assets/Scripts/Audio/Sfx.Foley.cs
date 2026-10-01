@@ -31,7 +31,12 @@ namespace FishingKing
         /// <summary>Seconds the drag loop keeps sounding after the last <see cref="Drag"/> call, then fades over this too.</summary>
         const float DragHold = 0.12f;
 
-        AudioSource dawnSrc, nightSrc, drag, thrash;
+        AudioSource dawnSrc, nightSrc, drag, thrash, strain;
+        /// <summary>The taut line singing under load (a loop, see <see cref="LineStrain"/>).</summary>
+        public static AudioClip StrainLoop;
+        float strainWant, strainPitch = 1f, strainSeen = -1f;
+        /// <summary>Seconds the strain fades over once LineStrain() stops being called; its pitch glides over StrainGlide.</summary>
+        const float StrainFade = 0.2f, StrainGlide = 0.12f;
         /// <summary>The hooked fish splashing at the surface (Resources/Audio/Sfx/fish_thrash, a loop; null = silent).</summary>
         public static AudioClip FishThrash;
         float thrashWant, thrashUntil = -1f;
@@ -51,6 +56,7 @@ namespace FishingKing
             nightSrc = Loop(0f);
             drag = Loop(0f);
             thrash = Loop(0f);
+            strain = Loop(0f);
             BuildFoley();
             drag.clip = DragLoop;
             CastSwing = Resources.Load<AudioClip>("Audio/Sfx/cast_swing");
@@ -86,6 +92,31 @@ namespace FishingKing
             float tw = Time.unscaledTime <= thrashUntil ? thrashWant : 0f;
             thrash.volume = Mathf.MoveTowards(thrash.volume, tw, Time.unscaledDeltaTime / ThrashFade);
             if (thrash.volume <= 0.001f && thrash.isPlaying) thrash.Stop();
+            // the line's strain: follows LineStrain() calls, the pitch gliding (a rising whine, never a step)
+            float sw = Time.unscaledTime - strainSeen <= StrainFade ? strainWant : 0f;
+            strain.volume = Mathf.MoveTowards(strain.volume, sw, Time.unscaledDeltaTime / StrainFade * 0.5f);
+            strain.pitch = Mathf.Lerp(strain.pitch, strainPitch, 1f - Mathf.Exp(-Time.unscaledDeltaTime / StrainGlide));
+            if (strain.volume <= 0.001f && strain.isPlaying) strain.Stop();
+        }
+
+        /// <summary>
+        /// The line under high tension singing: level 0..1 (0 = silent; the caller maps the tension to it). Louder and higher
+        /// as it climbs (pitch x0.8 .. x1.35, a string being tightened), with a slight flutter near the break. Call it every
+        /// frame; it fades out by itself once the calls stop.
+        /// </summary>
+        public static void LineStrain(float level)
+        {
+            if (I == null || I.strain == null) return;
+            level = Mathf.Clamp01(level);
+            I.strainWant = level <= 0f ? 0f : 0.05f + 0.35f * Mathf.Pow(level, 1.5f);
+            I.strainPitch = 0.8f + 0.55f * level + (level > 0.85f ? 0.02f * Mathf.Sin(Time.unscaledTime * 37f) : 0f);
+            I.strainSeen = Time.unscaledTime;
+            if (I.strainWant > 0f && !I.strain.isPlaying)
+            {
+                I.strain.clip = StrainLoop;
+                I.strain.pitch = I.strainPitch;
+                I.strain.Play();
+            }
         }
 
         /// <summary>
@@ -243,6 +274,7 @@ namespace FishingKing
             Rattle = Make("rattle", d);
 
             DragLoop = BuildDragLoop();
+            StrainLoop = BuildStrainLoop();
         }
 
         /// <summary>A decaying bell: a sine partial with two inharmonic overtones.</summary>
@@ -272,6 +304,30 @@ namespace FishingKing
         /// The drag slipping: a ratchet's clicks at 45 Hz over a thin whine of the spool, exactly one second, so it loops
         /// without a seam (490 samples a click, 1200 whole cycles of the whine).
         /// </summary>
+        /// <summary>
+        /// The taut line: a thin, slightly inharmonic metallic whine (partials 1, 2.01, 3.02, 4.6 of 660 Hz, all whole numbers
+        /// of hertz so they wrap in one second) with a fast shimmer, over a breathy band of friction noise; one second,
+        /// crossfaded into itself.
+        /// </summary>
+        static AudioClip BuildStrainLoop()
+        {
+            var d = Buf(1.25f);
+            var rnd = new System.Random(97);
+            float[] fs = { 660f, 1327f, 1993f, 3036f }, amp = { 0.5f, 0.28f, 0.16f, 0.08f };
+            float y = 0f, z = 0f;
+            for (int i = 0; i < d.Length; i++)
+            {
+                float t = (float)i / Rate;
+                float shimmer = 0.75f + 0.25f * Mathf.Sin(2f * Mathf.PI * 11f * t) * Mathf.Sin(2f * Mathf.PI * 3f * t);
+                float v = 0f;
+                for (int k = 0; k < fs.Length; k++) v += amp[k] * Mathf.Sin(2f * Mathf.PI * fs[k] * t);
+                y += 0.6f * ((float)rnd.NextDouble() * 2f - 1f - y);
+                z += 0.2f * (y - z);
+                d[i] = v * shimmer + 0.35f * (y - z) * (0.6f + 0.4f * shimmer);
+            }
+            return Make("line_strain", Crossfade(d), true);
+        }
+
         static AudioClip BuildDragLoop()
         {
             var d = Buf(1f);

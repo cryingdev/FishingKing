@@ -72,6 +72,8 @@ namespace FishingKing
         SpriteRenderer targetRing, biteMark;
         float biteWindow;
         FishAgent biter;
+        /// <summary>Tension ratio (of the line's limit) where the line starts to sing (Sfx.LineStrain).</summary>
+        const float StrainFrom = 0.6f;
         float fightYaw, fightYawTarget, fishDepthTarget, splashT, warnT, tickAcc, jumpTime, lineRingT, dripT;
         // the jump in progress (copied from the fight model when it starts)
         FightModel.JumpKind jumpKind;
@@ -1751,6 +1753,8 @@ namespace FishingKing
 
             // audio cues
             warnT -= dt;
+            // the line singing as the tension climbs (from StrainFrom of the line's limit, full at the break)
+            Sfx.LineStrain(Mathf.InverseLerp(StrainFrom, 1f, f.TensionRatio));
             if (f.TensionRatio > 0.85f && warnT <= 0)
             {
                 warnT = f.TensionRatio > 0.97f ? 0.1f : 0.2f;
