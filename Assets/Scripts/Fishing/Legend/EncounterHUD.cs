@@ -17,6 +17,11 @@ namespace FishingKing
     /// name card step aside the same way. Every overlay also keeps clear of the ones placed before it, the lure and the
     /// reel. A spot is left at once when the face reaches it, but only taken back (the preferred one) when clear by an
     /// extra margin for a while, so nothing jumps back and forth.</para>
+    /// <para>The gauge has eight spots (<see cref="GaugeSpots"/>): inside the window's bottom edge (centred or slid to
+    /// a side), under the prompt (the same three), and as a last resort just outside the window's frame, below it or above
+    /// it, so one is always clear of the face and of the top view's frog. Each is kept inside the screen's safe area. It
+    /// takes the cheapest (the least overlap); a relocation fades it out where it was and in at the new spot, or, when
+    /// something reaches where it is, moves it at once and fades it in there (it never slides across the frog).</para>
     /// </summary>
     [DefaultExecutionOrder(1100)] // after the view has placed the window
     public class EncounterHUD : MonoBehaviour
@@ -31,6 +36,11 @@ namespace FishingKing
         const float FacePad = 10f, Hyst = 14f;
         static readonly string[] CaptionSpots = { "bottom", "top", "bottom-left", "bottom-right", "top-left", "top-right" };
         static readonly float[] CaptionPrefs = { 0f, 4f, 6f, 6f, 8f, 8f };
+        // the gauge: the window's bottom band (0-2), the band under the prompt (3-5), just outside the window's frame (6-7)
+        static readonly string[] GaugeSpots = { "bottom", "bottom-left", "bottom-right", "top", "top-left", "top-right", "below", "above" };
+        static readonly float[] GaugePrefs = { 0f, 2f, 2f, 6f, 7f, 7f, 10f, 11f };
+        const float SafePad = 4f;                       // canvas units kept inside the screen's safe area
+        const float GaugeOut = 0.1f, GaugeIn = 0.16f;   // s: a relocation's fade out (where it was) and in (at the new spot)
 
         public static EncounterHUD Current { get; private set; }
 
@@ -75,6 +85,11 @@ namespace FishingKing
         bool hasFace, hasFrog;
         Rect face;                                // the face this frame (root-local canvas units), no margin
         Rect frog;                                // the top view's lure: kept clear like the face
+        // the gauge as drawn: its spot and rect (they lag the chosen spot through a relocation's fade-out), the tease's
+        // alpha and the relocation's fade (the group's alpha is their product)
+        int gaugeDrawn = -1;
+        Rect gaugeAt;
+        float gaugeShow, gaugeK = 1f;
 
         public static EncounterHUD Create(RectTransform canvasRoot, LegendEncounter e, EncounterView v)
         {
@@ -436,9 +451,9 @@ namespace FishingKing
             bool windowUp = view.Open && ph >= LegendEncounter.Phase.Eyes && ph <= LegendEncounter.Phase.NoseIn;
             bool tease = ph == LegendEncounter.Phase.Tease || ph == LegendEncounter.Phase.NoseIn;
             promptGroup.alpha = Mathf.MoveTowards(promptGroup.alpha, windowUp && tease ? 1f : 0f, dt * 5f);
-            gaugeGroup.alpha = Mathf.MoveTowards(gaugeGroup.alpha, windowUp && tease ? 1f : 0f, dt * 5f);
+            gaugeShow = Mathf.MoveTowards(gaugeShow, windowUp && tease ? 1f : 0f, dt * 5f);
             // (from above, the lunge is a cut to the underwater view: they go with it)
-            if (view.TopFlow && ph >= LegendEncounter.Phase.Lunge) promptGroup.alpha = gaugeGroup.alpha = 0f;
+            if (view.TopFlow && ph >= LegendEncounter.Phase.Lunge) promptGroup.alpha = gaugeShow = 0f;
             if (tease) RefreshMood();
             // the gauge
             float g = Mathf.Clamp(enc.Gauge, 0f, 100f);
@@ -512,6 +527,7 @@ namespace FishingKing
             var win = LocalRect(whole ? view.Window : view.Crop);
             var scr = root.rect;
             blocks.Clear();
+            bool gaugeLow, gaugeHigh;
             // (only what is showing, or coming up, is in the way: an overlay fading out is not)
             {
                 // the prompt inside the top edge: centred, or slid to a side
@@ -530,15 +546,32 @@ namespace FishingKing
                 prompt.anchoredPosition = new Vector2(Mathf.Round(pr.center.x), Mathf.Round(pr.yMax));
                 if (teaseUp) blocks.Add(pr);
 
-                // the gauge inside the bottom edge, or under the prompt (its plate reaches 6 / 4 units past it)
+                // the gauge (its plate reaches 6 / 4 units past it): inside the bottom edge or under the prompt (its band:
+                // the top edge when the prompt has dropped), centred or slid to a side; else just outside the window's
+                // frame, below or above it. All kept inside the safe area.
                 var gs = gauge.sizeDelta + new Vector2(12f, 8f);
+                var safe = SafeRect();
+                float gx = win.center.x + 10f * k - gs.x * 0.5f, gxl = win.xMin + 6f * k, gxr = win.xMax - 6f * k - gs.x;
+                float gyLow = win.yMin + 5f * k - 4f, gyHigh = (promptSpot.cur <= 2 ? pr.yMin - 4f : win.yMax - 4f * k) - gs.y;
+                float frame = 4f * k + 4f;   // the window's frame and its corner studs reach about this far out
                 gaugeSpot.Clear();
-                gaugeSpot.Add(new Rect(win.center.x + 10f * k - gs.x * 0.5f, win.yMin + 5f * k - 4f, gs.x, gs.y), 0f);
-                gaugeSpot.Add(new Rect(win.center.x + 10f * k - gs.x * 0.5f, pr.yMin - 4f - gs.y, gs.x, gs.y), 6f);
+                for (int i = 0; i < 6; i++)
+                    gaugeSpot.Add(Inside(new Rect(i % 3 == 0 ? gx : i % 3 == 1 ? gxl : gxr, i < 3 ? gyLow : gyHigh, gs.x, gs.y), safe), GaugePrefs[i]);
+                // (outside the window: off the reel)
+                var reelR = ReelRect(scr);
+                for (int i = 6; i < 8; i++)
+                {
+                    var r = Inside(new Rect(win.center.x - gs.x * 0.5f, i == 6 ? win.yMin - frame - gs.y : win.yMax + frame, gs.x, gs.y), safe);
+                    gaugeSpot.Add(r, GaugePrefs[i] + (r.Overlaps(reelR) ? 100f : 0f));
+                }
+                // (in the side view the lure is kept clear too; from above it is the frog, kept clear like the face)
+                int before = blocks.Count;
+                if (view.LureShown && !hasFrog) blocks.Add(LureRect(k));
                 Choose(gaugeSpot, dt);
-                var gr = gaugeSpot.Chosen;
-                gauge.anchoredPosition = new Vector2(Mathf.Round(gr.center.x), Mathf.Round(gr.yMin + 4f));
-                bool gaugeLow = gaugeSpot.cur == 0;
+                var gr = PlaceGauge(dt);
+                blocks.RemoveRange(before, blocks.Count - before);
+                gaugeLow = gaugeDrawn <= 2;
+                gaugeHigh = gaugeDrawn >= 3 && gaugeDrawn <= 5;
                 if (teaseUp) blocks.Add(gr);
 
                 // the name card: top-left under the prompt, else top-right, else low (above the gauge)
@@ -565,8 +598,7 @@ namespace FishingKing
             // the caption: the window's band just above the gauge (or its bottom edge) / under the prompt, or from the
             // lunge on the screen's lower third / upper band; clear of the lure and the reel too
             if (view.LureShown) blocks.Add(LureRect(k));
-            var reel = ReelGrip.Zone;
-            blocks.Add(new Rect(scr.xMax + reel.xMin, scr.yMin + reel.yMin, reel.width, reel.height));
+            blocks.Add(ReelRect(scr));
             var size = caption.sizeDelta * Mathf.Max(1f, caption.localScale.x);
             float lowY, highY, left, right;
             if (big)
@@ -578,9 +610,9 @@ namespace FishingKing
             }
             else
             {
-                var gr = gaugeSpot.Chosen;
-                lowY = (teaseUp && gaugeSpot.cur == 0 ? gr.yMax : win.yMin + 5f * k) + 4f;
-                highY = (teaseUp ? gaugeSpot.cur == 1 ? gr.yMin : promptSpot.Chosen.yMin : win.yMax - 5f * k) - 4f;
+                var gr = gaugeAt;
+                lowY = (teaseUp && gaugeLow ? gr.yMax : win.yMin + 5f * k) + 4f;
+                highY = (teaseUp ? gaugeHigh ? gr.yMin : promptSpot.Chosen.yMin : win.yMax - 5f * k) - 4f;
                 left = win.xMin + 6f * k;
                 right = win.xMax - 6f * k;
             }
@@ -602,6 +634,66 @@ namespace FishingKing
 
         /// <summary>The lure and its halo (10 render-target pixels around it; the top view's frog and its spray), root-local.</summary>
         Rect LureRect(float k) => LocalRect(view.LureBox);
+
+        /// <summary>The reel and its label (root-local).</summary>
+        static Rect ReelRect(Rect scr)
+        {
+            var reel = ReelGrip.Zone;
+            return new Rect(scr.xMax + reel.xMin, scr.yMin + reel.yMin, reel.width, reel.height);
+        }
+
+        /// <summary>
+        /// Draws the gauge at its spot and returns the rect it takes. It follows the spot; a relocation fades it out where
+        /// it was (<see cref="GaugeOut"/>), then in at the new spot (<see cref="GaugeIn"/>), unless the face, the frog or
+        /// an overlay has reached where it is: then it goes at once and fades in there. Hidden, it simply goes.
+        /// </summary>
+        Rect PlaceGauge(float dt)
+        {
+            int want = gaugeSpot.cur;
+            var to = gaugeSpot.Chosen;
+            if (gaugeDrawn < 0 || gaugeShow <= 0.01f)
+            {
+                gaugeDrawn = want;
+                gaugeAt = to;
+                gaugeK = 1f;
+            }
+            else if (want != gaugeDrawn || (to.center - gaugeAt.center).sqrMagnitude > 64f)
+            {
+                if (gaugeK <= 0f || Cost(gaugeAt, true) >= 100f)
+                {
+                    gaugeDrawn = want;
+                    gaugeAt = to;
+                    gaugeK = 0f;
+                    GaugeMoves++;
+                }
+                else gaugeK = Mathf.MoveTowards(gaugeK, 0f, dt / GaugeOut);
+            }
+            else
+            {
+                gaugeAt = to;
+                gaugeK = Mathf.MoveTowards(gaugeK, 1f, dt / GaugeIn);
+            }
+            gauge.anchoredPosition = new Vector2(Mathf.Round(gaugeAt.center.x), Mathf.Round(gaugeAt.yMin + 4f));
+            gaugeGroup.alpha = gaugeShow * gaugeK;
+            return gaugeAt;
+        }
+
+        /// <summary>The screen's safe area (root-local), <see cref="SafePad"/> in.</summary>
+        Rect SafeRect()
+        {
+            var sa = Screen.safeArea;
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(root, sa.min, null, out var a);
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(root, sa.max, null, out var b);
+            return Rect.MinMaxRect(a.x + SafePad, a.y + SafePad, b.x - SafePad, b.y - SafePad);
+        }
+
+        /// <summary>The rect moved (not resized) inside the area; centred on an axis it does not fit.</summary>
+        static Rect Inside(Rect r, Rect area)
+        {
+            float x = r.width >= area.width ? area.center.x - r.width * 0.5f : Mathf.Clamp(r.x, area.xMin, area.xMax - r.width);
+            float y = r.height >= area.height ? area.center.y - r.height * 0.5f : Mathf.Clamp(r.y, area.yMin, area.yMax - r.height);
+            return new Rect(x, y, r.width, r.height);
+        }
 
         // ------------------------------------------------------------------ for the autopilot's check
         /// <summary>The legend's face this frame (root-local canvas units, no margin), if it shows.</summary>
@@ -629,6 +721,23 @@ namespace FishingKing
         public Rect PromptRect => Drawn(prompt);
         public bool GaugeShown => gaugeGroup.alpha > 0.01f;
         public Rect GaugeRect => Drawn(gaugePlate);
+        /// <summary>Where the gauge is drawn (<see cref="GaugeSpots"/>).</summary>
+        public string GaugeSpotName => gaugeDrawn >= 0 ? GaugeSpots[gaugeDrawn] : "-";
+        /// <summary>How often the gauge has moved to another spot while it showed.</summary>
+        public int GaugeMoves { get; private set; }
+
+        /// <summary>For the log: each gauge spot this frame and what it would cover (the frog, the face, or nothing).</summary>
+        public string GaugeSpotsNow()
+        {
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < gaugeSpot.rects.Count; i++)
+            {
+                var r = gaugeSpot.rects[i];
+                string on = hasFrog && Area(r, frog) > 0f ? "frog" : hasFace && Area(r, face) > 0f ? "face" : "clear";
+                sb.Append(i > 0 ? " " : "").Append(GaugeSpots[i]).Append('=').Append(on);
+            }
+            return sb.ToString();
+        }
         public bool CardShown => cardGroup.alpha > 0.01f;
         public Rect CardRect => Drawn(card);
     }

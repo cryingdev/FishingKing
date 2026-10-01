@@ -484,13 +484,13 @@ Everything is in pixel-view pixels (PPU 16). The origin of a rect is the bottom-
 
 **HUD (`EncounterHUD`, children of `FishingHUD.Canvas`).** Positions come from the crop rect, via `PixelView.WorldToScreen` and `RectTransformUtility`.
 - **Prompt plate:** inside the window's top edge (4 px in), centred: `verb_*` icon plus the mood prompt (Galmuri 18).
-- **Gauge:** inside the bottom edge, 4 px in: a `mood_*` icon, a 180 × 7 px bar and the mood label.
+- **Gauge:** inside the bottom edge, 4 px in: a `mood_*` icon, a 180 × 7 px bar and the mood label. It has eight spots, in this order of preference: the bottom band (centred, then slid left or right), the band under the prompt (the same three; the top edge when the prompt has dropped), then just outside the window's frame, below it or above it (off the reel). Every spot is kept inside the screen's safe area, so it stays on screen at any aspect or zoom. It takes the spot that costs least (the least overlap with the face, the top view's frog, the lure, the prompt). When it relocates it fades out where it was (0.1 s) and in at the new spot (0.16 s); when the face, the frog or an overlay reaches where it is, it goes at once and fades in there, so it never passes over the frog.
   - The bar's zones are 경계 0–39 (`#7a8aa8`), 호기심 40–74 (`#6affea`) and 흥분 75–100 (`#ffc830`).
   - The fill flashes red for 0.2 s on each penalty.
 - **Caption:** one line (or a line and a tip) on a dark translucent `panel_dark` plate (60 %), Galmuri 20, 1.2 s, in a band at the window's bottom, just above the gauge. While `State == Encounter`, `FishingHUD.Flash` is routed here, because the normal top-centre flash would sit inside the window. Two messages are never stacked: "완벽한 챔질!  완벽한 유혹!" and "덥석! 지금! 챔질!" are one line each.
 - **Name card:** slides in from the window's top-left inside edge during Approach and stays 2.2 s.
 - **From the Lunge on,** the prompt and gauge hide and captions show large (Galmuri 28) in the screen's lower third.
-- **Never on the face.** Every frame `EncounterView.FaceRect` projects the legend's face (eyes, mouth and the head from the gill cover to the snout, the jaw as posed; only the eyes in the Eyes beat) through the encounter camera. A caption whose band would cover it (with a 10-unit margin) flips to the top band (under the prompt, or the screen's upper band), else slides to a side; the prompt (to a side), the gauge (under the prompt) and the name card (top-right, then low) step aside the same way. Each overlay also keeps clear of the ones placed before it, the lure and the reel. Hysteresis: a spot is left at once when the face reaches it, but a preferred spot is only taken back when clear by 14 more units for 0.5 s (0.8–1.0 s for the prompt, gauge and card); a new caption takes the best spot at once.
+- **Never on the face.** Every frame `EncounterView.FaceRect` projects the legend's face (eyes, mouth and the head from the gill cover to the snout, the jaw as posed; only the eyes in the Eyes beat) through the encounter camera. A caption whose band would cover it (with a 10-unit margin) flips to the top band (under the prompt, or the screen's upper band), else slides to a side; the prompt (to a side), the gauge (to a side, under the prompt, then outside the window) and the name card (top-right, then low) step aside the same way. Each overlay also keeps clear of the ones placed before it, the lure and the reel. Hysteresis: a spot is left at once when the face reaches it, but a preferred spot is only taken back when clear by 14 more units for 0.5 s (0.8–1.0 s for the prompt, gauge and card); a new caption takes the best spot at once.
 
 ### 2.5 The underwater scene (`EncounterView`)
 
@@ -929,6 +929,7 @@ Existing switches still apply: `-fkfresh`, `-fkrich`, `-fksave`, `-fkscene`, `-f
    - `hook perfect=<b>`
    - `fight species=coelacanth`
    - for `bad`: `failed → Waiting, lure kept`
+   - the HUD: `no caption on the legend's face`; from above also `no caption on the top view's lure` and `gauge never on the top view's lure` (every frame the gauge shows); `gauge moves at most 4 times an encounter` (each move logged as `[CAP] gauge <from> -> <to>`; from above the first three are shot as `gauge_<id>_<n>_<spot>.png`).
 
    After the checks, the existing `Fish()` fight loop lands the fish.
 

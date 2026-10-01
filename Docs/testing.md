@@ -12,7 +12,7 @@
 `-fkfloatshots` (fish / steer에 추가) 찌 채비 파이트의 찌 순간 캡처(수면 끌림·잠김·떠오름·점프·화살표·랜딩·놓침), `floatshot` 로그에 화면 좌표; 얼음 steer에선 구멍 파이트를 따로 한 번 더(`-fkicecm <cm> -fkicedepth <m>`, 기본 45cm·3m) ·
 `-fkobstacles show|off` 장애물 전부 표시 / 장애물 없이(예전처럼) · `-fkobstlog` 장애물 이벤트마다 `[OBST]` 로그 · `-fksnag <배율>` 밑걸림 확률 배율(0 = 없음, 99 = 즉시) · `-fkobstseed <n>` 장애물 난수 시드 ·
 `-fkauto obstacles` 장애물 테스트 + 캡처 (예: `-fkfresh -fkrich -fkgear -fksave obst -fkscene Fishing -fkstage stream -fkauto obstacles -fkobstlog -fkshots <폴더>`: 조준 윤곽, 바위에 튕기는 캐스팅·뱅크샷, 스푼 밑걸림 톡/크랭크 스윕/억지로 감아 끊김, 호수 연잎 개구리·지렁이, 보트로 도망치는 배스를 사이드 프레셔로 끌어냄(0.3회전/초로 감아 억지로 끌어내기 없음), 바다(만조 정조) 테트라포드로 파고드는 감성돔을 PE 3호로 방치 → 쓸려 끊김, 잡으면 결과 카드 닫고 계속, 커버 근처 입질 비교, 늪 조준 윤곽, 스테이지별 장애물 표시; 캡처 obst_aim·obst_aim_swamp·obst_bounce·obst_bankshot·obst_snag·obst_snag_free·obst_snag_arrow·obst_pad·obst_pad_snag·obst_rub·obst_break·obst_pullout·obst_show_<스테이지>; `[OBST] CHECK` 줄) ·
-`-fkauto encounter [-fkencplay perfect|bad|early|both]` 조우 자동 플레이 + 캡처 (예: `-fkfresh -fkrich -fkgear -fkrod rod_bamboo -fksave enc -fkscene Fishing -fkstage cave -fkencounter now -fkauto encounter -fkshots <폴더>`)
+`-fkauto encounter [-fkencplay perfect|bad|early|both]` 조우 자동 플레이 + 캡처 (예: `-fkfresh -fkrich -fkgear -fkrod rod_bamboo -fksave enc -fkscene Fishing -fkstage cave -fkencounter now -fkauto encounter -fkshots <폴더>`; 캡션이 얼굴·위에서 본 개구리를 가리지 않는지, 게이지가 개구리를 가리지 않는지·조우마다 4번 넘게 자리를 옮기지 않는지 검사, 옮길 때마다 `[CAP] gauge` 줄, 위에서 본 조우는 처음 세 번을 gauge_<id>_N_<자리>로 캡처)
 
 캐스팅 세기 조정: `Assets/Scripts/Fishing/FlickCast.cs` 맨 위 상수 (터치는 cm/s, 마우스는 모니터 높이/초).
 놓을 때마다 `Player.log`에 `[Flick]` 줄이 남으니 실제 기기에서 튕긴 속도를 보고 `TouchSpeedFull` 등을 맞추세요.

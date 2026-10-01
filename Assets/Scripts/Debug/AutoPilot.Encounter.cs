@@ -31,7 +31,10 @@ namespace FishingKing
     /// above adds _2b_rise (through the waterline), _3a_top_wary (the lure swimming), _4c_nosein, and its _3_pass is the
     /// curious "퐁" (the spray up); its caption check also keeps captions off the top view's lure. The caption check
     /// (<see cref="EncCaptionCheck"/>) logs every captioned frame against the legend's face (with -fkcapshots also one
-    /// cap_NN shot per caption); the run fails if any caption covers the face.
+    /// cap_NN shot per caption); the run fails if any caption covers the face. It also watches the gauge: from above it
+    /// must never cover the frog (every frame it shows), and it may move to another spot at most
+    /// <see cref="GaugeMovesCap"/> times an encounter (each move logged "[CAP] gauge a -> b"; from above the first three
+    /// shot 0.3 s later as gauge_&lt;id&gt;_N_&lt;spot&gt;).
     /// </summary>
     public partial class AutoPilot
     {
@@ -90,6 +93,9 @@ namespace FishingKing
                 $"; top view: {capTopFrames} captioned frames, caption on the lure {capFrogHits}, overlays on the lure {capFrogOverlays}");
             EncCheck($"no caption on the legend's face ({capHits} of {capFrames} captioned frames)", capFrames > 0 && capHits == 0);
             if (capTopFrames > 0) EncCheck($"no caption on the top view's lure ({capFrogHits} of {capTopFrames} captioned frames)", capFrogHits == 0);
+            Log($"[CAP] gauge: {gaugeTopFrames} frames shown from above, on the lure {gaugeFrogHits}; moves {gaugeMovesTotal} (most in one encounter {gaugeMovesMax})");
+            if (gaugeTopFrames > 0) EncCheck($"gauge never on the top view's lure ({gaugeFrogHits} of {gaugeTopFrames} frames)", gaugeFrogHits == 0);
+            EncCheck($"gauge moves at most {GaugeMovesCap} times an encounter (most {gaugeMovesMax}, total {gaugeMovesTotal})", gaugeMovesMax <= GaugeMovesCap);
             Log($"encounter test done ({encId}): {encFails} failed");
             yield return new WaitForSeconds(0.5f);
             PointerInput.SimActive = false;
@@ -383,6 +389,8 @@ namespace FishingKing
         }
 
         int capFrames, capHits, capOverlays, capMoves, capTopFrames, capFrogHits, capFrogOverlays;
+        int gaugeTopFrames, gaugeFrogHits, gaugeMovesMax, gaugeMovesTotal, gaugeShots;
+        const int GaugeMovesCap = 4;
 
         static string R(Rect r) => string.Format(System.Globalization.CultureInfo.InvariantCulture, "({0:0},{1:0},{2:0},{3:0})", r.xMin, r.yMin, r.xMax, r.yMax);
 
@@ -401,6 +409,11 @@ namespace FishingKing
             var shotTexts = new HashSet<string>();
             var inv = System.Globalization.CultureInfo.InvariantCulture;
             var endOfFrame = new WaitForEndOfFrame();
+            // the gauge: per encounter (its HUD) the moves seen and the spot it was last drawn at
+            EncounterHUD gHud = null;
+            int gSeen = 0;
+            string gSpot = null;
+            bool gLogged = false;
             yield return endOfFrame;
             while (true)
             {
@@ -470,10 +483,61 @@ namespace FishingKing
                             Log(string.Format(inv, "[CAP] overlay on the lure ph={0} t={1:0.00} lure={2}:{3}", e.Ph, e.PhaseT, R(gr), o));
                         }
                     }
+                    // the gauge: never on the frog, and few moves (each logged; from above the first three shot)
+                    if (hud != gHud)
+                    {
+                        gHud = hud;
+                        gSeen = 0;
+                        gSpot = null;
+                        gLogged = false;
+                    }
+                    if (hud.GaugeMoves > gSeen)
+                    {
+                        gaugeMovesTotal += hud.GaugeMoves - gSeen;
+                        gSeen = hud.GaugeMoves;
+                        gaugeMovesMax = Mathf.Max(gaugeMovesMax, gSeen);
+                    }
+                    if (hud.GaugeShown)
+                    {
+                        var gq = hud.GaugeRect;
+                        string spot = hud.GaugeSpotName;
+                        if (gSpot != null && spot != gSpot)
+                        {
+                            Log(string.Format(inv, "[CAP] gauge {0} -> {1} ph={2} t={3:0.00} gauge={4} lure={5} face={6} (moves {7})", gSpot, spot,
+                                e.Ph, e.PhaseT, R(gq), frog ? R(gr) : "-", face ? R(fr) : "-", hud.GaugeMoves));
+                            if (frog && gaugeShots < 3)
+                            {
+                                gaugeShots++;
+                                StartCoroutine(GaugeShot(ctl, $"gauge_{encId}_{gaugeShots}_{spot}"));
+                            }
+                        }
+                        gSpot = spot;
+                        if (frog)
+                        {
+                            gaugeTopFrames++;
+                            if (!gLogged)
+                            {
+                                gLogged = true;
+                                Log($"[CAP] gauge spots from above (lure {R(gr)}, at {spot}): {hud.GaugeSpotsNow()}");
+                            }
+                            if (gq.Overlaps(gr))
+                            {
+                                gaugeFrogHits++;
+                                Log(string.Format(inv, "[CAP] gauge on the lure ph={0} t={1:0.00} spot={2} gauge={3} lure={4}", e.Ph, e.PhaseT, spot, R(gq), R(gr)));
+                            }
+                        }
+                    }
                 }
                 // read after the HUD's LateUpdate: what this frame shows
                 yield return endOfFrame;
             }
+        }
+
+        /// <summary>A shot of the gauge at its new spot, once it has faded in there.</summary>
+        IEnumerator GaugeShot(FishingController ctl, string name)
+        {
+            yield return new WaitForSeconds(0.3f);
+            if (ctl.State == FishingController.S.Encounter) yield return EncShot(ctl, name);
         }
 
         IEnumerator EncShot(FishingController ctl, string name)
