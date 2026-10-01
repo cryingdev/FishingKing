@@ -97,7 +97,7 @@ namespace FishingKing
 
         /// <summary>
         /// The line under high tension twanging: level 0..1 (0 = silent; the caller maps the tension to it). A rubbery twang
-        /// every TingSlow .. TingFast seconds, louder and higher as it climbs (pitch x0.85 .. x1.5, a string being tightened,
+        /// every TingSlow .. TingFast seconds, louder and higher as it climbs (pitch x1.05 .. x1.9, a string being tightened,
         /// slowly at first and steeply near the break: <see cref="StrainPitchCurve"/>).
         /// Call it every frame; the tings stop when the calls do.
         /// </summary>
@@ -115,7 +115,7 @@ namespace FishingKing
             if (now < nextTing) return;
             // the pitch climbs slowly at first and steeply towards the break (level ^ StrainPitchCurve)
             float rise = Mathf.Pow(level, StrainPitchCurve);
-            Play(LineTing, 0.12f + 0.33f * level, 0.85f + 0.65f * rise + UnityEngine.Random.Range(-0.015f, 0.015f));
+            Play(LineTing, 0.12f + 0.33f * level, 1.05f + 0.85f * rise + UnityEngine.Random.Range(-0.015f, 0.015f));
             nextTing = now + Mathf.Lerp(TingSlow, TingFast, level);
         }
 
