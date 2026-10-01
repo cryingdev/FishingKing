@@ -331,21 +331,6 @@ namespace FishingKing
             return true;
         }
 
-        /// <summary>Line snapped at a snag (the bait not eaten): lures are lost, natural bait is consumed.</summary>
-        public bool LoseTackle()
-        {
-            var b = Bait;
-            if (b != null && b.isLure)
-            {
-                data.ownedItems.Remove(b.id);
-                data.bait = GameDatabase.StarterBait;
-                Notify();
-                return true;
-            }
-            ConsumeBait();
-            return false;
-        }
-
         // ------------------------------------------------------------------ stages
         public bool IsUnlocked(string stageId) => data.unlockedStages.Contains(stageId);
 

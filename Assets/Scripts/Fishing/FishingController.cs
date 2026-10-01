@@ -686,6 +686,7 @@ namespace FishingKing
         IEnumerator CastRoutine()
         {
             SetState(S.Casting);
+            spentRig = false;
             Angler.SetPose("cast");
             if (L.IsIce) Sfx.PlayVar(Sfx.Cast, 0.8f);
             else
@@ -1053,7 +1054,8 @@ namespace FishingKing
             else Tackle.Wind(m * 2f, ShorePoint, SweepSin);
             Tackle.Hanging = false;
             StepCurrent(dt, true);
-            SnagRolls(dt);
+            // (a rig coming home after the fish got off or the line parted catches on nothing: SpentRetrieve)
+            if (!spentRig) SnagRolls(dt);
             if (State != S.Retrieving) return;
             Angler.SetPose(ReelPose(Time.time * 8));
             ReelTicks(m / Game.I.Reel.retrieve);
@@ -1066,6 +1068,7 @@ namespace FishingKing
         {
             foreach (var f in Spawner.Fish) if (f.State == FishAgent.St.Approach || f.State == FishAgent.St.Nibble) f.LoseInterest();
             Tackle.Hide();
+            spentRig = false;
             retrieveWait = 0f;
             Angler.LineTarget = null;
             Slide.Reset();
@@ -1327,6 +1330,8 @@ namespace FishingKing
         {
             if (State != S.Waiting && State != S.Biting) return false;
             if (NoBites) return false;
+            // a rig coming home spent (the fish off, the line parted) or a bare hook (the bait gone) is taken by nothing
+            if (spentRig || Tackle.BareHook) return false;
             // the legend is close: the ordinary fish keep away
             if (Watch != null && Watch.Meter >= 0.5f) return false;
             foreach (var o in Spawner.Fish) if (o != f && o.Engaged) return false;
@@ -1393,6 +1398,7 @@ namespace FishingKing
 
         public void OnBite(FishAgent f)
         {
+            BiteCount++;
             if (Tackle.Bait.isLure)
             {
                 LureBites++;
@@ -1444,7 +1450,10 @@ namespace FishingKing
                 biter = null;
                 if (Tackle.UsesFloat)
                 {
+                    // the bait is gone (paid for here, once): the bare hook is wound in
                     Game.I.ConsumeBait();
+                    Tackle.TakeBait();
+                    BaitThefts++;
                     hud.Flash("미끼만 떼먹고 도망갔어요...", UIKit.Bad);
                     SetState(S.Retrieving);
                 }
@@ -2138,56 +2147,6 @@ namespace FishingKing
             Fx.Splash(s2, Mathf.Clamp(ppm / 20f, 0.4f, 1.3f) * power, Stage.WaterTint, Mathf.RoundToInt(14 * power), P.DepthOf(s));
             Fx.Ripple(s2, Mathf.Clamp(ppm * 1.8f / 64f, 0.12f, 0.9f) * power, squash, new Color(1, 1, 1, 0.85f), 0.9f);
             Fx.Ripple(s2, Mathf.Clamp(ppm * 1.1f / 64f, 0.08f, 0.6f) * power, squash, new Color(1, 1, 1, 0.6f), 0.6f);
-        }
-
-        void LineBroke(bool spooled)
-        {
-            Sfx.Play(Sfx.Snap, 1f);
-            view.Shake(0.3f, 0.35f);
-            string msg = BreakText(spooled);
-            bool lure = Game.I.LoseTackle();
-            if (Fight != null && Fight.Outclassed) msg += "\n이 녀석에겐 장비가 약해요. 더 튼튼한 줄과 릴이 필요해요!";
-            if (lure) msg += "  (루어를 잃었다)";
-            hud.Flash(msg, UIKit.Bad, 2f);
-            DropFromAir();
-            Hooked.JumpT = -1;
-            Hooked.Flee();
-            Hooked = null;
-            FishOff();
-        }
-
-        void FishEscaped()
-        {
-            Sfx.Play(Sfx.Escape, 0.9f);
-            hud.Flash("물고기가 바늘을 털고 도망갔다...", UIKit.Bad, 2f);
-            DropFromAir();
-            Hooked.JumpT = -1;
-            Hooked.Flee();
-            Hooked = null;
-            FishOff();
-        }
-
-        /// <summary>
-        /// The fish is off (it got away, the line broke): a lure rig is gone at once and he is ready again; a float rig's
-        /// float stays where it was, back up on the water, and after a moment is wound in (the retrieve).
-        /// </summary>
-        void FishOff()
-        {
-            bool keep = Tackle.FloatFight == Tackle.FightFloat.Line;
-            EndFightCommon(keep);
-            Angler.SetPose("idle");
-            if (keep && Tackle.LetGo())
-            {
-                Angler.LineTarget = Tackle.LineEnd;
-                Angler.Slack01 = 0.45f;
-                retrieveWait = RetrieveWait;
-                SetState(S.Retrieving);
-            }
-            else
-            {
-                Tackle.Hide();
-                SetState(S.Ready);
-            }
         }
 
         // after the fish is off, the float lies where it was this long before it is wound in

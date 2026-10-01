@@ -47,6 +47,11 @@ namespace FishingKing
         public int SnagCount { get; private set; }
         public int SnagFrees { get; private set; }
         public int SnagBreaks { get; private set; }
+        public int PadTears { get; private set; }
+        /// <summary>Snag checks made on a moving rig (SnagRolls past its guards; for the tests).</summary>
+        public int SnagChecks { get; private set; }
+        /// <summary>The snag checks have a last hook point to measure the next step from (for the tests: false after a fight).</summary>
+        internal bool SnagRefSet => snagPrevOk;
         public int CoverRuns { get; private set; }
         public int CoverHolds { get; private set; }
         public int PullOuts { get; private set; }
@@ -420,6 +425,7 @@ namespace FishingKing
                 snagPrevOk = false;
                 return;
             }
+            SnagChecks++;
             var h = tk.HookPos;
             float d = 0f;
             if (snagPrevOk)
@@ -701,11 +707,13 @@ namespace FishingKing
             SetState(S.Waiting);
         }
 
-        /// <summary>Forced (or cut with 끊기): the line breaks at the snag; a lure is lost, a natural bait used up.</summary>
+        /// <summary>Forced (or cut with 끊기): the line breaks at the snag; a lure is lost, a natural bait still on used up (once).</summary>
         void SnagBreak(bool cut)
         {
             var sn = Tackle.Snag;
-            bool lure = Game.I.LoseTackle();
+            bool lure = false;
+            if (Tackle.Bait.isLure) lure = Game.I.LoseLure(Tackle.Bait);
+            else if (!Tackle.BaitGone) Game.I.ConsumeBait();   // (a bare hook has nothing left to lose)
             if (cut) Sfx.Play(Sfx.Snap, 0.5f);
             else
             {
@@ -725,6 +733,7 @@ namespace FishingKing
             Angler.Strain01 = 0f;
             Slide.Reset();
             snagArrow = false;
+            snagPrevOk = false;
             SetState(S.Ready);
         }
 
@@ -741,7 +750,10 @@ namespace FishingKing
             if (tk.UsesFloat)
             {
                 var sn = tk.Snag;
-                Game.I.ConsumeBait();
+                // (a bare hook has nothing left to tear off)
+                if (!tk.BaitGone) Game.I.ConsumeBait();
+                tk.TakeBait();
+                PadTears++;
                 Sfx.PlayVar(Sfx.Tear, 0.7f);
                 hud.Flash("미끼가 연잎에 뜯겼어요", UIKit.Bad, 1.6f);
                 tk.ClearSnag();
@@ -758,6 +770,7 @@ namespace FishingKing
         // ================================================================== fights (spec 7)
         void BeginFightObstacles()
         {
+            snagPrevOk = false;   // (the rig's last snag-check point is from before the bite)
             coverTarget = null;
             coverCoolUntil = -99f;
             firstRunDone = false;
