@@ -100,6 +100,7 @@ namespace FishingKing
         int gaugeDrawn = -1;
         Rect gaugeAt;
         float gaugeShow, gaugeK = 1f;
+        bool gaugeSeen;                           // the gauge has shown at its drawn spot (only then does leaving it count)
         Rect? faceClip;                           // while the gauge is placed: the window (the face's margin stops there)
 
         public static EncounterHUD Create(RectTransform canvasRoot, LegendEncounter e, EncounterView v)
@@ -588,7 +589,7 @@ namespace FishingKing
                 // (hidden, it simply takes the best spot: it shows up there, no move)
                 if (gaugeShow <= 0.01f) gaugeSpot.cur = -1;
                 Choose(gaugeSpot, dt);
-                var gr = PlaceGauge(dt);
+                var gr = PlaceGauge(dt, teaseUp);
                 faceClip = null;
                 blocks.RemoveRange(before, blocks.Count - before);
                 gaugeLow = gaugeDrawn <= 2;
@@ -666,9 +667,11 @@ namespace FishingKing
         /// <summary>
         /// Draws the gauge at its spot and returns the rect it takes. It follows the spot; a relocation fades it out where
         /// it was (<see cref="GaugeOut"/>), then in at the new spot (<see cref="GaugeIn"/>), unless the face, the frog or
-        /// an overlay has reached where it is: then it goes at once and fades in there. Hidden, it simply goes.
+        /// an overlay has reached where it is: then it goes at once and fades in there. Hidden, it simply goes. Once the
+        /// tease is over (<paramref name="up"/> false: the lunge growing the window, the turn-away) it fades out where it
+        /// is, cut at once if the face or the lure reaches it: never relocated.
         /// </summary>
-        Rect PlaceGauge(float dt)
+        Rect PlaceGauge(float dt, bool up)
         {
             int want = gaugeSpot.cur;
             var to = gaugeSpot.Chosen;
@@ -677,6 +680,11 @@ namespace FishingKing
                 gaugeDrawn = want;
                 gaugeAt = to;
                 gaugeK = 1f;
+                gaugeSeen = false;
+            }
+            else if (!up)
+            {
+                if (Cost(gaugeAt, true) >= 100f) gaugeK = 0f;
             }
             else if (want != gaugeDrawn || (to.center - gaugeAt.center).sqrMagnitude > 64f)
             {
@@ -687,7 +695,9 @@ namespace FishingKing
                     gaugeDrawn = want;
                     gaugeAt = to;
                     gaugeK = 0f;
-                    GaugeMoves++;
+                    // (only a move from where it has shown counts)
+                    if (gaugeSeen) GaugeMoves++;
+                    gaugeSeen = false;
                 }
                 else gaugeK = Mathf.MoveTowards(gaugeK, 0f, dt / GaugeOut);
             }
@@ -695,6 +705,7 @@ namespace FishingKing
             {
                 gaugeAt = to;
                 gaugeK = Mathf.MoveTowards(gaugeK, 1f, dt / GaugeIn);
+                if (gaugeShow * gaugeK > 0.01f) gaugeSeen = true;
             }
             gauge.anchoredPosition = new Vector2(Mathf.Round(gaugeAt.center.x), Mathf.Round(gaugeAt.yMin + 4f));
             gaugeGroup.alpha = gaugeShow * gaugeK;
@@ -766,7 +777,8 @@ namespace FishingKing
         public Rect GaugeRect => Drawn(gaugePlate);
         /// <summary>Where the gauge is drawn (<see cref="GaugeSpots"/>).</summary>
         public string GaugeSpotName => gaugeDrawn >= 0 ? GaugeSpots[gaugeDrawn] : "-";
-        /// <summary>How often the gauge has moved to another spot while it showed.</summary>
+        /// <summary>How often the gauge has moved from a spot where it had shown, during the tease (a spot re-placed
+        /// within counts too; the fade-out after the tease never moves it).</summary>
         public int GaugeMoves { get; private set; }
         /// <summary>The last move went at once (something reached the gauge), not after a fade-out where it was.</summary>
         public bool GaugeMovedAtOnce { get; private set; }

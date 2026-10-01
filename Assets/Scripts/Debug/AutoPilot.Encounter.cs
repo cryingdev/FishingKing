@@ -33,8 +33,8 @@ namespace FishingKing
     /// (<see cref="EncCaptionCheck"/>) logs every captioned frame against the legend's face (with -fkcapshots also one
     /// cap_NN shot per caption); the run fails if any caption covers the face. It also watches the gauge: from above it
     /// must never cover the frog (every frame it shows), and it may move to another spot at most
-    /// <see cref="GaugeMovesCap"/> times an encounter (each move logged "[CAP] gauge a -> b"; from above the first three
-    /// shot 0.3 s later as gauge_&lt;id&gt;_N_&lt;spot&gt;). It also checks that a topwater legend's tease is seen from above
+    /// <see cref="GaugeMovesCap"/> times an encounter (each move logged "[CAP] gauge a -> b", or "[CAP] gauge re-placed
+    /// within a"; from above the first three shot 0.3 s later as gauge_&lt;id&gt;_N_&lt;spot&gt;). It also checks that a topwater legend's tease is seen from above
     /// whenever the key (-fkbait / -fklure, else the top key) has top frames, and that the prompt's verb icon is the
     /// mood's verb's (RunPause: verb_runpause), the first tease shot with the prompt up adding enc_&lt;id&gt;_verb_zoom.
     /// </summary>
@@ -462,7 +462,7 @@ namespace FishingKing
             // the gauge: per encounter (its HUD) the moves seen and the spot it was last drawn at
             EncounterHUD gHud = null;
             int gSeen = 0;
-            string gSpot = null;
+            string gSpot = null, gDrawn = null;   // the spot last seen shown / drawn last frame
             bool gLogged = false;
             float gFade = -1f;   // since the last move, until it has faded in
             yield return endOfFrame;
@@ -554,7 +554,7 @@ namespace FishingKing
                     {
                         gHud = hud;
                         gSeen = 0;
-                        gSpot = null;
+                        gSpot = gDrawn = null;
                         gLogged = false;
                     }
                     if (hud.GaugeMoves > gSeen)
@@ -562,7 +562,12 @@ namespace FishingKing
                         gaugeMovesTotal += hud.GaugeMoves - gSeen;
                         gSeen = hud.GaugeMoves;
                         gaugeMovesMax = Mathf.Max(gaugeMovesMax, gSeen);
+                        // (a move within the same spot has no "a -> b" line: logged here, so no count goes unlogged)
+                        if (hud.GaugeSpotName == gDrawn)
+                            Log(string.Format(inv, "[CAP] gauge re-placed within {0} ph={1} t={2:0.00} (moves {3}, alpha {4:0.00})",
+                                gDrawn, e.Ph, e.PhaseT, hud.GaugeMoves, hud.GaugeAlpha));
                     }
+                    gDrawn = hud.GaugeSpotName;
                     if (hud.GaugeShown)
                     {
                         var gq = hud.GaugeRect;
