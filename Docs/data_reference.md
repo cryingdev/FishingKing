@@ -613,6 +613,7 @@
 | `legends` | List&lt;LegendRecord&gt; | 비어 있음 | 전설어 조우 기록 |
 | `lastStage` | string | `"lake"` | 마지막으로 간 스테이지 (`SceneFlow`가 기록; 지도의 핀 강조와 낚시 씬 기본 스테이지에 씀: `MapScene`, `FishingScene`) |
 | `soundOn` | bool | true | 소리 켬 (`AudioListener.volume`) |
+| `musicOn` | bool | true | 배경음 켬 (설정 → 배경음, `Music`이 매 프레임 읽음; 이 필드가 없는 옛 세이브도 켬으로 읽힘) |
 | `reelRing` | bool | true | 릴 원을 그릴 때 원과 방향 화살표 표시 |
 | `reelReverse` | bool | false | 반시계방향이 감기 (기본: 시계방향) |
 | `zoomMode` | int | 0 | 캐스팅 후 줌: `ZoomMode` `X125` = 0 (1.25배, 기본이자 옛 세이브 값), `Off` = 1, `X150` = 2, `Active` = 3 (`Sanitize`: 0..3 밖이면 0) |

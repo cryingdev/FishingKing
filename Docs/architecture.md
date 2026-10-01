@@ -25,7 +25,7 @@
 
 | 단계 | 시점 | 하는 일 |
 |---|---|---|
-| `Game.Boot()` | `[RuntimeInitializeOnLoadMethod(BeforeSceneLoad)]` — 첫 씬이 로드되기 전 | `[Game]` 오브젝트 생성 + `DontDestroyOnLoad`, `SaveSystem.Load()`, `Sfx`·`SceneFlow` 컴포넌트 추가, `AudioListener.volume` 설정, `Application.targetFrameRate = 60`, `QualitySettings.vSyncCount = 0` |
+| `Game.Boot()` | `[RuntimeInitializeOnLoadMethod(BeforeSceneLoad)]` — 첫 씬이 로드되기 전 | `[Game]` 오브젝트 생성 + `DontDestroyOnLoad`, `SaveSystem.Load()`, `Sfx`·`Music`·`SceneFlow` 컴포넌트 추가, `AudioListener.volume` 설정, `Application.targetFrameRate = 60`, `QualitySettings.vSyncCount = 0` |
 | `Game.DebugBoot()` | `[RuntimeInitializeOnLoadMethod(AfterSceneLoad)]` | 실행 인자(`-fkfresh`, `-fkrich`, `-fkgear`, `-fkencounter`, `-fkobstacles` …) 적용, `GameClock.DebugBoot()`, `-fkscene`이 있으면 `SceneFlow.PendingStage = -fkstage` 후 `SceneManager.LoadScene` |
 
 그래서 README 말대로 **어느 씬에서 Play해도** 매니저가 생깁니다. 스위치 목록은 [testing.md](testing.md)에 있습니다.
@@ -126,13 +126,14 @@ flowchart LR
 
 ## 3. 낚시 상태 머신
 
-`Assets/Scripts/Fishing/FishingController.cs` `FishingController`는 `partial class`이고 세 파일로 나뉩니다.
+`Assets/Scripts/Fishing/FishingController.cs` `FishingController`는 `partial class`이고 네 파일로 나뉩니다.
 
 | 파일 | 더하는 것 |
 |---|---|
 | `FishingController.cs` | 상태 enum `S`, `Init`, `Update` 디스패치, 준비·조준·캐스팅·대기·회수·입질·챔질·파이트·랜딩·결과, 전설어 조우 진입/종료(`StartEncounter`, `UpdateEncounter`, `EncounterHooked`, `EncounterFailed`), 낚싯대 스윕·사이드 프레셔, 물살 파이트, 게임 시계 틱(`TickClock`), 톡 낚싯대 채기(`RodJerk`) |
 | `FishingController.Obstacles.cs` | 장애물 전부([obstacles_spec.md](obstacles_spec.md)): 비행 중 접촉(`OnContact`), 착수 처리(`LandPerched`, `LandedObstacles`, `LandOnPad`, `NaturalEntry`), 얹힌 채비(`UpdatePerched`, `KnockOff`), **밑걸림 상태 `S.Snagged`**(`SnagRolls` → `SnagAt` → `UpdateSnagged` → `FreeSnag` / `SnagBreak` / `CutLine` / `PadTear`), 커버로 도망치는 파이트(`BeginFightObstacles`, `TryCoverRun`, `StartCoverRun`, `PullOut`, `FightObstacles`, `EndFightObstacles`), 끊김 문구(`BreakText`), 구조물 근처 입질 배율(`StructureBite`) |
 | `FishingController.Zoom.cs` | 줌 감독: `ZoomSetting`(매 프레임 `Game.Data.zoomMode`를 읽음), `ZoomWanted`, `InitZoom`(→ `view.Zoom.Director = DirectZoom`), `DirectZoom`, 테스트 훅 `DebugBreak` |
+| `FishingController.Music.cs` | 배경음 감독([music.md](music.md)): `InitMusic`, 매 프레임 `TickMusic`(`Update` 맨 앞, 상태·조우 단계·시간대·장력을 보고 `Music`에 바뀐 것만 요청), 이벤트 sting `CatchMusic`(`LandRoutine`), `FishOffMusic`(`FishOff`), `SnagBreakMusic`(`SnagBreak`), `LeaveMusic`(`OnDestroy`) |
 
 ### 3.1 상태 목록
 

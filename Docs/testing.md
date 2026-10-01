@@ -31,5 +31,8 @@
 | `-fkaqua feed\|live\|clean\|decor\|tanks\|migrate` | 수족관 시나리오 (사료·생먹이·청소·꾸미기·수조 단계·구 세이브) |
 | `-fkaquahours <h>` · `-fkaquafeed basic\|premium` · `-fkaquadirt <0..1>` · `-fkaqualog` | 수족관 시간 빨리 감기·먹이 유지·오염도·로그 |
 | `-fkactors2d` | 3D 캐릭터 대신 2D 스프라이트 |
+| `-fkmusic off\|chiptune` | 배경음 없이 (세이브의 설정은 그대로) / `music.json`을 무시하고 모든 곡을 예전 합성 칩튠으로 (sting 없음) |
+| `-fkmusiclog` | 배경음 이벤트(재생·스템·sting·덕킹·시작·해제)마다 `[MUSIC]` 로그 |
+| `-fkauto music` | 배경음 검사: 타이틀 → 지도(없는 곡 → 칩튠, 설정 → 배경음 끔/켬) → 스테이지 낮·밤(8초 크로스페이드) → 입질 덕킹 · 파이트 스템 · 잡음/희귀/놓침 sting → `-fkencounter`가 있으면 조우 성공·실패 → 지도 · 수족관. `[MUSIC] CHECK` 줄과 요약, 스템 동기(5 ms 이내) 검사, 캡처 `music_settings` (예: `-fkfresh -fkrich -fkgear -fksave music -fkstage lake -fkencounter now -fkauto music -fkmusiclog -fkshots <폴더>`, `-fkscene` 없이 타이틀에서 시작) |
 
 에디터 빌드: `Unity.exe -batchmode -quit -projectPath <프로젝트> -executeMethod FishingKing.EditorTools.FishingKingSetup.BuildWindows [-fkBuildOut <폴더>]` (기본 출력 `Builds/Windows`).
