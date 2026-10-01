@@ -34,6 +34,12 @@ namespace FishingKing
         AudioSource dawnSrc, nightSrc, drag, thrash;
         /// <summary>The taut line twanging under load: one rubbery pluck (see <see cref="LineStrain"/>).</summary>
         public static AudioClip LineTing;
+        /// <summary>
+        /// The recorded twangs of a rubber band (Resources/Audio/Sfx/line_twang_1..N, as many as there are), played in a
+        /// random order that never repeats the last one. Empty: the synthesized LineTing.
+        /// </summary>
+        static readonly System.Collections.Generic.List<AudioClip> twangs = new System.Collections.Generic.List<AudioClip>();
+        static int lastTwang = -1;
         static float nextTing = -1f;
         /// <summary>Seconds between tings at the bottom / the top of the strain (they come faster as it climbs).</summary>
         const float TingSlow = 0.9f, TingFast = 0.16f;
@@ -67,6 +73,12 @@ namespace FishingKing
                 var c = Resources.Load<AudioClip>("Audio/Sfx/reel_click_" + k);
                 if (c == null) break;
                 reelClicks.Add(c);
+            }
+            for (int k = 1; ; k++)
+            {
+                var c = Resources.Load<AudioClip>("Audio/Sfx/line_twang_" + k);
+                if (c == null) break;
+                twangs.Add(c);
             }
         }
 
@@ -110,7 +122,15 @@ namespace FishingKing
             level = Mathf.Clamp01(level);
             if (nextTing < 0f || now - nextTing > 1f) nextTing = now;   // (the first ting comes at once)
             if (now < nextTing) return;
-            Play(LineTing, 0.12f + 0.33f * level, 0.85f + 0.65f * level + UnityEngine.Random.Range(-0.015f, 0.015f));
+            var clip = LineTing;
+            if (twangs.Count > 0)
+            {
+                int k = UnityEngine.Random.Range(0, twangs.Count);
+                if (twangs.Count > 1 && k == lastTwang) k = (k + 1) % twangs.Count;
+                lastTwang = k;
+                clip = twangs[k];
+            }
+            Play(clip, 0.12f + 0.33f * level, 0.85f + 0.65f * level + UnityEngine.Random.Range(-0.015f, 0.015f));
             nextTing = now + Mathf.Lerp(TingSlow, TingFast, level);
         }
 
