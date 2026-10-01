@@ -171,7 +171,8 @@ namespace FishingKing
                 int run = ctl.FishRun;
                 bool running = run != 0 || f.State == FightModel.Phase.Burst;
                 if (f.TensionRatio > 0.95f) ang += ws * dt * 1.0f * Mathf.PI * 2f;
-                else if (!running && !f.Jumping && f.TensionRatio < 0.8f) ang -= ws * dt * 1.6f * Mathf.PI * 2f;
+                // (until the shots are in, stop winding short of the let-go point so the fight lasts for them)
+                else if (!running && !f.Jumping && f.TensionRatio < 0.8f && (phase >= 4 || f.Line > f.LandDist + 8f)) ang -= ws * dt * 1.6f * Mathf.PI * 2f;
                 PointerInput.SimDown = true;
                 PointerInput.SimPos = c + new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * r;
                 int lean = phase == 1 ? -run : phase == 3 ? run : 0;
