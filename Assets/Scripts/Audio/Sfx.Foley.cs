@@ -31,7 +31,12 @@ namespace FishingKing
         /// <summary>Seconds the drag loop keeps sounding after the last <see cref="Drag"/> call, then fades over this too.</summary>
         const float DragHold = 0.12f;
 
-        AudioSource dawnSrc, nightSrc, drag;
+        AudioSource dawnSrc, nightSrc, drag, thrash;
+        /// <summary>The hooked fish splashing at the surface (Resources/Audio/Sfx/fish_thrash, a loop; null = silent).</summary>
+        public static AudioClip FishThrash;
+        float thrashWant, thrashUntil = -1f;
+        /// <summary>Seconds the thrash loop fades in / out over.</summary>
+        const float ThrashFade = 0.25f;
         float dragWant, dragSeen = -1f, ambMult = 1f;
         static readonly System.Collections.Generic.Dictionary<string, AudioClip> loops = new System.Collections.Generic.Dictionary<string, AudioClip>();
 
@@ -40,10 +45,13 @@ namespace FishingKing
             dawnSrc = Loop(0f);
             nightSrc = Loop(0f);
             drag = Loop(0f);
+            thrash = Loop(0f);
             BuildFoley();
             drag.clip = DragLoop;
             CastSwing = Resources.Load<AudioClip>("Audio/Sfx/cast_swing");
             FloatLand = Resources.Load<AudioClip>("Audio/Sfx/float_land");
+            FishThrash = Resources.Load<AudioClip>("Audio/Sfx/fish_thrash");
+            thrash.clip = FishThrash;
             for (int k = 1; ; k++)
             {
                 var c = Resources.Load<AudioClip>("Audio/Sfx/reel_click_" + k);
@@ -69,6 +77,23 @@ namespace FishingKing
             float want = age <= DragHold ? dragWant : 0f;
             drag.volume = Mathf.MoveTowards(drag.volume, want, Time.unscaledDeltaTime / DragHold);
             if (drag.volume <= 0.001f && drag.isPlaying) drag.Stop();
+            // the thrash loop: on while Thrash() keeps it alive, then fades
+            float tw = Time.unscaledTime <= thrashUntil ? thrashWant : 0f;
+            thrash.volume = Mathf.MoveTowards(thrash.volume, tw, Time.unscaledDeltaTime / ThrashFade);
+            if (thrash.volume <= 0.001f && thrash.isPlaying) thrash.Stop();
+        }
+
+        /// <summary>
+        /// The hooked fish thrashing at the surface: level 0..1 for the next `hold` seconds (call it every frame it splashes,
+        /// or once with a longer hold for a burst, e.g. the hook set). Fades out by itself.
+        /// </summary>
+        public static void Thrash(float level, float hold = 0.15f)
+        {
+            if (I == null || I.thrash == null || FishThrash == null) return;
+            float now = Time.unscaledTime;
+            I.thrashWant = now <= I.thrashUntil ? Mathf.Max(I.thrashWant, Mathf.Clamp01(level)) : Mathf.Clamp01(level);
+            I.thrashUntil = Mathf.Max(I.thrashUntil, now + hold);
+            if (!I.thrash.isPlaying) I.thrash.Play();
         }
 
         // ------------------------------------------------------------------ API

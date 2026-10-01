@@ -1356,6 +1356,7 @@ namespace FishingKing
         {
             biteMark.enabled = false;
             Sfx.Play(Sfx.Hook, 1f);
+            Sfx.Thrash(0.7f, 1.2f);   // the fish splashes as the hook goes home
             view.Shake(0.12f, 0.15f);
             var f = biter;
             biter = null;
@@ -1715,7 +1716,8 @@ namespace FishingKing
             // the cover (the run's arrival, the hold) and the line rubbing on structure
             FightObstacles(dt, f, pos);
 
-            // thrashing near the surface
+            // thrashing near the surface (its sound: louder while it runs)
+            if (depth < 0.7f && jumpTime < 0) Sfx.Thrash(running ? 0.75f : 0.45f);
             splashT -= dt;
             if (splashT <= 0 && depth < 0.7f && jumpTime < 0)
             {
