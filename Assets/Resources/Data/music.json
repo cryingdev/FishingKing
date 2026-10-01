@@ -1,0 +1,429 @@
+{
+ "rate": 44100,
+ "cues": [
+  {
+   "id": "aquarium",
+   "kind": "loop",
+   "bpm": 72,
+   "beatsPerBar": 4,
+   "bars": 16,
+   "loopSamples": 2351999,
+   "desc": "Aquarium: a slow, cosy F-major lullaby; music box and celesta tunes (MOTIF bar 1 on the return), vibraphone answers, harp rolls, electric piano chords and bass, a quiet warm pad; no drums",
+   "stems": [
+    {
+     "name": "main",
+     "clip": "Audio/Music/aquarium_main"
+    }
+   ]
+  },
+  {
+   "id": "encounter",
+   "kind": "loop",
+   "bpm": 60,
+   "beatsPerBar": 4,
+   "bars": 16,
+   "loopSamples": 2822400,
+   "desc": "Legend encounter (underwater): lurk = drone pad, contrabass, sparse low piano clusters and reverse cymbals; approach = cello eighth pulse and violas; tease = high tremolo strings, celesta figures (the MOTIF head in D minor) and crystal bells, rising to a climax in bar 13. D minor with a Phrygian bII",
+   "stems": [
+    {
+     "name": "lurk",
+     "clip": "Audio/Music/encounter_lurk"
+    },
+    {
+     "name": "approach",
+     "clip": "Audio/Music/encounter_approach"
+    },
+    {
+     "name": "tease",
+     "clip": "Audio/Music/encounter_tease"
+    }
+   ]
+  },
+  {
+   "id": "legend_arapaima",
+   "kind": "loop",
+   "bpm": 120,
+   "beatsPerBar": 4,
+   "bars": 32,
+   "loopSamples": 2822400,
+   "desc": "Arapaima fight: primal 3+3+2 engine of taiko, low toms, congas and shaker under a low bassoon riff and tuba; the arapaima's rising-fourth theme in trombone and horn, a choir from the A' climax, a broad clarinet tune in the lighter B section, a Cm-Ab-D turnaround back into the theme",
+   "stems": [
+    {
+     "name": "main",
+     "clip": "Audio/Music/legend_arapaima_main"
+    }
+   ]
+  },
+  {
+   "id": "legend_blue_marlin",
+   "kind": "loop",
+   "bpm": 150,
+   "beatsPerBar": 4,
+   "bars": 32,
+   "loopSamples": 2257920,
+   "desc": "Blue marlin fight: heroic D mixolydian chase at 150 bpm; the marlin's leaping 16th-rip trumpet theme over a galloping cello, driving snare and toms, a violin 16th ostinato and horns; a broad violin and horn tune in B, and a Bb-C-A7 turnaround with a tom fill back into the theme",
+   "stems": [
+    {
+     "name": "main",
+     "clip": "Audio/Music/legend_blue_marlin_main"
+    }
+   ]
+  },
+  {
+   "id": "legend_coelacanth",
+   "kind": "loop",
+   "bpm": 116,
+   "beatsPerBar": 4,
+   "bars": 32,
+   "loopSamples": 2919722,
+   "desc": "Coelacanth fight: ancient and mystic. A 3+3+2 marimba sixteenth engine over cellos, timpani and a low-tom backbeat; the coelacanth's string theme (the tonic held, a scoop up to the fifth, then the harmonic minor's augmented-second sigh G#-F-E) with kalimba, choir and crystal pads; a hushed B section with a two-voice choir chant over harp arpeggios, and an E Phrygian-dominant turnaround with string runs, rolls and a reverse cymbal back into the theme",
+   "stems": [
+    {
+     "name": "main",
+     "clip": "Audio/Music/legend_coelacanth_main"
+    }
+   ]
+  },
+  {
+   "id": "legend_golden_carp",
+   "kind": "loop",
+   "bpm": 132,
+   "beatsPerBar": 4,
+   "bars": 32,
+   "loopSamples": 2565816,
+   "desc": "Golden carp legend fight: festive E-major pentatonic, shakuhachi + strings 'leaping carp' theme, koto ostinato, taiko and gong (china + tubular bells)",
+   "stems": [
+    {
+     "name": "main",
+     "clip": "Audio/Music/legend_golden_carp_main"
+    }
+   ]
+  },
+  {
+   "id": "legend_great_white",
+   "kind": "loop",
+   "bpm": 128,
+   "beatsPerBar": 4,
+   "bars": 32,
+   "loopSamples": 2646000,
+   "desc": "Great white fight: menace. A circling 3+3+3+3+2+2 sixteenth engine (cellos, contrabass, taiko) under the shark's low-brass motif (a lunge up two fourths into a held seventh, a pentatonic dive on the circle's group heads), Neapolitan and dim7 colour, off-beat brass 'bite' clusters; a B section where the circle widens to eighths over two bars under a broad violin tune of tied suspensions, a C7(b9) cluster swell, and a crescendo turnaround with taiko and snare rolls",
+   "stems": [
+    {
+     "name": "main",
+     "clip": "Audio/Music/legend_great_white_main"
+    }
+   ]
+  },
+  {
+   "id": "legend_sturgeon",
+   "kind": "loop",
+   "bpm": 112,
+   "beatsPerBar": 4,
+   "bars": 32,
+   "loopSamples": 3023998,
+   "desc": "Sturgeon fight: heavy and cold. A 3+3+2 low-string ostinato locked to kick and timpani under the sturgeon's trombone theme (a pickup into a held rising fifth, a flat-six sigh); choir, high tubular-bell tolls and string tremolo for the ice; a glacial B section with a broad choir tune over a sinking bass, and an Ab-Fm-Db-G turnaround with timpani and snare rolls back into the theme",
+   "stems": [
+    {
+     "name": "main",
+     "clip": "Audio/Music/legend_sturgeon_main"
+    }
+   ]
+  },
+  {
+   "id": "map",
+   "kind": "loop",
+   "bpm": 104,
+   "beatsPerBar": 4,
+   "bars": 16,
+   "loopSamples": 1628307,
+   "desc": "지도: 가벼운 여정 (마림바·실로폰, 아코디언/휘슬의 MOTIF 변주, 걷는 베이스, 탬버린·셰이커)",
+   "stems": [
+    {
+     "name": "main",
+     "clip": "Audio/Music/map_main"
+    }
+   ]
+  },
+  {
+   "id": "stage_cave",
+   "kind": "loop",
+   "bpm": 76,
+   "beatsPerBar": 4,
+   "bars": 24,
+   "loopSamples": 3342317,
+   "desc": "Crystal cave: reverberant marimba arpeggios, crystal pad, kalimba melody and glockenspiel glints in C# minor; night: thinner marimba drips, low choir pad, vibraphone; fight: low toms and woodblocks, synth bass eighths, marimba ostinato",
+   "stems": [
+    {
+     "name": "day",
+     "clip": "Audio/Music/stage_cave_day"
+    },
+    {
+     "name": "night",
+     "clip": "Audio/Music/stage_cave_night"
+    },
+    {
+     "name": "fight",
+     "clip": "Audio/Music/stage_cave_fight"
+    }
+   ]
+  },
+  {
+   "id": "stage_ice",
+   "kind": "loop",
+   "bpm": 66,
+   "beatsPerBar": 4,
+   "bars": 24,
+   "loopSamples": 3848728,
+   "desc": "Frozen lake: harp arpeggios, celesta melody and glockenspiel drops over choir and halo pads on a B-minor lament bass; night: music box over a bowed pad and low strings; fight: timpani, low string ostinato, contrabass drive and tubular bells",
+   "stems": [
+    {
+     "name": "day",
+     "clip": "Audio/Music/stage_ice_day"
+    },
+    {
+     "name": "night",
+     "clip": "Audio/Music/stage_ice_night"
+    },
+    {
+     "name": "fight",
+     "clip": "Audio/Music/stage_ice_fight"
+    }
+   ]
+  },
+  {
+   "id": "stage_lake",
+   "kind": "loop",
+   "bpm": 80,
+   "beatsPerBar": 4,
+   "bars": 24,
+   "loopSamples": 3175200,
+   "desc": "Calm lake shore: fingerpicked nylon guitar and flute over a descending D-major bass; night: electric piano, soft strings and a music box; fight: folk-rock kit, pick bass, string ostinato",
+   "stems": [
+    {
+     "name": "day",
+     "clip": "Audio/Music/stage_lake_day"
+    },
+    {
+     "name": "night",
+     "clip": "Audio/Music/stage_lake_night"
+    },
+    {
+     "name": "fight",
+     "clip": "Audio/Music/stage_lake_fight"
+    }
+   ]
+  },
+  {
+   "id": "stage_ocean",
+   "kind": "loop",
+   "bpm": 88,
+   "beatsPerBar": 4,
+   "bars": 24,
+   "loopSamples": 2886545,
+   "desc": "Open ocean from a boat: a Bb-major barcarolle rocking in triplets, French horn then strings over harp waves and wide strings; night: sweep pad, low strings and sparse piano; fight: toms and snare rolls, galloping contrabass, cello ostinato, brass stabs, timpani",
+   "stems": [
+    {
+     "name": "day",
+     "clip": "Audio/Music/stage_ocean_day"
+    },
+    {
+     "name": "night",
+     "clip": "Audio/Music/stage_ocean_night"
+    },
+    {
+     "name": "fight",
+     "clip": "Audio/Music/stage_ocean_fight"
+    }
+   ]
+  },
+  {
+   "id": "stage_sea",
+   "kind": "loop",
+   "bpm": 100,
+   "beatsPerBar": 4,
+   "bars": 32,
+   "loopSamples": 3386880,
+   "desc": "Sea breakwater: ukulele-like steel-guitar strums and marimba bass under a tune passed from steel drums to whistle to accordion (F major); night: bossa nylon guitar and vibraphone; fight: congas, bongos and kick, finger/slap bass, muted-guitar ostinato",
+   "stems": [
+    {
+     "name": "day",
+     "clip": "Audio/Music/stage_sea_day"
+    },
+    {
+     "name": "night",
+     "clip": "Audio/Music/stage_sea_night"
+    },
+    {
+     "name": "fight",
+     "clip": "Audio/Music/stage_sea_fight"
+    }
+   ]
+  },
+  {
+   "id": "stage_stream",
+   "kind": "loop",
+   "bpm": 96,
+   "beatsPerBar": 4,
+   "bars": 32,
+   "loopSamples": 3528000,
+   "desc": "Mountain stream: E minor pentatonic, shakuhachi / pan flute over koto and guitar; night: low flute, koto, slow strings; fight: taiko, toms, driving bass, koto ostinato",
+   "stems": [
+    {
+     "name": "day",
+     "clip": "Audio/Music/stage_stream_day"
+    },
+    {
+     "name": "night",
+     "clip": "Audio/Music/stage_stream_night"
+    },
+    {
+     "name": "fight",
+     "clip": "Audio/Music/stage_stream_fight"
+    }
+   ]
+  },
+  {
+   "id": "stage_swamp",
+   "kind": "loop",
+   "bpm": 72,
+   "beatsPerBar": 4,
+   "bars": 24,
+   "loopSamples": 3527999,
+   "desc": "Misty swamp in D dorian: clarinet over low marimba drips, fretless bass and a bowed pad; night: bassoon, vibraphone glints and soft tremolo strings; fight: low toms, taiko, shaker, upright bass eighths and a pizzicato ostinato",
+   "stems": [
+    {
+     "name": "day",
+     "clip": "Audio/Music/stage_swamp_day"
+    },
+    {
+     "name": "night",
+     "clip": "Audio/Music/stage_swamp_night"
+    },
+    {
+     "name": "fight",
+     "clip": "Audio/Music/stage_swamp_fight"
+    }
+   ]
+  },
+  {
+   "id": "sting_catch",
+   "kind": "sting",
+   "bpm": 148,
+   "beatsPerBar": 4,
+   "bars": 1,
+   "loopSamples": 0,
+   "desc": "Catch (common / fine fish): glockenspiel + marimba reel up to MOTIF bar 4 (re mi re do), V - I6/4 - V - I in G, steel-guitar strums, bell tree and triangle",
+   "stems": [
+    {
+     "name": "main",
+     "clip": "Audio/Music/sting_catch_main"
+    }
+   ]
+  },
+  {
+   "id": "sting_escape",
+   "kind": "sting",
+   "bpm": 144,
+   "beatsPerBar": 4,
+   "bars": 1,
+   "loopSamples": 0,
+   "desc": "Fish got away / line broke: muted trumpet falls chromatically to a drooping Bb over pizzicato i - iv - i6 in G minor, a low pizzicato plunk to close",
+   "stems": [
+    {
+     "name": "main",
+     "clip": "Audio/Music/sting_escape_main"
+    }
+   ]
+  },
+  {
+   "id": "sting_fail",
+   "kind": "sting",
+   "bpm": 60,
+   "beatsPerBar": 4,
+   "bars": 1,
+   "loopSamples": 0,
+   "desc": "Encounter failed: a dissonant low string chord sighs, slides down a whole tone and fades away",
+   "stems": [
+    {
+     "name": "main",
+     "clip": "Audio/Music/sting_fail_main"
+    }
+   ]
+  },
+  {
+   "id": "sting_hook",
+   "kind": "sting",
+   "bpm": 138,
+   "beatsPerBar": 4,
+   "bars": 1,
+   "loopSamples": 0,
+   "desc": "Legend hooked: orchestra hit + timpani + crash + brass on Dm, stabs on Bb and C, the tutti again on Dm (leads into the legend fight)",
+   "stems": [
+    {
+     "name": "main",
+     "clip": "Audio/Music/sting_hook_main"
+    }
+   ]
+  },
+  {
+   "id": "sting_legend",
+   "kind": "sting",
+   "bpm": 126,
+   "beatsPerBar": 4,
+   "bars": 4,
+   "loopSamples": 0,
+   "desc": "Legendary catch: orchestral fanfare in D - timpani roll and reverse cymbal into a tutti, MOTIF bar 1 on trumpets, its head sequenced up to the climax, MOTIF bar 4 as the cadence, timpani roll, crash and tubular bells",
+   "stems": [
+    {
+     "name": "main",
+     "clip": "Audio/Music/sting_legend_main"
+    }
+   ]
+  },
+  {
+   "id": "sting_omen",
+   "kind": "sting",
+   "bpm": 60,
+   "beatsPerBar": 4,
+   "bars": 1,
+   "loopSamples": 0,
+   "desc": "Legend omen: a low choir cluster and contrabass rise by semitones in a crescendo, a reverse cymbal swells into a soft low boom on D",
+   "stems": [
+    {
+     "name": "main",
+     "clip": "Audio/Music/sting_omen_main"
+    }
+   ]
+  },
+  {
+   "id": "sting_rare",
+   "kind": "sting",
+   "bpm": 150,
+   "beatsPerBar": 4,
+   "bars": 2,
+   "loopSamples": 0,
+   "desc": "Rare / heroic fish: MOTIF bars 3-4 on trumpets over horns, trombones and tuba in C, string and harp flourishes, a snare-roll pick-up and a crash on the final major chord",
+   "stems": [
+    {
+     "name": "main",
+     "clip": "Audio/Music/sting_rare_main"
+    }
+   ]
+  },
+  {
+   "id": "title",
+   "kind": "loop",
+   "bpm": 92,
+   "beatsPerBar": 4,
+   "bars": 16,
+   "loopSamples": 1840696,
+   "desc": "Title theme: the full MOTIF on flute, an ocarina answer, a bridge to E6 and the reprise with glockenspiel and an ocarina second voice; nylon guitar, pizzicato, warm pad, acoustic bass, shaker",
+   "stems": [
+    {
+     "name": "main",
+     "clip": "Audio/Music/title_main"
+    }
+   ]
+  }
+ ]
+}
