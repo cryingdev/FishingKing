@@ -7,7 +7,8 @@ boat on the ocean and wind drift on the lake and swamp — each with visuals and
 
 Units: game space is metres (x right, y up, water surface y = 0, z forward from the angler's feet), current vectors are
 `(x, z)` in m/s on the water plane, times are game time unless marked "real". Canvas pixels are the 640x400 stage
-canvas (x right, y DOWN from its top) unless marked "RT px" (the 480x270 render target) or "canvas units" (UI).
+canvas (x right, y DOWN from its top; the sea's is 800x400 since it was rendered with overscan for the view's pan, its
+columns = the 640 layout's + 80) unless marked "RT px" (the 480x270 render target) or "canvas units" (UI).
 
 Constraints kept from the earlier specs: the reel UI stays fixed at the bottom right; there is no whole-body idle bob
 (the ocean boat drift moves the water, not the angler); the left hand holds the rod; casting stays drag down + flick

@@ -8,9 +8,10 @@ wears. Positions come from the Blender stage scenes, exported into game space, s
 pixel (the stream is exported and proven: section 13.5).
 
 Units: game space is metres (x right, y up, water surface y = 0, z forward from the angler's feet); plan vectors are
-`(x, z)`. Canvas pixels are the 640x400 stage canvas (x right, y DOWN from its top); "RT px" is the 480x270 render
-target. Times are real seconds unless marked. Probabilities are per event unless marked "/m" (per metre of travel) or
-"/s".
+`(x, z)`. Canvas pixels are the 640x400 stage canvas (x right, y DOWN from its top; a stage rendered with overscan is
+wider, the sea's 800x400: its `widthPx`, the same camera with 80 more columns each side, the 640 layout at its centre);
+"RT px" is the 480x270 render target. Times are real seconds unless marked. Probabilities are per event unless marked
+"/m" (per metre of travel) or "/s".
 
 Constraints kept: the reel UI stays fixed at the bottom right; casting stays drag down + flick up; the lure 톡 stays a
 short downward pull; freeing snags and pulling fish out of cover use the existing rod sweep / side pressure and the 톡
@@ -728,7 +729,7 @@ opaque pixels are not drawn (the outline stays "in the water").
 
 ### 9.3 How
 
-A static overlay built once at stage load (and on a rod change): a 640x400 point-filtered `Texture2D` placed exactly
+A static overlay built once at stage load (and on a rod change): a canvas-sized (640x400; the sea 800x400) point-filtered `Texture2D` placed exactly
 like the back sprite (centred on the scene origin, 16 px per unit), sorting `Fx.OrderRipple + 1` (under the fan dots);
 only its alpha animates. On the ocean it follows the front layer's swell bob (1 px; the hull zones stay under the bow,
 the reef and the weed mat show in the open water in front of it).
