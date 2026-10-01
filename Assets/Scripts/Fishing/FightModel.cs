@@ -331,6 +331,13 @@ namespace FishingKing
             nextShake = 0;
         }
 
+        /// <summary>Test hook (FishingController.DebugBreak): the fight ends now this way (a break with this cause).</summary>
+        internal void DebugEnd(Outcome result, Cause cause)
+        {
+            Result = result;
+            SnapCause = cause;
+        }
+
         /// <param name="revs">reel handle revolutions per second (negative = back-reeling)</param>
         /// <param name="nearSurface">fish is shallow enough to jump</param>
         public void Step(float dt, float revs, bool nearSurface)

@@ -108,6 +108,86 @@ namespace FishingKing
             bottom.Clear();
         }
 
+        /// <summary>One entry of an item toast (<see cref="ShowItems"/>): its icon and text, gold and punched when highlighted.</summary>
+        public struct Item
+        {
+            public Sprite icon;
+            public string text;
+            /// <summary>An expensive or legend-key item: gold text, a little pop.</summary>
+            public bool highlight;
+            /// <summary>A small mark after the text (the legend key's eye), or null.</summary>
+            public Sprite badge;
+        }
+
+        /// <summary>
+        /// A toast with a title and a row of items (icon + text each), e.g. what a parted line took. It sits
+        /// <paramref name="below"/> canvas units under the usual top toast spot (clear of a flash message there). Returns its
+        /// panel (for the tests); null for no items.
+        /// </summary>
+        public static RectTransform ShowItems(string title, Color titleColor, IList<Item> items, float time = 3.2f, float below = 0f)
+        {
+            if (items == null || items.Count == 0) return null;
+            top.RemoveAll(r => r == null);
+            bottom.RemoveAll(r => r == null);
+            bool low = UIKit.ModalCount > 0;
+            var list = low ? bottom : top;
+            var p = UIKit.Panel(C.transform, "panel_dark", null, "ItemToast");
+            var rt = p.rectTransform;
+            const float H = 58f, Icon = 40f, Pad = 16f, Gap = 6f, Space = 18f;
+            float x = Pad;
+            var texts = new List<Text>();
+            var t = UIKit.Label(rt, title, 20, titleColor, TextAnchor.MiddleLeft);
+            t.horizontalOverflow = HorizontalWrapMode.Overflow;
+            float tw = t.preferredWidth;
+            t.rectTransform.At(new Vector2(0, 0.5f), new Vector2(x, 0), new Vector2(tw + 4, H - 8), new Vector2(0, 0.5f));
+            texts.Add(t);
+            x += tw + Space;
+            foreach (var it in items)
+            {
+                if (it.icon != null)
+                {
+                    var ic = UIKit.Img(rt, it.icon, new Vector2(Icon, Icon), "Icon");
+                    ic.rectTransform.At(new Vector2(0, 0.5f), new Vector2(x, 0), new Vector2(Icon, Icon), new Vector2(0, 0.5f));
+                    if (it.highlight) Tween.Punch(ic.transform, 0.25f, 0.35f);
+                    x += Icon + Gap;
+                }
+                var l = UIKit.Label(rt, it.text, 20, it.highlight ? UIKit.Gold : UIKit.Cream, TextAnchor.MiddleLeft);
+                l.horizontalOverflow = HorizontalWrapMode.Overflow;
+                float lw = l.preferredWidth;
+                l.rectTransform.At(new Vector2(0, 0.5f), new Vector2(x, 0), new Vector2(lw + 4, H - 8), new Vector2(0, 0.5f));
+                texts.Add(l);
+                x += lw;
+                if (it.badge != null)
+                {
+                    var b = UIKit.Img(rt, it.badge, new Vector2(28, 28), "Badge");
+                    b.rectTransform.At(new Vector2(0, 0.5f), new Vector2(x + 4, 0), new Vector2(28, 28), new Vector2(0, 0.5f));
+                    x += 32;
+                }
+                x += Space;
+            }
+            float w = Mathf.Clamp(x - Space + Pad, 220, 1100);
+            if (low) rt.At(new Vector2(0.5f, 0), new Vector2(0, 8 + list.Count * 56), new Vector2(w, H), new Vector2(0.5f, 0));
+            else rt.At(new Vector2(0.5f, 1), new Vector2(0, -84 - below - list.Count * 56), new Vector2(w, H), new Vector2(0.5f, 1));
+            list.Add(rt);
+            Tween.Pop(rt, 0.7f);
+            var cg = p.gameObject.AddComponent<CanvasGroup>();
+            Tween.After(time, () =>
+            {
+                if (cg == null) return;
+                foreach (var tx in texts)
+                {
+                    var o = tx != null ? tx.GetComponent<PixelOutline>() : null;
+                    if (o != null) o.enabled = false;
+                }
+                Tween.Fade(cg, 0, 0.3f, () =>
+                {
+                    list.Remove(rt);
+                    if (rt != null) UnityEngine.Object.Destroy(rt.gameObject);
+                });
+            });
+            return rt;
+        }
+
         public static void Show(string msg, Color? color = null, float time = 1.8f)
         {
             top.RemoveAll(r => r == null);

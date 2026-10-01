@@ -707,34 +707,53 @@ namespace FishingKing
             SetState(S.Waiting);
         }
 
-        /// <summary>Forced (or cut with 끊기): the line breaks at the snag; a lure is lost, a natural bait still on used up (once).</summary>
+        /// <summary>
+        /// Forced (or cut with 끊기): the line parts at the snag, on the hook's side. A lure is lost (the line's end whips
+        /// back to the tip, ready); a float rig keeps its float, which is wound in spent with the bare hook (the bait, if it
+        /// was still on, used up once); the loss toast lists what went.
+        /// </summary>
         void SnagBreak(bool cut)
         {
             var sn = Tackle.Snag;
-            bool lure = false;
-            if (Tackle.Bait.isLure) lure = Game.I.LoseLure(Tackle.Bait);
-            else if (!Tackle.BaitGone) Game.I.ConsumeBait();   // (a bare hook has nothing left to lose)
+            var loss = SnagLoss(cut);
             if (cut) Sfx.Play(Sfx.Snap, 0.5f);
             else
             {
                 Sfx.Play(Sfx.Snap, 1f);
                 view.Shake(0.3f, 0.35f);
             }
-            string msg = cut ? "줄을 끊었어요" : "밑걸림으로 줄이 끊어졌다!";
-            if (lure) msg += "  (루어를 잃었다)";
-            hud.Flash(msg, UIKit.Bad, cut ? 1.6f : 2f);
+            hud.Flash(cut ? "줄을 끊었어요" : "밑걸림으로 줄이 끊어졌다!", UIKit.Bad, cut ? 1.6f : 2f);
             SnagBreaks++;
-            Obstacles.Say($"{(cut ? "cut" : "break")} at {(sn != null ? sn.zone.id : "?")} lure lost {lure}");
+            Obstacles.Say($"{(cut ? "cut" : "break")} at {(sn != null ? sn.zone.id : "?")} lure lost {loss.lure != null}");
+            var hook = Tackle.HookPos;
+            var lineEnd = Angler.LineUnderwater ? Angler.WaterEntry : Tackle.LineEnd;
             Tackle.ClearSnag();
-            Tackle.Hide();
             foreach (var f in Spawner.Fish) if (f.State == FishAgent.St.Approach || f.State == FishAgent.St.Nibble) f.LoseInterest();
-            Angler.LineTarget = null;
             Angler.Tension01 = 0f;
             Angler.Strain01 = 0f;
             Slide.Reset();
             snagArrow = false;
             snagPrevOk = false;
-            SetState(S.Ready);
+            if (Tackle.UsesFloat)
+            {
+                // (caught on a pad: the float lies off its edge)
+                if (sn != null && sn.kind == "pad") Tackle.Surface = PadEdge(sn.zone, Tackle.Surface);
+                Tackle.LetGoSnag();
+                snap.Recoil(hook);
+                Angler.LineTarget = Tackle.LineEnd;
+                Angler.Slack01 = 0.45f;
+                retrieveWait = RetrieveWait;
+                spentRig = true;
+                SetState(S.Retrieving);
+            }
+            else
+            {
+                Tackle.Hide();
+                Angler.LineTarget = null;
+                snap.Home(lineEnd);
+                SetState(S.Ready);
+            }
+            ShowLoss(loss);
         }
 
         /// <summary>The 끊기 button (the 회수 button while snagged).</summary>
@@ -771,6 +790,7 @@ namespace FishingKing
         void BeginFightObstacles()
         {
             snagPrevOk = false;   // (the rig's last snag-check point is from before the bite)
+            rubAtOk = false;
             coverTarget = null;
             coverCoolUntil = -99f;
             firstRunDone = false;
@@ -989,6 +1009,8 @@ namespace FishingKing
                 return;
             }
             rubO = o;
+            rubAt = at;   // (where it wears: above or below the float decides what a break there takes)
+            rubAtOk = true;
             float rough = o.Mat.rough * o.roughK;
             float rate = RubRate * rough * (0.4f + 0.6f * Mathf.Clamp01(f.TensionRatio)) * (0.5f + 0.5f * Mathf.Clamp01(fishSpeed / 1.5f))
                          / Mathf.Max(0.1f, Game.I.Line.tough) * (f.Giving ? 0.5f : 1f);

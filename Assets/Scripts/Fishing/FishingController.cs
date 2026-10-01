@@ -200,6 +200,7 @@ namespace FishingKing
             Angler = Angler.Create(stage);
             Tackle = Tackle.Create(stage);
             Angler.Rig = Tackle;   // (the line's end resting on a perched rig: read from the rig's state as the line is drawn)
+            snap = LineSnap.Create(stage, Angler, Tackle);
             Tackle.FloatDepth = Mathf.Clamp(2f, 0.5f, L.DepthAt(15f) - 0.3f);
             Spawner = new GameObject("Spawner").AddComponent<FishSpawner>();
             Spawner.Init(this);
@@ -458,7 +459,8 @@ namespace FishingKing
         {
             Angler.SetPose("idle");
             Angler.LineTarget = null;
-            Angler.ShowDangle = true;
+            // (the parted line's end still whipping back to the tip: no bait dangles there until it is home)
+            Angler.ShowDangle = !snap.Active;
             // walking sideways: the HUD's hold buttons, A / D or the arrow keys (keys still held from the rod sweep / side
             // pressure walk nothing until they have been let go once)
             float keys = PointerInput.WalkKeys;
@@ -687,6 +689,7 @@ namespace FishingKing
         {
             SetState(S.Casting);
             spentRig = false;
+            snap.Stop();
             Angler.SetPose("cast");
             if (L.IsIce) Sfx.PlayVar(Sfx.Cast, 0.8f);
             else
@@ -1069,6 +1072,7 @@ namespace FishingKing
             foreach (var f in Spawner.Fish) if (f.State == FishAgent.St.Approach || f.State == FishAgent.St.Nibble) f.LoseInterest();
             Tackle.Hide();
             spentRig = false;
+            snap.Stop();
             retrieveWait = 0f;
             Angler.LineTarget = null;
             Slide.Reset();
