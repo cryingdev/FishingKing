@@ -94,7 +94,7 @@ namespace FishingKing
         }
 
         /// <summary>
-        /// The line under high tension twanging: level 0..1 (0 = silent; the caller maps the tension to it). A rubbery pluck
+        /// The line under high tension twanging: level 0..1 (0 = silent; the caller maps the tension to it). A rubbery twang
         /// every TingSlow .. TingFast seconds, louder and higher as it climbs (pitch x0.85 .. x1.5, a string being tightened).
         /// Call it every frame; the tings stop when the calls do.
         /// </summary>
@@ -300,18 +300,30 @@ namespace FishingKing
         /// without a seam (490 samples a click, 1200 whole cycles of the whine).
         /// </summary>
         /// <summary>
-        /// One twang of the taut line, rubbery: a round 392 Hz (G4) fundamental that bends down as it rings (a stretched band
-        /// settling), soft weak overtones, a short damped decay and a dull thump at the pluck.
+        /// One twang of the taut line, rubbery: a buzzy saw-like tone at 180 Hz (12 harmonics) through a low pass that closes
+        /// fast from 3.5 kHz to 300 Hz (the "dwang"), its pitch snapping down from +25 % at the pluck and wobbling at 9 Hz
+        /// as the band settles, with a short damped decay.
         /// </summary>
         static AudioClip BuildLineTing()
         {
-            var d = Buf(0.42f);
-            const float f0 = 392f;
-            Tone(d, 0f, 0.4f, f0 * 1.08f, f0 * 0.94f, 0.9f, Sine, 0.003f, 0.9f);
-            Tone(d, 0f, 0.22f, f0 * 2.14f, f0 * 1.9f, 0.22f, Sine, 0.003f, 1.2f);
-            Tone(d, 0f, 0.12f, f0 * 3.2f, f0 * 2.85f, 0.08f, Tri, 0.002f, 1.5f);
-            Tone(d, 0f, 0.05f, 140f, 90f, 0.35f, Sine, 0.001f, 0.8f);
-            Noise(d, 0f, 0.015f, 0.12f, 0.3f, 0.15f, 2f, 99);
+            var d = Buf(0.4f);
+            const float f0 = 180f;
+            double ph = 0;
+            float lp = 0f;
+            var rnd = new System.Random(99);
+            for (int i = 0; i < d.Length; i++)
+            {
+                float t = (float)i / Rate;
+                float f = f0 * (1f + 0.25f * Mathf.Exp(-t / 0.03f)) * (1f + 0.035f * Mathf.Sin(2f * Mathf.PI * 9f * t) * Mathf.Exp(-t / 0.15f));
+                ph += f / Rate;
+                float v = 0f;
+                for (int k = 1; k <= 12; k++) v += Mathf.Sin((float)(2.0 * Math.PI * k * ph)) / k;
+                v += 0.08f * ((float)rnd.NextDouble() * 2f - 1f) * Mathf.Exp(-t / 0.01f);   // the snap of the pluck
+                float cut = 300f + 3200f * Mathf.Exp(-t / 0.05f);
+                lp += (1f - Mathf.Exp(-2f * Mathf.PI * cut / Rate)) * (v - lp);
+                float env = Mathf.Min(1f, t / 0.002f) * Mathf.Exp(-t / 0.11f);
+                d[i] = lp * env;
+            }
             return Make("line_ting", d);
         }
 
