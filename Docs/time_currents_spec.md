@@ -367,8 +367,10 @@ colours lerped in sRGB, floats lerped, flags and dirs from the dominant period.
 ### 5.4 Ambient life
 
 Birds only while the dominant look has `birds`; fireflies: created on stages where any look lists them (lake 밤,
-swamp 저녁 / 밤), alpha x the blended weight of those looks; snow (ice) and cave sparkles in every period; ambience clips
-unchanged, volume x 0.8 at night (Night weight).
+swamp 저녁 / 밤), alpha x the blended weight of those looks; snow (ice) and cave sparkles in every period; ambience:
+each stage has its own base loop (`Sfx.StageAmbience`), volume x 0.8 at night (Night weight), plus time-of-day layers
+weighted by the look (`Sfx.AmbienceLayers`: dawn birds on lake / stream / swamp, night crickets on lake / stream and
+crickets + frogs on swamp; Docs/music.md 3.1).
 
 ### 5.5 The legend encounter's backdrop (no re-render)
 

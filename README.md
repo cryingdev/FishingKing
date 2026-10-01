@@ -39,7 +39,7 @@ Unity 6 (6000.3.22f1) 픽셀아트 모바일 낚시 게임입니다. 낚시꾼 �
   카메라가 정수 픽셀 단위로 부드럽게 따라가고(끔 모드도, 필요한 만큼만) 파이트가 끝나면 원래 자리로 돌아옵니다
 - **수족관**: 사료 봉투를 뜯어 뿌리고 새우·정어리를 집어 주기, 미세한 성장과 가격 변화, 이끼·부유물 청소, 자리별 장식,
   5단계 수조와 크기별 칸 수. 관람 수입은 희귀도 × 가치에 비례합니다.
-- **상점·도감·레벨업**, 자동 저장, 코드로 합성한 효과음, MIDI로 작곡해 렌더한 배경음(시간대·파이트·조우에 따라 스템을 섞음)
+- **상점·도감·레벨업**, 자동 저장, 코드로 합성한 효과음·스테이지별 환경음(새벽·밤 층), MIDI로 작곡해 렌더한 배경음(시간대·파이트·조우에 따라 스템을 섞음), 설정 → 음량(전체·배경음악·효과음·환경음)
 
 밸런스 수치는 대부분 `Assets/Scripts/Data/GameDatabase.cs`에 있습니다.
 
@@ -55,7 +55,7 @@ Assets/
   Scripts/Fishing/Legend/ 전설어 조우
   Scripts/Scenes/       타이틀·지도·낚시·수족관(먹이·청소·장식)
   Scripts/UI/           코드 UI, 상점, 도감, 설정
-  Scripts/Audio/        Sfx(합성 효과음·환경음·칩튠), Music(배경음 덱·스템·크로스페이드·sting)
+  Scripts/Audio/        Sfx(합성 효과음·스테이지 환경음·칩튠), Music(배경음 덱·스템·크로스페이드·sting), AudioMix(음량 슬라이더)
   Scripts/Debug/        AutoPilot 자동 테스트 시나리오
   Editor/               픽셀아트·액터 모델·배경음 임포터, 프로젝트 설정·빌드 메뉴
 Tools/Blender/          에셋 생성 스크립트 (variants/hybrid 가 현재 스타일)
@@ -95,8 +95,7 @@ Builds\Windows\FishingKing.exe -fkfresh -fkrich -fkgear -fksave test -fkscene Fi
 - [수족관](Docs/aquarium.md) — 먹이·생먹이, 배부름·성장·관람 수입, 청소, 장식, 수조 5단계, 오프라인 보정
 - [Blender 에셋 파이프라인](Docs/art_pipeline.md) — 스크립트별 역할, 하이브리드 스타일 규칙, 빌드·설치, Unity 임포터
 - [데이터 표](Docs/data_reference.md) — 스테이지·어종·장비·루어·수조·사료·장식, SaveData 필드와 마이그레이션
-- [배경음](Docs/music.md) — 덱·스템·크로스페이드·sting·칩튠 대체, 낚시 씬의 곡 규칙, 설정 (작곡·빌드: [Tools/Music/README.md](Tools/Music/README.md))
-- [로컬 작업 안내](Docs/local_workflow.md) — 머지 전 Unity 확인·듣기 목록, 배경음 빌드(Windows), 효과음 파일 규칙, 머지 순서
+- [배경음](Docs/music.md) — 덱·스템·크로스페이드·sting·칩튠 대체, 음량과 오디오 설정(음량 슬라이더), 낚시 씬의 곡 규칙 (작곡·빌드: [Tools/Music/README.md](Tools/Music/README.md))
 - [변경 기록](CHANGELOG.md)
 
 사양서:
@@ -114,6 +113,10 @@ UI와 로고는 픽셀 폰트 **Galmuri** (© Lee Minseo, [SIL Open Font License
 
 배경음은 GM 사운드폰트 **FluidR3_GM** (© Frank Wen, MIT License; Debian/Ubuntu `fluid-soundfont-gm` 패키지)으로 렌더했습니다.
 렌더한 OGG만 저장소에 들어 있고 사운드폰트 파일은 들어 있지 않습니다. 다시 렌더하는 방법은 [Tools/Music/README.md](Tools/Music/README.md)에 있습니다.
+
+## 효과음
+
+효과음과 환경음은 모두 코드로 합성합니다(`Sfx.cs`·`Sfx.Foley.cs`). 녹음 효과음을 넣을 때는 출처와 라이선스를 여기에 적고 `Assets/Resources/Audio/Sfx`(또는 `Ambience`)에 둡니다.
 
 ## 참고
 

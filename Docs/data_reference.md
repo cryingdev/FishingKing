@@ -612,8 +612,9 @@
 | `records` | List&lt;SpeciesRecord&gt; | 비어 있음 | 종별 도감 기록 |
 | `legends` | List&lt;LegendRecord&gt; | 비어 있음 | 전설어 조우 기록 |
 | `lastStage` | string | `"lake"` | 마지막으로 간 스테이지 (`SceneFlow`가 기록; 지도의 핀 강조와 낚시 씬 기본 스테이지에 씀: `MapScene`, `FishingScene`) |
-| `soundOn` | bool | true | 소리 켬 (`AudioListener.volume`) |
-| `musicOn` | bool | true | 배경음 켬 (설정 → 배경음, `Music`이 매 프레임 읽음; 이 필드가 없는 옛 세이브도 켬으로 읽힘) |
+| `soundOn` | bool | true | 소리 켬: 전체 음소거 (`AudioListener.volume` = 꺼짐 0, 켜짐 전체 볼륨) |
+| `musicOn` | bool | true | 배경음 켬 (설정 → 음량 → 배경음, `Music`이 매 프레임 읽음; 이 필드가 없는 옛 세이브도 켬으로 읽힘) |
+| `masterVol` · `musicVol` · `sfxVol` · `ambVol` | int | 100 | 설정 → 음량의 전체 볼륨·배경음악·효과음·환경음 (0~100, 10 단위; 설계 믹스에 곱하는 값, 곡선 (p/100)², `AudioMix`; 옛 세이브는 100; `SaveSystem.Sanitize`가 범위를 맞춤) |
 | `reelRing` | bool | true | 릴 원을 그릴 때 원과 방향 화살표 표시 |
 | `reelReverse` | bool | false | 반시계방향이 감기 (기본: 시계방향) |
 | `zoomMode` | int | 0 | 캐스팅 후 줌: `ZoomMode` `X125` = 0 (1.25배, 기본이자 옛 세이브 값), `Off` = 1, `X150` = 2, `Active` = 3 (`Sanitize`: 0..3 밖이면 0) |
@@ -628,6 +629,7 @@
 | `tideHint` | bool | false | 바다 물때 힌트를 보여 줌 |
 | `driftHint` | bool | false | 계곡 흘림 힌트를 보여 줌 |
 | `mendHint` | bool | false | 멘딩 힌트를 보여 줌 |
+| `pinHint` | bool | false | 찌가 물살에 밀려 화면 가장자리에 멈췄다는 1회 힌트를 보여 줌 |
 
 ### 5.2 목록 원소
 

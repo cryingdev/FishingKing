@@ -12,45 +12,53 @@
 
 ## 이후 변경
 
+### 오디오 설정 (음량)
+- 추가: 설정 → **음량** 창(`SettingsUI.OpenAudio`): 전체 볼륨(+ 소리 켜짐/꺼짐), 배경음악(+ 배경음 켜짐/꺼짐), 효과음, 환경음. 0~100%를 10% 단위로, `-`/`+` 버튼·막대 칸 탭·막대 드래그.
+  설정 창은 예전처럼 네 줄(높이 444)이고 소리 줄 옆의 `음량` 버튼이 같은 크기 창을 위에 엽니다(가장 작은 캔버스 540에서 리본까지 26 px 여유).
+- 추가: `SaveData.masterVol`·`musicVol`·`sfxVol`·`ambVol`(기본 100, 옛 세이브도 100; `SaveSystem.Sanitize`가 0~100·10 단위로 맞춤), `Game.SetVolume`, `AudioMix`.
+  슬라이더는 설계된 믹스 위에 곱하는 값(100% = 설계 음량, 곡선 (p/100)²)이고, `soundOn`은 그대로 전체 음소거, `musicOn`은 배경음 켜짐/꺼짐 그대로입니다.
+- 자세히: [music.md 1.2·4절](Docs/music.md)
+
 ### 팽팽한 줄이 튕기는 소리 (합성)
-- 추가: `Sfx.LineStrain`(`LineTing`): 장력이 줄 한계의 60%(`FishingController.StrainFrom`)를 넘으면 고무줄을 튕기는 "띵"(고무줄 녹음을 분석해 맞춘 합성음: 113 Hz, 16번째까지의 배음 중 높은 것부터 빨리 사라짐, 튕긴 뒤 60 ms에 음이 6% 올랐다 처짐, 약 0.3초)이 나기 시작해,
+- 추가: `Sfx.LineStrain`(`LineTing`): 장력이 줄 한계의 60%(`FishingController.StrainFrom`)를 넘으면 고무줄을 튕기는 "띵"(고무줄 녹음을 분석해 맞춘 합성음: 113 Hz, 24번째까지의 배음 중 높은 것부터 빨리 사라짐, 튕긴 뒤 60 ms에 음이 6% 올랐다 처짐, 약 0.3초)이 나기 시작해,
   끊어지기 직전(100%)으로 갈수록 빨라지고(0.9초 → 0.16초 간격) 커지고(0.12 → 0.45) 높아짐(음높이 ×1.05 → ×1.9, 처음엔 천천히·끊어지기 직전에 급하게: `Sfx.StrainPitchCurve` 2.5제곱). 파이트와 밑걸림(걸림 장력) 모두.
+  간격은 마지막 "띵"부터 재므로 장력이 60% 언저리에서 오르내려도 넘을 때마다 울리지 않습니다.
 - 삭제: 장력 경고음(85% 위 삑삑, `Sfx.Warn`)을 파이트와 밑걸림에서 뺌.
 
-### 계곡 환경음 (녹음)
-- 추가: `Assets/Resources/Audio/Ambience/amb_stream.ogg`(54초 루프, 스테레오): 산골 계곡의 기본 환경음이 합성 급류 대신 이 녹음으로.
-  RMS −24 dBFS로 맞추고 드문 피크만 부드럽게 눌렀으며, 게임에서 `Sfx.RecordedAmbGain`(1.4)배로 틀어 예전 합성 급류와 비슷한 크기.
-  `Audio/Ambience/amb_<스테이지 id>`가 있으면 어느 스테이지든 녹음이 합성보다 우선(새벽·밤 층은 그대로).
-
-### 물고기 참방거림 (녹음)
-- 추가: `Assets/Resources/Audio/Sfx/fish_thrash.wav`(`Sfx.Thrash`, 3.1초 루프): 챔질 순간 1.2초, 파이트 중 물고기가 수면 가까이(0.7 m 안) 있는 동안
-  (질주 중 0.75, 아니면 0.45). 점프 중엔 멈추고, 호출이 끊기면 0.25초에 걸쳐 사라짐.
-
-### 릴 클릭음 (녹음)
-- 추가: `Assets/Resources/Audio/Sfx/reel_click_1..9.wav`(`Sfx.ReelClick`): 감기 시작(0.35초 넘게 멈춘 뒤) 첫 클릭은 1번, 이어서 2번부터 순서대로 돌고 끝나면 2번으로.
-  있는 번호까지 자동으로 읽음(1번부터 빈 번호 전까지). 핸들 1바퀴에 4클릭(예전과 같음). 파일이 없으면 예전 합성 `ReelTick`.
-
-### 녹음한 효과음 2개
-- 추가: `Assets/Resources/Audio/Sfx/cast_swing.wav`(앞으로 휘두르는 캐스팅 소리, `Sfx.CastSwing`)와 `float_land.wav`(찌가 물에 떨어지는 소리, `Sfx.FloatLand`).
-  앞 무음과 꼬리를 잘라 모노·피크 −1 dB로 정리. 캐스팅은 세기에 따라 음량·음높이가 바뀌고, 찌 채비 착수에만 쓰며(루어는 예전 `Plop`), 파일이 없으면 예전 합성음.
+### 녹음 효과음은 넣지 않음 (출처 미확인)
+- 음악 브랜치에 있던 녹음 파일 `cast_swing.wav`·`float_land.wav`·`reel_click_1..9.wav`·`fish_thrash.wav`·`amb_stream.ogg`는 출처·라이선스 기록이 없어 넣지 않았습니다.
+  코드는 그대로 `Resources/Audio/Sfx/<이름>`·`Resources/Audio/Ambience/amb_<스테이지>`를 찾아 쓰고, 없으면 합성음(캐스팅 `Cast`+`Whoosh`, 착수 `Plop`, 릴 `ReelTick`, 참방거림 합성 루프, 계곡 합성 급류)을 씁니다.
+  출처와 라이선스가 확인되면 README 크레딧에 적고 파일을 넣으면 됩니다(임포트 설정은 `MusicImporter`에 이미 있음).
 
 ### 효과음 추가 (코드 합성)
 - 추가(`Assets/Scripts/Audio/Sfx.Foley.cs`): 발소리 `StepWood`(호수·늪)/`StepStone`(계곡·방파제·동굴)/`StepSnow`(얼음)/`StepDeck`(먼바다, `Sfx.Step`, 0.3 m마다 `Angler.StepEvery`),
   드랙 풀림 루프 `DragLoop`(`Sfx.Drag`: 장력이 드랙을 넘는 동안, 멈추면 저절로 사라짐; 예전엔 `ReelTick` 재사용), `Keep`(수조에 넣기)·`Release`(놓아주기),
-  `Success`(뱅크샷·가지 아래로 쏙·방향을 꺾었다·커버에서 끌어냈다·빠졌다), 루어 `Pop`(포퍼)·`Scurry`(개구리 루어가 연잎 위를 기어감·톡)·`Rattle`(미노우 저킹).
+  `Success`(뱅크샷·가지 아래로 쏙·방향을 꺾었다·커버에서 끌어냈다·빠졌다), 루어 `Pop`(포퍼, 조우 창의 포퍼도)·`Scurry`(개구리 루어가 연잎 위를 기어감·톡)·`Rattle`(미노우 저킹).
+- 추가: 물고기 참방거림 루프(`Sfx.Thrash`, 합성): 챔질 순간 1.2초(수면 가까이 1 m 안의 물고기만, 얼음 구멍 아래는 없음), 파이트 중 물고기가 수면 가까이(0.7 m 안) 있는 동안(질주 중 0.75, 아니면 0.45),
+  둘 다 크기에 따라 ×0.5(20 cm)~×1(150 cm). 점프 중엔 멈추고, 호출이 끊기면 0.25초에 걸쳐 사라짐.
 - 변경: 환경음이 스테이지마다 따로(`Sfx.StageAmbience`): 호수 잔물결·먼 새, 계곡 급류, 방파제 파도·갈매기, 늪 개구리·벌레, 먼바다 너울·선체 삐걱, 얼음 바람·얼음 갈라짐, 동굴은 그대로.
   시간대 층(`Sfx.AmbienceLayers`): 새벽 새소리(호수·계곡·늪), 밤 귀뚜라미(호수·계곡)·개구리(늪). 예전엔 호수·계곡·방파제·늪·먼바다가 물 루프 하나를 같이 썼습니다.
+  계곡(×0.25)·방파제(×0.74)는 잰 크기가 배경음 바탕보다 커서 낮춤(`Sfx.SynthAmbGain`, music.md 1.2절).
+- 변경: 효과음 보이스 16개, 쉬는 보이스부터 씀(재생 중인 소리의 음높이가 바뀌지 않게). 출력 장치가 바뀌면 환경음 루프도 다시 재생.
 
 ### 배경음 (MIDI 작곡 → OGG 스템)
 - 추가: 배경음 파이프라인 `Tools/Music/`(Python으로 음표를 적어 MIDI → FluidSynth 렌더 → 루프·음량을 맞춘 OGG 스템, `Resources/Data/music.json` 매니페스트)과
-  임포터 `MusicImporter`(Vorbis, Compressed In Memory, 백그라운드 로드).
+  임포터 `MusicImporter`(Vorbis, Compressed In Memory, 백그라운드 로드). 빌드에서 곡이 차지하는 크기 약 19 MB.
 - 추가: `Music`(`[Game]`): 큐마다 스템별 `AudioSource`를 한 DSP 시각에 `PlayScheduled`해 샘플 단위로 맞물린 **덱**, 스템별 페이드,
   큐 사이 크로스페이드, sting과 그 덕킹, 곡이 없으면 예전 칩튠으로 대체, 출력 장치가 바뀌면 다시 시작.
-- 추가: 타이틀·지도·수족관 곡, 낚시 씬의 감독(`FishingController.Music.cs`): 스테이지 곡의 `day`/`night` 스템(시간대 전환 8초 크로스페이드),
-  입질 덕킹, 장력을 따르는 `fight` 스템, 잡음·놓침 sting, 전설어 조우 단계별 스템과 `sting_hook` → `legend_<id>` → `sting_legend` / `sting_escape`.
-- 추가: 설정 → **배경음** 켜짐/꺼짐(`SettingsUI`), `SaveData.musicOn`(옛 세이브는 켬, `Game.SetMusic`).
+- 추가: 타이틀·지도·수족관 곡, 낚시 씬의 감독(`FishingController.Music.cs`): 스테이지 곡의 `day`/`night` 스템(그림의 시간대 블렌드를 따름, 시계를 건너뛰면 8초 크로스페이드),
+  입질 덕킹, 전설어 기척 덕킹(최대 6초), 장력을 따르는 `fight` 스템, 잡음·놓침·줄 끊김·밑걸림 끊김 sting, 전설어 조우 단계별 스템과 `sting_hook` → `legend_<id>` → `sting_legend` / `sting_escape`.
+- 변경: sting이 울리면 예전 칩튠 징글(`Sfx.Catch`·`Sfx.Escape`)은 울리지 않고, 레벨업 소리는 sting이 끝날 무렵으로 미룸, 조우 시작 드론은 `sting_omen` 밑에서 작게(0.6 → 0.25).
 - 추가: 테스트 스위치 `-fkmusic off|chiptune`, `-fkmusiclog`, `-fkauto music`(`AutoPilot.Music.cs`).
 - 자세히: [music.md](Docs/music.md), [Tools/Music/README.md](Tools/Music/README.md)
+
+### main 쪽 변경 (배경음 브랜치 이후, 요약)
+- 사이드 프레셔 S1–S3: 낚싯대-줄 각도로 계산한 부하 +10 / −3 / +5%, 물고기가 실제로 옆으로 휩쓸 때만 셈(커버 질주는 항상), 데드존 0.2 하나, 보이는 기울기 사용, `-fksidelog`·`-fkrodright`.
+- 전설어 조우: 안전 영역 안 8자리 게이지, 포퍼 위에서 본 프레임, `verb_runpause`, 피라루쿠 그림자, 황금 잉어 실루엣·코 들이밀기, 얼음 빛기둥(2배), 쿨다운을 벽시계 끝 시각으로 저장(`-fkencplay coolsave`/`-fkauto legcool`).
+- 물때: 바다 최대 유속 0.8 → 0.65, `TideReach` 0.85–1.3, 테트라포드 앞 정조(`Cushion`)·`pinHint`, `-fkauto tidebites`.
+- 화면 팬: 모든 모드에서 오버스캔 위로 1x 팬, 바다 그림 800 px, 물고기가 멀면 줌아웃, `build_overscan.ps1`, `-fkauto pan`/`panmeasure`.
+- 장애물: 먼바다 암초·해초(방어 rock, 만새기·참다랑어 weed), 마모율 0.22 → 0.11, 연잎 흔들림, 얼음 루어는 드랙 깊이에서 멈춤.
+- 수족관: 성장 프리미엄 1.6. 3D 낚시꾼 림 0.72.
 
 ### 수족관 `받기` 금액 한 줄 표시 (`f114b92`)
 - 변경: `받기` 버튼의 적립 금액이 길어지면 줄바꿈·자동 축소(best fit) 대신 **선명한 작은 픽셀 글꼴로 바꿔** 한 줄에 표시합니다.

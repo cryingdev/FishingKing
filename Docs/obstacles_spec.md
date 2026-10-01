@@ -527,13 +527,14 @@ Each frame the hook moved `d` metres (ground distance of `HookPos`, drift includ
 
 Winding while snagged builds the snag tension ratio `r`: `dr/dt = 0.9 x revs/s` while winding; `-1.2/s` while not (to a
 floor of 0.12 on moving water / 0.05 still); `-1.5/s` while giving line. `r >= 0.6`: the strip's word
-`팽팽해요! 감지 마세요!` (blinking red) and `Sfx.Warn` as in the fight (faster over 0.85). `r >= 1` for the rod's
-`BreakGrace` (0.3 + 0.6 flex s) -> **the line breaks**: `Sfx.Snap`, shake, flash `밑걸림으로 줄이 끊어졌다!`
-(`UIKit.Bad`, 2 s). The reel's drag does not save it (the hand is on the spool against a snag). Soft snags follow the
-same rule except pads (5.3).
+`팽팽해요! 감지 마세요!` (blinking red) and the line's twang `Sfx.LineStrain` as in the fight (from `StrainFrom` 0.6,
+faster, louder and higher towards 1; the old `Sfx.Warn` beep is gone). `r >= 1` for the rod's
+`BreakGrace` (0.3 + 0.6 flex s) -> **the line breaks**: `Sfx.Snap`, shake, the `sting_escape` sting (music ducked to
+0.45, `SnagBreakMusic`), flash `밑걸림으로 줄이 끊어졌다!` (`UIKit.Bad`, 2 s). The reel's drag does not save it (the
+hand is on the spool against a snag). Soft snags follow the same rule except pads (5.3).
 
-The **`회수` button reads `끊기`** while snagged: a tap cuts the line at once (`줄을 끊었어요`, 1.6 s); the rest is the
-same as a forced break.
+The **`회수` button reads `끊기`** while snagged: a tap cuts the line at once (`줄을 끊었어요`, 1.6 s; a soft snap, no
+sting); the rest is the same as a forced break.
 
 **Where it parts: on the hook's side** (the snag holds the hook; `FishingController.SnagBreak`, `SnagLoss`):
 
@@ -826,7 +827,7 @@ New strings are checked with `Tools/font_coverage.py` (README).
 | `Rasp` | the line rubbing (loop while rubbing): band noise 2-4 kHz, amplitude-modulated at 18 Hz, volume `0.15 + 0.3 x min(1, dA/dt / 0.25)` |
 | `Tear` | a pad / weed pulled loose: an 80 ms low-passed noise burst |
 
-`Sfx.Warn`, `Sfx.Snap`, `Sfx.Plop` are reused.
+`Sfx.LineStrain` (the line's twang, which replaced `Sfx.Warn`), `Sfx.Snap`, `Sfx.Plop` are reused.
 
 ### 10.4 FX
 

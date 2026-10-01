@@ -372,7 +372,7 @@ Blender 쪽(`fk_persp.setup_camera`)은 축만 다릅니다(Blender Y = 앞 = Un
 
 - `Model(name)`: `Resources/Models/<name>` 로드(`Toon` 셰이더가 있을 때만).
 - `Spawn(prefab, palette, layer, parent)`: FBX 재질을 이름으로 찾아 팔레트 json(`Resources/Models/<palette>.json`: 재질별 dark/mid/light/outline)으로 만든 **ActorToon** 재질로 교체하고 레이어를 지정.
-- `RimFor(stageId)`: 스테이지별 햇빛 림(색, 세기 × `RimScale = 0.62`, 방향). 값은 `hyb_core.py PRESETS[stage].rim`을 옮긴 것. `RimMaterial(stageId)`로 ActorRim 재질 생성.
+- `RimFor(stageId)`: 스테이지별 햇빛 림(색, 세기 × `RimScale = 0.72`, 방향). 값은 `hyb_core.py PRESETS[stage].rim`을 옮긴 것. `RimMaterial(stageId)`로 ActorRim 재질 생성.
 - `ApplyLook` / `Track`: 시간대 룩에 따라 림·키 라이트(`_KeyDir`)·틴트(`_Tint`)를 추적 중인 재질에 적용(`StageView.ApplyLook`에서 호출). 기본 키 라이트 `KeyDir = (0.752, 0.647, -0.125)`.
 
 | 셰이더 (`Assets/Shaders/`) | 역할 |

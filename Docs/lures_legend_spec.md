@@ -121,7 +121,8 @@ A negative `windLift` dives the lure (the crank).
 - The rig moves `pullM` towards the shore.
 - `dartM` shifts x, alternating sides.
 - Effects:
-  - 수면 lures: `Fx.Splash` (small), `Fx.Ripple` and `Sfx.Plop`.
+  - 수면 lures: `Fx.Splash` (small), `Fx.Ripple` and `Sfx.Plop`; the popper chugs instead (`Sfx.Pop`, also in the
+    encounter's top view), the frog patters across a pad (`Sfx.Scurry`), a jerked minnow rattles (`Sfx.Rattle`).
   - 저킹 and 수직 lures: a 2-px sparkle.
 - It starts the fall timer. `Falling` is true while the lure is moving down after a flick and has not reached its rest depth.
 

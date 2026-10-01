@@ -4,7 +4,8 @@
 - **관련 코드**: `Tools/Music/fk_music.py`, `Tools/Music/build.py`, `Tools/Music/cues/*.py`, `Assets/Scripts/Audio/Music.cs`(런타임), `Assets/Resources/Data/music.json`
 - **관련 문서**: [README](../../README.md) · [구조](../../Docs/architecture.md) · [테스트 스위치](../../Docs/testing.md) · [배경음 런타임](../../Docs/music.md)
 
-효과음은 지금처럼 코드로 합성하고(`Assets/Scripts/Audio/Sfx.cs`), **배경음만** 이 파이프라인으로 만듭니다.
+효과음과 환경음은 코드로 합성하고(`Assets/Scripts/Audio/Sfx.cs`·`Sfx.Foley.cs`; 녹음 파일을 `Resources/Audio/Sfx`·`Resources/Audio/Ambience`에 넣으면 그것을 먼저 씀 — 지금은 출처가 확인된 녹음이 없어 비어 있음), **배경음만** 이 파이프라인으로 만듭니다.
+모든 큐는 이 프로젝트가 코드로 쓴 창작곡입니다(다른 곡의 인용 없음; `MOTIF`는 게임 자체의 테마).
 곡은 Python으로 음표를 적어 **MIDI**로 쓰고, GM 사운드폰트(FluidR3_GM, MIT 라이선스)로 **FluidSynth**가 렌더한 뒤,
 루프 지점을 이어 붙이고 음량을 맞춰 **OGG**로 저장합니다. MIDI 원본(`Tools/Music/midi/<cue>.mid`)도 커밋하므로 DAW에서 열어 고칠 수 있습니다.
 
@@ -123,11 +124,13 @@ python Tools/Music/build.py --describe title   # 텍스트 피아노 롤
 | 상황 | 큐 / 스템 |
 |---|---|
 | 타이틀 · 지도 · 수족관 | `title` · `map` · `aquarium` (씬 전환 시 1.5초 크로스페이드) |
-| 낚시 (대기·준비·회수 등) | `stage_<id>`: 새벽·낮 = `day`, 저녁·밤 = `night` 스템 (시간대 전환 시 8초 크로스페이드) |
+| 낚시 (대기·준비·회수 등) | `stage_<id>`: 새벽·낮 = `day`, 저녁·밤 = `night` 스템 (그림의 시간대 블렌드를 따라 섞음, 시계를 건너뛰면 8초 크로스페이드) |
 | 입질 | 바탕을 잠깐 낮춤(덕킹) |
 | 파이트 | `fight` 스템을 올림 (장력에 따라 0.55–1.0), 파이트가 끝나면 3초에 걸쳐 내림 |
 | 잡음 | 희귀도에 따라 `sting_catch` / `sting_rare` / `sting_legend` (재생 중 바탕은 낮춤) |
 | 놓침 · 줄 끊김 | `sting_escape` |
+| 밑걸림을 억지로 감아 줄이 끊김 | `sting_escape` (덕킹 0.45); `끊기` 버튼으로 자르면 sting 없음 |
+| 전설어 기척 (줄이 떨림) | 바탕을 조금 낮춤 (최대 6초) |
 | 전설어 전조 | 바탕이 사라지고 `sting_omen` |
 | 조우 | `encounter`: 열림·눈빛 = `lurk`, 접근 = `+approach`, 유인·코 들이밀기 = `+tease`, 덮침·챔질 창 = 모두 잠깐 무음 (`encounter`가 없으면 창 내내 무음) |
 | 조우에서 걸림 | `sting_hook` 후 `legend_<id>` (`legend_<id>`가 없으면 스테이지 곡 + `fight` 1.0) |
