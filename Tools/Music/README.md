@@ -13,13 +13,14 @@
 ```bash
 # Ubuntu / Debian
 sudo apt-get install fluidsynth fluid-soundfont-gm vorbis-tools
-pip install mido numpy
+pip install mido numpy scipy
 # 다른 사운드폰트를 쓰려면: export FK_SF2=/path/to/your.sf2
 
 python Tools/Music/build.py                    # 모든 큐
 python Tools/Music/build.py stage_lake title   # 큐 id 또는 cues/ 모듈 이름으로 골라서
 python Tools/Music/build.py --lint             # 렌더 없이 자동 검사만
 python Tools/Music/build.py --describe title   # 텍스트 피아노 롤
+# 모르는 옵션은 거부하고, 모듈 하나가 실패해도 나머지 큐는 계속 만듭니다
 ```
 
 산출물:
@@ -43,6 +44,16 @@ python Tools/Music/build.py --describe title   # 텍스트 피아노 롤
 - 음량: `Song.loudness`(기준 믹스의 RMS, dBFS)에 자동으로 맞춥니다. `mixes`는 함께 틀릴 수 있는 스템 조합(피크 검사), `ref`는 음량 기준 조합입니다.
   스템 사이의 상대 음량은 트랙 `vol`과 벨로시티로 정합니다.
 - 결정적이어야 합니다: 무작위는 `song.rng`(큐 id로 시드)만 쓰고, `random` 모듈을 직접 쓰지 마세요.
+  `humanize()`는 모든 트랙이 난수 하나를 나눠 쓰므로, 음표를 하나 더하거나 빼면 그 뒤 트랙들의 흔들림이 모두 바뀝니다(피크·음량이 0.5 dB쯤 달라질 수 있음).
+- 렌더 처리: 모든 렌더에 12 Hz 하이패스를 겁니다(`fk_music.DC_CUT`). FluidR3의 일부 패드(warm_pad, sweep_pad, soundtrack 등)에는 큰 직류 성분이 있어 음량·피크 계산을 부풀리기 때문입니다.
+  sting은 피크보다 60 dB 낮아지는 지점에서 자릅니다(`fk_music.STING_FLOOR`). FluidSynth의 파일 렌더는 모든 음이 사라질 때까지 이어지므로 `Song.tail`은 사실상 영향이 없습니다.
+- 표현(CC11)의 `swell()`은 루프를 넘어 이어집니다. 루프는 3회 렌더의 가운데를 쓰므로, 마지막 마디에서 끝난 표현 값이 첫 마디로 그대로 넘어갑니다(게임의 반복과 같음).
+  MIDI 파일(`midi/<cue>.mid`)은 처음에 CC11 = 127로 시작하므로 DAW에서 첫 회만 다르게 들릴 수 있습니다.
+- 드럼 트랙(`DRUMS`)은 모두 MIDI 10번 채널이라 한 스템에 둘 이상 두면 볼륨·팬·리버브 설정이 서로 덮어씁니다. 한 스템의 타악기는 트랙 하나에 모으세요(린트가 WARN).
+- 린트(`--lint`)가 보는 것: 조성 밖 음(INFO), 음역(WARN), 함께 울릴 수 있는 스템(`mixes`) 사이 박 위의 단2도·장7도 충돌(WARN), 드럼 트랙 채널 공유(WARN),
+  같은 채널·같은 음·같은 틱의 겹친 타격(INFO), 빈 마디, 반복도(16분 격자 기준), 루프 지점의 큰 도약(INFO).
+  박 사이(엇박)의 충돌과 3온음은 보지 않으므로, 필요하면 직접 확인하세요. 타이코·멜로딕 톰·효과음 계열(GM 113, 115–127)은 음높이 검사에서 뺍니다
+  (FluidR3에서 타이코와 멜로딕 톰은 건반 하나에 약 50센트만 움직입니다).
 - 게임 대표 모티프 `fk_music.MOTIF`(장조 음계 도수, 4마디: 솔 도 레 미— 레 도 | 라 솔 미 솔 레— | 솔 도 레 미 솔 미 | 레 미 레 도—)를
   타이틀·지도·팡파르에서 인용해 곡들이 한 게임으로 묶이게 합니다. `Track.motif()`로 쓸 수 있습니다.
 - 듣지 않고 쓰는 곡이므로 `--describe` 피아노 롤과 `--lint`(조성 밖 음, 음역, 박 위의 단2도 충돌, 빈 마디, 반복도, 루프 지점 도약)를 반드시 확인하세요.

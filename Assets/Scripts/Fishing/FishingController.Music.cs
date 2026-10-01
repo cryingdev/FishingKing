@@ -34,6 +34,19 @@ namespace FishingKing
         internal const float BiteDuck = 0.55f, BuildDuck = 0.65f, CatchDuck = 0.35f, RareDuck = 0.25f, EscapeDuck = 0.4f, SnagDuck = 0.45f;
         /// <summary>The stage fading out at the omen, and back in under the sting that ended an encounter / a legend fight.</summary>
         const float OmenFade = 1.2f, StageBack = 1f;
+        const float FightRise = 0.8f;      // s: the fight stem up at the hook set ...
+        const float FightFollow = 0.25f;   // s: ... then after the tension, asked for again once it moves by FightStep
+        const float FightStep = 0.02f;
+        const float TensionLo = 0.2f, TensionHi = 0.9f;   // the smoothed tension that gives the fight stem FightMin / 1
+        const float BuildOn = 0.7f, BuildOff = 0.6f;      // the legend's meter: the build-up dims the stage from BuildOn until under BuildOff ...
+        const float BuildDim = 2.5f;       // s: ... going down this slowly
+        const float BiteDown = 0.15f, BiteBack = 0.6f;    // s: a bite's duck down, and back up after it
+        const float DuckBack = 1.5f;       // s: any other duck back up (the build-up eased off)
+        const float EyesFade = 2.5f, ApproachFade = 2f, TeaseFade = 1.5f;   // s: the encounter's stems in by phase
+        const float WindowDuck = 0.12f;    // s: the lunge and the hook window go silent this fast
+        /// <summary>sting_hook hands over to the legend's cue this long (s) before its end; the cue fades in over LegendFade s.</summary>
+        internal const float HookHandoff = 0.3f, LegendFade = 0.4f;
+        const float LegendStage = 0.6f;    // s: a legend without a track: the stage (its fight stem full) back in
 
         enum Mus { Stage, Encounter, Legend }
         Mus musMode;
@@ -106,21 +119,21 @@ namespace FishingKing
             if (State == S.Fighting && Fight != null)
             {
                 musTension += (Mathf.Clamp01(Fight.TensionRatio) - musTension) * (1f - Mathf.Exp(-dt / TensionTau));
-                want = Mathf.Lerp(FightMin, 1f, Mathf.InverseLerp(0.2f, 0.9f, musTension));
-                secs = musFight < FightMin ? 0.8f : 0.25f;
+                want = Mathf.Lerp(FightMin, 1f, Mathf.InverseLerp(TensionLo, TensionHi, musTension));
+                secs = musFight < FightMin ? FightRise : FightFollow;
             }
             else musTension = 0f;
-            if (want <= 0f ? musFight > 0f : Mathf.Abs(want - musFight) >= 0.02f)
+            if (want <= 0f ? musFight > 0f : Mathf.Abs(want - musFight) >= FightStep)
             {
                 Music.Stem("fight", want, secs);
                 musFight = want;
             }
             // a bite: down for the moment of the strike; the legend's build-up: dimmed until it eases off (or comes)
             float meter = Watch != null ? Watch.Meter : 0f;
-            musBuild = meter >= 0.7f || (musBuild && meter >= 0.6f);
-            if (State == S.Biting) SetDuck(BiteDuck, 0.15f);
-            else if (musBuild && State != S.Fighting) SetDuck(BuildDuck, 2.5f);
-            else SetDuck(1f, musDuck <= BiteDuck ? 0.6f : 1.5f);
+            musBuild = meter >= BuildOn || (musBuild && meter >= BuildOff);
+            if (State == S.Biting) SetDuck(BiteDuck, BiteDown);
+            else if (musBuild && State != S.Fighting) SetDuck(BuildDuck, BuildDim);
+            else SetDuck(1f, musDuck <= BiteDuck ? BiteBack : DuckBack);
         }
 
         void EncounterMusic()
@@ -148,29 +161,32 @@ namespace FishingKing
                 {
                     case LegendEncounter.Phase.Open:
                     case LegendEncounter.Phase.Eyes:
-                        EncounterStems(1f, 0f, 0f, 2.5f);
+                        EncounterStems(1f, 0f, 0f, EyesFade);
                         break;
                     case LegendEncounter.Phase.Approach:
-                        EncounterStems(1f, 1f, 0f, 2f);
+                        EncounterStems(1f, 1f, 0f, ApproachFade);
                         break;
                     case LegendEncounter.Phase.Tease:
                     case LegendEncounter.Phase.NoseIn:
-                        EncounterStems(1f, 1f, 1f, 1.5f);
+                        EncounterStems(1f, 1f, 1f, TeaseFade);
                         break;
                     case LegendEncounter.Phase.Lunge:
                     case LegendEncounter.Phase.HookWindow:
-                        SetDuck(0f, 0.12f);
+                        SetDuck(0f, WindowDuck);
                         break;
                     case LegendEncounter.Phase.Hooked:
                         // the strike: the window's music gone (silent as it was), sting_hook, the legend's cue after it
+                        // (its clips loading under the sting, so it starts the moment it is asked for)
                         Music.Stop(0.3f);
                         SetDuck(1f, 0f);
                         Music.Sting("sting_hook", 0f);
+                        Music.Preload("legend_" + e.Sp.id);
                         musMode = Mus.Legend;
                         musLegendOn = false;
                         break;
                     case LegendEncounter.Phase.TurnAway:
-                        // turned away: sting_fail, the stage back up under it (the window's deck fades as it was heard)
+                        // turned away: sting_fail, the stage back up under it (the window's deck keeps the duck it was
+                        // heard with, so PlayStage before SetDuck, and goes silent under the sting's)
                         Music.Sting("sting_fail", 0f);
                         musMode = Mus.Stage;
                         musFight = 0f;
@@ -201,15 +217,15 @@ namespace FishingKing
                 musLegendOn = false;
                 SetDuck(1f, 0.3f);
             }
-            if (musLegendOn || Music.StingLeft > 0.3f) return;
+            if (musLegendOn || Music.StingLeft > HookHandoff) return;
             musLegendOn = true;
             string cue = "legend_" + sp.id;
-            if (Music.Has(cue)) Music.Play(cue, 0.4f);
+            if (Music.Has(cue)) Music.Play(cue, LegendFade);
             else
             {
                 musFight = 1f;
                 musStem = PeriodStem;
-                PlayStage(0.6f);
+                PlayStage(LegendStage);
             }
         }
 

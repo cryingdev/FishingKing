@@ -140,7 +140,7 @@ MELODY = {
     # A: a rising arpeggio that falls back, answered by a higher one (B5, the minor seventh) and a fall to C#
     0: [(None, 1), ("G#4", .5), ("C#5", .5), ("E5", 1), ("G#5", 1)],
     1: [("E5", 1.5), ("F#5", .5), ("E5", 1), ("C#5", 1)],
-    2: [("G#4", 1.5), ("A4", .5), ("B4", 2)],
+    2: [("G#4", 1), ("B4", .5), ("C#5", .5), ("B4", 2)],        # upper neighbour (an A4 here rubbed the pad's G#4)
     4: [(None, 1), ("C#5", .5), ("E5", .5), ("G#5", 1), ("B5", 1)],
     5: [("A5", 1.5), ("G#5", .5), ("F#5", 1), ("E5", 1)],
     6: [("E5", 1.5), ("B4", .5), ("C#5", 2)],
@@ -176,7 +176,7 @@ NIGHT_MELODY = {
     1: [("E5", 2), ("C#5", 2)],
     2: [("G#4", 2), ("B4", 2)],
     4: [(None, 2), ("G#5", 1), ("B5", 1)],
-    5: [("A5", 2), ("F#5", 1), ("E5", 1)],
+    5: [("A5", 1.5), (None, .5), ("F#5", 1), ("E5", 1)],       # lets go before the kalimba's passing G#5
     6: [("E5", 2), ("C#5", 2)],
     12: [(None, 2), ("A4", 1), ("C#5", 1)],
     13: [("B4", 2), ("G#4", 1), ("B4", 1)],
@@ -242,7 +242,7 @@ def day(s):
             p = vc[1] + 12 if k == 4 else vc[k]
             arp.note(bar, bt, p, 0.48, base + (6 if bt % 1 == 0 else 0))
 
-        # crystal pad: one triad per chord, the add9 / colour on top from A'
+        # crystal pad: one triad per chord, the add9 / colour on top from A' (tucked under the top when it is far)
         for (st, en, ch, bass) in segs(bar):
             vc = voicing(ch, 59, 3, triad=True)
             col = CH[ch][1]
@@ -250,6 +250,8 @@ def day(s):
                 top = vc[-1] + 1
                 while top % 12 != col[0]:
                     top += 1
+                if top - vc[-1] > 7:                   # E's F#5 would leap into the kalimba's register: tuck it in
+                    top -= 12
                 vc = vc + [top]
             pad.chord(bar, st, vc, en - st - 0.08, {"A": 48, "A2": 52, "B": 52}[sec], strum=0.07)   # rolled upwards
             halo.chord(bar, st, voicing(ch, 55, 3, triad=True), en - st - 0.06, {"A": 40, "A2": 44, "B": 48}[sec])
@@ -312,7 +314,8 @@ DRUM_PATS = {
     "A": {"low_tom": "X.......x.......", "tom2": "......x.......x.", "hi_wood": "x..x..x.x..x..x."},
     "A2": {"low_tom": "X.....x.x.......", "tom2": "....x.......x.x.", "hi_wood": "x.xx.xx.x.xx.xx.",
            "lo_wood": "..x.......x....."},
-    "B": {"low_tom": "X.....x.X.....x.", "tom2": "....x.......x...", "hi_wood": "XxxXxxXxXxxXxxXx"},
+    "B": {"low_tom": "X.....x.X.....x.", "tom2": "....x.......x...", "hi_wood": "X..X..X.X..X..X.",
+          "lo_wood": "..x..x.x..x..x.x"},                    # tick-tock instead of a constant 16th click
 }
 DRUM_VEL = {"low_tom": 78, "tom2": 68, "hi_wood": 46, "lo_wood": 56}
 # synth bass eighths: 'R' root, 'O' octave, '5' a fourth / fifth up (a chord tone), 'N' approach
@@ -332,10 +335,10 @@ OST_ACC = (0, 3, 6)
 
 
 def fight_root(p):
-    """A base-stem bass note moved into G#1..G2."""
-    while p > 43:
+    """A base-stem bass note moved into F#1..F2 (keeps A's falling A-G#-F# and avoids F#2 -> A1 leaps)."""
+    while p > 41:
         p -= 12
-    while p < 32:
+    while p < 30:
         p += 12
     return p
 

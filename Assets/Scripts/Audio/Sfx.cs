@@ -90,6 +90,13 @@ namespace FishingKing
             if (!I.rasp.isPlaying) I.rasp.Play();
         }
 
+        /// <summary>The chiptune loop's volume x this (<see cref="FishingKing.Music"/> fades it in and out).</summary>
+        public static void MusicVolume(float mult)
+        {
+            if (I == null || I.music == null) return;
+            I.music.volume = 0.22f * Mathf.Clamp01(mult);
+        }
+
         public static void Music(bool on)
         {
             if (I == null) return;

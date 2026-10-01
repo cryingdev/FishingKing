@@ -12,7 +12,7 @@ day    French horn sings the tune in A; strings take it an octave up in A' and B
        (left / right), warm pad; all of them breathe in two-bar swells
 night  sweep pad, soft low strings on the roots, sparse piano (bass, a thinner tune that skips the first half of A',
        a few high ripples)
-fight  kick / toms / snare in 12/8 with rolls into each section, contrabass galloping an octave under the base bass,
+fight  kick / toms / snare in 12/8 with rolls into each section, contrabass galloping under the base bass,
        cello triplet ostinato, brass stabs, timpani on the roots
 The tune rests in bars 3, 7, 11, 19, 22, 23 (night: also 8-10) so the sea ambience can breathe.
 Only chord tones sit on the beats in every track (passing tones on off-beat triplets), so the stems never clash.
@@ -110,14 +110,21 @@ def bass_at(bar, beat):
     return bass_line(bar)[-1][2]
 
 
-def voicing(chord, lo, count):
-    """The first `count` chord tones at or above `lo` (closed position)."""
+def voicing(chord, lo, count, triad=False):
+    """The first `count` chord tones at or above `lo` (closed position); triad=True leaves out a seventh."""
+    pcs = CH[chord][:3] if triad else CH[chord]
     out, p = [], lo
     while len(out) < count:
-        if p % 12 in CH[chord]:
+        if p % 12 in pcs:
             out.append(p)
         p += 1
     return out
+
+
+def harp_tones(chord, bass):
+    """The bass, then the chord tones above it; below D3 only the bass's fifth or octave (no muddy low thirds)."""
+    ups = [p for p in voicing(chord, bass + 1, 12) if p >= n("D3") or (p - bass) % 12 in (0, 7)]
+    return [bass] + ups
 
 
 def clip(bar, beat, dur):
@@ -209,13 +216,15 @@ def write_tune(track, tune, center, shift=0, legato=0.95):
             pos += d
 
 
-def swells(track, lo, hi, last_lo=None):
-    """Two-bar swells (CC11) like a long sea swell: up over a bar, down over the next; B a little fuller."""
+def swells(track, lo, hi):
+    """Two-bar swells (CC11) like a long sea swell: up over a bar, down over the next; B a little fuller.
+    Each one sinks to where the next starts (the last to the opening level), so the expression never jumps,
+    not even at the loop point."""
+    def boost(bar):
+        return {"A": 0, "A2": 4, "B": 8}[section(bar % BARS)]
     for bar in range(0, BARS, 2):
-        boost = 8 if section(bar) == "B" else (4 if section(bar) == "A2" else 0)
-        track.swell(bar, 0, 4, lo + boost, hi + boost)
-        end = last_lo if (last_lo is not None and bar == BARS - 2) else lo + boost
-        track.swell(bar + 1, 0, 4, hi + boost, end)
+        track.swell(bar, 0, 4, lo + boost(bar), hi + boost(bar))
+        track.swell(bar + 1, 0, 4, hi + boost(bar), lo + boost(bar + 2))
 
 
 # ------------------------------------------------------------------------------------------------- day stem
@@ -246,7 +255,7 @@ def day(s):
         for i, k in enumerate(pat):
             bt = i * T
             st, en, ch, bass = seg_at(bar, bt)
-            tones = [bass] + voicing(ch, bass + 1, 10)
+            tones = harp_tones(ch, bass)
             v = 60 if (i == 0 or bt == st) else (52 if i % 3 == 0 else 45)
             v += {"A": 0, "A2": 3, "B": 6}[sec]
             if bar == 19:
@@ -284,7 +293,8 @@ def day(s):
 
 
 # ----------------------------------------------------------------------------------------------- night stem
-RIPPLE_BARS = {3: 1, 8: 1, 9: 2, 10: 1, 11: 2, 19: 1}     # bar -> beat of a soft high ripple (tune rests)
+# bar -> (beat, direction) of a soft high ripple where the tune rests; in A' each rising one gets a falling answer
+RIPPLES = {3: (1, 1), 8: (1, 1), 9: (2, -1), 10: (1, 1), 11: (2, -1), 19: (1, 1)}
 
 
 def night(s):
@@ -302,13 +312,13 @@ def night(s):
             if sec != "A" and st == 0 and en == 4 and bar not in WALK:
                 up = bass + 7 if (bass + 7) % 12 in CH[ch] else voicing(ch, bass + 12, 1)[0]
                 pno.note(bar, 2, up, 1.9, 46)
-        # piano ripples: three rising chord tones, ringing, where the tune rests
-        if bar in RIPPLE_BARS:
-            b0 = RIPPLE_BARS[bar]
+        # piano ripples: three chord tones, ringing, where the tune rests (rising, or falling as an answer)
+        if bar in RIPPLES:
+            b0, way = RIPPLES[bar]
             ch = seg_at(bar, b0)[2]
-            for i, p in enumerate(voicing(ch, 72, 3)):
+            for i, p in enumerate(voicing(ch, 72, 3)[::way]):
                 bt = b0 + i * T
-                rh.note(bar, bt, p, clip(bar, bt, 2.2), 48 + 2 * i)
+                rh.note(bar, bt, p, clip(bar, bt, 2.2), 48 + 2 * i * way + (4 if way < 0 else 0))
 
         # sweep pad: the chords, low-mid and wide; soft low strings hold the bass
         for (st, en, ch, bass) in segs(bar):
@@ -358,6 +368,9 @@ def roll(tr, bar, beat, beats, pitch, v0, v1, step=T / 2):
         tr.note(bar, beat + i * step, pitch, step * 0.9, v0 + (v1 - v0) * i / max(1, k - 1))
 
 
+BASS_FLOOR = n("G1")
+
+
 def approach(nxt, root, chord):
     """A scale step into the next bar's bass, from the side we come from if possible; never a semitone off a tone
     of the chord still sounding (the base bass holds it), else the current root."""
@@ -365,14 +378,15 @@ def approach(nxt, root, chord):
         return root
     for up in (nxt < root, nxt > root):
         p = in_key_step(nxt, up)
-        if abs(p - root) <= 5 and n("F1") <= p and all((p - c) % 12 not in (1, 11) for c in CH[chord]):
+        if abs(p - root) <= 5 and BASS_FLOOR <= p and all((p - c) % 12 not in (1, 11) for c in CH[chord]):
             return p
     return root
 
 
 def fbass(p):
-    """The fight bass sits an octave under the base bass (unison where that would drop below F1)."""
-    return p - 12 if p - 12 >= n("F1") else p
+    """The fight bass sits an octave under the base bass, in unison where that would drop below G1 (so the line
+    moves by step or fourth instead of leaping a seventh, and stays above the mud of the lowest octave)."""
+    return p - 12 if p - 12 >= BASS_FLOOR else p
 
 
 def timp_pitch(p):
@@ -416,7 +430,7 @@ def fight(s):
             roll(dr, bar, 2, 2, DR["snare"], 46, 98)
             dr.note(bar, 2, DR["kick"], 0.3, 84)
 
-        # --- contrabass gallop, an octave under the base bass, stepping into the next bar
+        # --- contrabass gallop under the base bass, stepping into the next bar
         pat = BASS_GALLOP[sec]
         nxt = fbass(bass_line((bar + 1) % BARS)[0][2])
         for i, c in enumerate(pat):
@@ -461,7 +475,7 @@ def fight(s):
             bt = step * T
             ch = seg_at(bar, bt)[2]
             v = {"A": 70, "A2": 76, "B": 80}[sec] + (6 if step == 0 else 0) + (4 if bar == 20 else 0)
-            br.chord(bar, bt, voicing(ch, 53, 3), clip(bar, bt, d), v)
+            br.chord(bar, bt, voicing(ch, 53, 3, triad=True), clip(bar, bt, d), v)     # always with its third
 
         # --- timpani on the roots: A every downbeat, A'/B also beat 2, rolls into bars 20 and 0
         p = timp_pitch(bass_at(bar, 0))

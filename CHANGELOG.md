@@ -12,6 +12,17 @@
 
 ## 이후 변경
 
+### 배경음 (MIDI 작곡 → OGG 스템)
+- 추가: 배경음 파이프라인 `Tools/Music/`(Python으로 음표를 적어 MIDI → FluidSynth 렌더 → 루프·음량을 맞춘 OGG 스템, `Resources/Data/music.json` 매니페스트)과
+  임포터 `MusicImporter`(Vorbis, Compressed In Memory, 백그라운드 로드).
+- 추가: `Music`(`[Game]`): 큐마다 스템별 `AudioSource`를 한 DSP 시각에 `PlayScheduled`해 샘플 단위로 맞물린 **덱**, 스템별 페이드,
+  큐 사이 크로스페이드, sting과 그 덕킹, 곡이 없으면 예전 칩튠으로 대체, 출력 장치가 바뀌면 다시 시작.
+- 추가: 타이틀·지도·수족관 곡, 낚시 씬의 감독(`FishingController.Music.cs`): 스테이지 곡의 `day`/`night` 스템(시간대 전환 8초 크로스페이드),
+  입질 덕킹, 장력을 따르는 `fight` 스템, 잡음·놓침 sting, 전설어 조우 단계별 스템과 `sting_hook` → `legend_<id>` → `sting_legend` / `sting_escape`.
+- 추가: 설정 → **배경음** 켜짐/꺼짐(`SettingsUI`), `SaveData.musicOn`(옛 세이브는 켬, `Game.SetMusic`).
+- 추가: 테스트 스위치 `-fkmusic off|chiptune`, `-fkmusiclog`, `-fkauto music`(`AutoPilot.Music.cs`).
+- 자세히: [music.md](Docs/music.md), [Tools/Music/README.md](Tools/Music/README.md)
+
 ### 수족관 `받기` 금액 한 줄 표시 (`f114b92`)
 - 변경: `받기` 버튼의 적립 금액이 길어지면 줄바꿈·자동 축소(best fit) 대신 **선명한 작은 픽셀 글꼴로 바꿔** 한 줄에 표시합니다.
   6자 이상 16, 7자 이상 12 크기 (`Assets/Scripts/Scenes/AquariumScene.cs` `AquariumScene.SetCollectText`).

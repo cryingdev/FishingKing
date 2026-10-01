@@ -23,8 +23,9 @@ namespace FishingKing
     /// rising and falling with the line's tension), landed (its sting by rarity, the stage ducked under it, then the fight
     /// stem down and the stage back up); a rare fish landed (sting_rare); a fish shaken off (sting_escape);</item>
     /// <item>with -fkencounter: an encounter played well (the omen: sting_omen, the stage gone; lurk; + approach;
-    /// + tease; silence in the hook window; sting_hook; legend_&lt;id&gt;; landed: sting_legend; the stage back) and one
-    /// played badly (sting_fail, the stage back), driven by the encounter test's plays (AutoPilot.Encounter.cs);</item>
+    /// + tease; silence in the hook window; sting_hook; legend_&lt;id&gt;; landed: sting_legend, the fight's deck silent
+    /// under it as it fades out; the stage back) and one played badly (sting_fail, the encounter's deck silent under
+    /// it; the stage back), driven by the encounter test's plays (AutoPilot.Encounter.cs);</item>
     /// <item>back to the map and on to the aquarium (their cues, nothing of the stage left).</item>
     /// </list>
     /// A loop cue not in the manifest yet is checked for the chiptune in its place, a missing sting for silence. Every
@@ -75,7 +76,7 @@ namespace FishingKing
                 yield break;
             }
             bool heard = Music.StingNow == cue;
-            yield return new WaitForSecondsRealtime(0.25f);   // (its duck down: 0.12 s)
+            yield return new WaitForSecondsRealtime(Music.StingAttack + 0.15f);   // (its duck down, a few frames to spare)
             float d = Music.DuckNow;
             MCheck($"{what}: {cue}", heard && Mathf.Abs(d - duck) <= 0.06f,
                 string.Format(CIm, "heard {0} after {1:0.00} s, the deck ducked to {2:0.00} (want {3:0.00})", heard, t, d, duck));
@@ -447,8 +448,9 @@ namespace FishingKing
                             if (inPh >= 0.3f && done.Add("turnaway"))
                             {
                                 if (Music.HasSting("sting_fail")) MCheck("turned away: sting_fail", Music.StingNow == "sting_fail");
-                                MCheck("turned away: the stage asked back, under the sting", Music.Wanted == stageCue && (!Music.HasSting("sting_fail") || Music.DuckNow <= 0.05f),
-                                    string.Format(CIm, "wanted {0}, duck {1:0.00}", Music.Wanted, Music.DuckNow));
+                                MCheck("turned away: the stage asked back, under the sting (the encounter's deck silent too)", Music.Wanted == stageCue
+                                    && (!Music.HasSting("sting_fail") || (Music.DuckNow <= 0.05f && Music.DyingGain <= 0.05f)),
+                                    string.Format(CIm, "wanted {0}, duck {1:0.00}, the decks fading out at {2:0.00}", Music.Wanted, Music.DuckNow, Music.DyingGain));
                             }
                             break;
                     }
@@ -464,7 +466,7 @@ namespace FishingKing
         {
             var sp = ctl.Hooked.Sp;
             for (float w = 0f; w < 6f && Music.StingNow != null; w += Time.unscaledDeltaTime) yield return null;
-            yield return new WaitForSecondsRealtime(1.2f);   // (the cue's 0.4 s fade-in, the sting's duck back up)
+            yield return new WaitForSecondsRealtime(Music.StingRelease + FishingController.LegendFade);   // (the sting's duck back up, the cue's fade-in)
             if (ctl.State != FishingController.S.Fighting)
             {
                 Log($"[MUSIC] the legend fight was over before its check ({ctl.State})");
@@ -476,6 +478,10 @@ namespace FishingKing
             yield return SyncCheck("the legend fight");
             ctl.DebugLand();
             yield return StingCheck($"the legend landed ({sp.id})", "sting_legend", 0f, 3f);
+            // (the fight's deck, fading out under the sting, is under its duck 0 too: not heard over the fanfare)
+            if (Music.HasSting("sting_legend"))
+                MCheck("the legend landed: its fight music silent under the sting", Music.DyingGain <= 0.05f,
+                    string.Format(CIm, "the decks fading out at {0:0.00}", Music.DyingGain));
         }
     }
 }

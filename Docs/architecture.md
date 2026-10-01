@@ -72,7 +72,7 @@ flowchart LR
 | Fishing | `FishingScene` | 스테이지 id = `SceneFlow.PendingStage ?? Game.Data.lastStage ?? "lake"`(없거나 잠겨 있으면 `lake`) → `PixelView.Create` → `StageView.Build(id)` → `FishingController.Init(stage, pv)` → `Toast.Init()` → 첫 실행이면 튜토리얼 대화상자 |
 | Aquarium | `AquariumScene` | 탱크 레벨의 `AquaLayout`, `PixelView.Create` + `SetBaseHeight(data.viewH)`, 뒤/앞 스프라이트, `AquaFeed`·`AquaClean`·`AquaDecor` ([aquarium.md](aquarium.md)) |
 
-`FishingController.Init`이 만드는 것(`Assets/Scripts/Fishing/FishingController.cs`): `Angler.Create`, `Tackle.Create`, `FishSpawner`, 조준 점·부채꼴 점, `CastArrow`, `SideArrow`, 목표 링·입질 마크, `FishingHUD.Create`, `InitObstacles()`(`ObstacleOverlay`), `LegendWatch.For(this)`, `InitZoom()`, 그리고 `SetState(S.Ready)`. 얼음 스테이지에서 얼음 구멍에 못 쓰는 루어가 장착돼 있으면 스타터 미끼로 바꿉니다(`LureInfo.IceOk`).
+`FishingController.Init`이 만드는 것(`Assets/Scripts/Fishing/FishingController.cs`): `Angler.Create`, `Tackle.Create`, `FishSpawner`, 조준 점·부채꼴 점, `CastArrow`, `SideArrow`, 목표 링·입질 마크, `FishingHUD.Create`, `InitObstacles()`(`ObstacleOverlay`), `LegendWatch.For(this)`, `InitZoom()`, `InitMusic()`(스테이지 곡, [music.md](music.md)), 그리고 `SetState(S.Ready)`. 얼음 스테이지에서 얼음 구멍에 못 쓰는 루어가 장착돼 있으면 스타터 미끼로 바꿉니다(`LureInfo.IceOk`).
 
 ---
 
@@ -133,7 +133,7 @@ flowchart LR
 | `FishingController.cs` | 상태 enum `S`, `Init`, `Update` 디스패치, 준비·조준·캐스팅·대기·회수·입질·챔질·파이트·랜딩·결과, 전설어 조우 진입/종료(`StartEncounter`, `UpdateEncounter`, `EncounterHooked`, `EncounterFailed`), 낚싯대 스윕·사이드 프레셔, 물살 파이트, 게임 시계 틱(`TickClock`), 톡 낚싯대 채기(`RodJerk`) |
 | `FishingController.Obstacles.cs` | 장애물 전부([obstacles_spec.md](obstacles_spec.md)): 비행 중 접촉(`OnContact`), 착수 처리(`LandPerched`, `LandedObstacles`, `LandOnPad`, `NaturalEntry`), 얹힌 채비(`UpdatePerched`, `KnockOff`), **밑걸림 상태 `S.Snagged`**(`SnagRolls` → `SnagAt` → `UpdateSnagged` → `FreeSnag` / `SnagBreak` / `CutLine` / `PadTear`), 커버로 도망치는 파이트(`BeginFightObstacles`, `TryCoverRun`, `StartCoverRun`, `PullOut`, `FightObstacles`, `EndFightObstacles`), 끊김 문구(`BreakText`), 구조물 근처 입질 배율(`StructureBite`) |
 | `FishingController.Zoom.cs` | 줌 감독: `ZoomSetting`(매 프레임 `Game.Data.zoomMode`를 읽음), `ZoomWanted`, `InitZoom`(→ `view.Zoom.Director = DirectZoom`), `DirectZoom`, 테스트 훅 `DebugBreak` |
-| `FishingController.Music.cs` | 배경음 감독([music.md](music.md)): `InitMusic`, 매 프레임 `TickMusic`(`Update` 맨 앞, 상태·조우 단계·시간대·장력을 보고 `Music`에 바뀐 것만 요청), 이벤트 sting `CatchMusic`(`LandRoutine`), `FishOffMusic`(`FishOff`), `SnagBreakMusic`(`SnagBreak`), `LeaveMusic`(`OnDestroy`) |
+| `FishingController.Music.cs` | 배경음 감독([music.md](music.md)): `InitMusic`, 매 프레임 `TickMusic`(`Update`에서 `TickClock` 바로 다음, 대화상자로 일찍 반환하기 전; 상태·조우 단계·시간대·장력을 보고 `Music`에 바뀐 것만 요청), 이벤트 sting `CatchMusic`(`LandRoutine`), `FishOffMusic`(`FishOff`), `SnagBreakMusic`(`SnagBreak`), `LeaveMusic`(`OnDestroy`) |
 
 ### 3.1 상태 목록
 
@@ -441,7 +441,9 @@ CPU 쪽에도 같은 판정이 있습니다(`OccluderAt`, `Hidden`, `AnyNearer`)
 
 ```
 Update  (order 0)  FishingController.Update  입력(PointerInput 폴링, CircleGesture, LureInput, SideSlide),
-                                              게임 시계, LegendWatch, 상태별 Update*, Angler 입력값 설정
+                                              게임 시계, 배경음 감독(TickMusic), LegendWatch, 상태별 Update*,
+                                              Angler 입력값 설정
+                   Music.Update ([Game])      덱·스템·sting·칩튠 페이드와 음량, 로드된 덱의 동시 시작
                    FishAgent.Update           물고기 AI (OnBite → 컨트롤러 상태 전이)
                    StageView.Update           물살 틱, 시간대 룩, PlaceOcclusion, 구름·새·반딧불
                    FishSpawner / WaterFx / Fx ...

@@ -591,7 +591,7 @@
 
 | 필드 | 형식 | 기본값 | 의미 |
 |---|---|---|---|
-| `version` | int | 1 | 세이브 형식 번호. **게임 코드 어디에서도 읽거나 올리지 않습니다** (`Assets/Scripts` 검색 결과: 테스트용 JSON 문자열 `AutoPilot.ZoomModes` 에만 나옴). 실제 마이그레이션은 `aquaVer`, `capVer`, `tank.ver`로 함 |
+| `version` | int | 1 | 세이브 형식 번호. **게임 코드 어디에서도 읽거나 올리지 않습니다** (`Assets/Scripts` 검색 결과: 테스트용 JSON 문자열 `AutoPilot.ZoomModes`, `AutoPilot.Music` 에만 나옴). 실제 마이그레이션은 `aquaVer`, `capVer`, `tank.ver`로 함 |
 | `coins` | int | 300 | 코인 |
 | `level` | int | 1 | 플레이어 레벨 (`Sanitize`: 최소 1) |
 | `xp` | int | 0 | 현재 레벨에서 쌓인 XP |

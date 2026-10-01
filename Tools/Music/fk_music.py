@@ -29,7 +29,7 @@ Outputs (paths relative to the repository root)
 - Assets/Resources/Data/music.json           the manifest the game reads (Music.cs)
 - Tools/Music/_tmp/                          scratch: stem midis, wavs, lint reports (git-ignored)
 
-Requires: python3 with mido + numpy, fluidsynth (2.x), oggenc (vorbis-tools), a GM SoundFont
+Requires: python3 with mido + numpy + scipy, fluidsynth (2.x), oggenc (vorbis-tools), a GM SoundFont
 (FluidR3_GM.sf2, MIT licence; path from $FK_SF2 or the Debian/Ubuntu default /usr/share/sounds/sf2/FluidR3_GM.sf2).
 """
 
@@ -43,6 +43,7 @@ import wave
 
 import mido
 import numpy as np
+from scipy.signal import butter, sosfilt
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.normpath(os.path.join(HERE, "..", ".."))
@@ -57,6 +58,8 @@ TPB = 480                     # MIDI ticks per quarter note
 OGG_QUALITY = 2               # oggenc -q (≈ 96 kbps stereo; Unity re-encodes on import anyway)
 PEAK = 0.89                   # -1 dBFS
 SEAM_FADE = 0.012             # s: crossfade at a loop's start (see Song._cut_loop)
+DC_CUT = 12.0                 # Hz: high-pass on every render (some FluidR3 pads carry a large DC / sub-sonic offset)
+STING_FLOOR = -60.0           # dB under a sting's peak where its tail is cut
 SF2_DEFAULT = "/usr/share/sounds/sf2/FluidR3_GM.sf2"
 
 # FluidSynth effects: one global reverb / chorus (the per-track send is CC91 / CC93)
@@ -174,6 +177,9 @@ GM = {
     "melodic_tom": 117, "synth_drum": 118, "reverse_cymbal": 119, "seashore": 122, "bird": 123,
 }
 DRUMS = "drums"  # program for a GM percussion track (MIDI channel 10)
+# GM programs whose key is not a clean pitch (percussive / effects; FluidR3 tunes taiko and melodic tom about 50 cents
+# per key): left out of the key, range and clash checks
+UNPITCHED = {113, 115, 116, 117, 118} | set(range(119, 128))
 
 # GM percussion keys (channel 10)
 DR = {
@@ -194,7 +200,7 @@ RANGES = {
     9: (n("G4"), n("C8")), 10: (n("C4"), n("C8")), 11: (n("F3"), n("F6")), 12: (n("C2"), n("C7")),
     13: (n("F4"), n("C8")), 14: (n("C4"), n("F5")), 24: (n("E2"), n("B5")), 25: (n("E2"), n("B5")),
     26: (n("E2"), n("B5")), 27: (n("E2"), n("B5")), 32: (n("E1"), n("G3")), 33: (n("E1"), n("G3")),
-    34: (n("E1"), n("G3")), 35: (n("E1"), n("G3")), 38: (n("C1"), n("C4")), 40: (n("G3"), n("A7")),
+    34: (n("E1"), n("G3")), 35: (n("E1"), n("G3")), 36: (n("E1"), n("G3")), 38: (n("C1"), n("C4")), 40: (n("G3"), n("A7")),
     41: (n("C3"), n("E6")), 42: (n("C2"), n("A5")), 43: (n("E1"), n("G3")), 44: (n("C2"), n("C7")),
     45: (n("C2"), n("C7")), 46: (n("C1"), n("G7")), 47: (n("D2"), n("C4")), 48: (n("C2"), n("C7")),
     49: (n("C2"), n("C7")), 52: (n("C3"), n("A5")), 53: (n("C3"), n("A5")), 56: (n("F#3"), n("D6")),
@@ -298,7 +304,7 @@ class Track:
 
     # --- controllers
     def cc(self, bar, beat, number, value):
-        self.ccs.append((self.t(bar, beat), int(number), int(max(0, min(127, value)))))
+        self.ccs.append((max(0, self.t(bar, beat)), int(number), int(max(0, min(127, value)))))
         return self
 
     def swell(self, bar, beat, beats, v0, v1, steps=None):
@@ -309,7 +315,7 @@ class Track:
         return self
 
     def bend(self, bar, beat, value):
-        self.bends.append((self.t(bar, beat), int(max(-8192, min(8191, value)))))
+        self.bends.append((max(0, self.t(bar, beat)), int(max(-8192, min(8191, value)))))
         return self
 
 
@@ -326,7 +332,8 @@ class Song:
         self.mixes = mixes or [self.stems]      # stem sets the game plays together (peak check)
         self.ref = ref or self.mixes[0]         # the stem set the loudness is measured on
         self.desc = desc
-        self.tail = tail                        # s of release / reverb after a sting's last note
+        self.tail = tail                        # s of MIDI after a sting's last note (FluidSynth's file render runs
+                                                # on until every voice has died anyway; the cut is STING_FLOOR)
         self.tracks = []
         self.tempo_us = int(round(60_000_000 / bpm))
         self.rng = random.Random(cue)
@@ -453,7 +460,9 @@ class Song:
         with wave.open(wav_path, "rb") as w:
             assert w.getframerate() == RATE and w.getnchannels() == 2 and w.getsampwidth() == 2
             a = np.frombuffer(w.readframes(w.getnframes()), dtype=np.int16).astype(np.float64) / 32768.0
-        return a.reshape(-1, 2)
+        a = a.reshape(-1, 2)
+        # DC / sub-sonic offset out (causal; a loop's three repetitions leave it settled long before the cut)
+        return sosfilt(butter(2, DC_CUT, btype="highpass", fs=RATE, output="sos"), a, axis=0)
 
     def _cut_loop(self, a):
         """Three repetitions rendered: take the middle one, and crossfade its first SEAM_FADE seconds from the
@@ -470,8 +479,8 @@ class Song:
         return seg
 
     def _cut_sting(self, a):
-        thr = 10 ** (-62 / 20)
         mag = np.abs(a).max(axis=1)
+        thr = float(mag.max()) * 10 ** (STING_FLOOR / 20)
         idx = np.nonzero(mag > thr)[0]
         end = (idx[-1] + int(0.05 * RATE)) if len(idx) else int(0.1 * RATE)
         a = a[:min(len(a), end)].copy()
@@ -525,7 +534,7 @@ class Song:
         gain = min(10 ** (self.loudness / 20) / ref_rms, PEAK / peak)
         rep = {"cue": self.cue, "kind": self.kind, "bpm": self.bpm, "bars": self.bars, "seconds": round(len(next(iter(audio.values()))) / RATE, 3),
                "loopSamples": self.loop_samples if self.kind == "loop" else len(next(iter(audio.values()))),
-               "gain_db": round(20 * math.log10(gain), 2), "peak_limited": gain < 10 ** (self.loudness / 20) / ref_rms - 1e-12,
+               "gain_db": round(20 * math.log10(gain), 2), "peak_limited": 20 * math.log10(10 ** (self.loudness / 20) / ref_rms / gain) > 0.05,
                "stems": {}}
         for s in self.stems:
             x = audio[s] * gain
@@ -558,6 +567,10 @@ class Song:
         return rep
 
     # --- inspection
+    def _bar_of(self, st):
+        """The bar a note belongs to: humanize() may pull a downbeat a few ticks into the previous bar."""
+        return (st + TPB // 16) // (self.bpb * TPB)
+
     def describe(self, max_bars=None):
         """A text piano roll: per track and bar, the notes by beat (for reviewing a cue without listening)."""
         lines = [f"# {self.cue}  {self.kind}  {self.bpm} bpm  {self.bars} bars of {self.bpb}  key {self.key}  "
@@ -570,8 +583,7 @@ class Song:
                          f"{len(t.notes)} notes  range {rng}")
             by_bar = {}
             for (st, d, p, v) in sorted(t.notes):
-                b = st // (self.bpb * TPB)
-                by_bar.setdefault(b, []).append((st, d, p, v))
+                by_bar.setdefault(self._bar_of(st), []).append((st, d, p, v))
             for b in range(self.bars if max_bars is None else min(self.bars, max_bars)):
                 ev = by_bar.get(b, [])
                 if not ev:
@@ -579,14 +591,15 @@ class Song:
                     continue
                 cells = []
                 for (st, d, p, v) in ev:
-                    beat = (st - b * self.bpb * TPB) / TPB
+                    beat = max(0.0, round((st - b * self.bpb * TPB) / TPB * 16) / 16)
                     nm = (next((k for k, x in DR.items() if x == p), str(p)) if t.program == DRUMS else name_of(p))
                     cells.append(f"{beat:g}:{nm}/{d / TPB:g}")
                 lines.append(f"  {b:3d} | " + " ".join(cells))
         return "\n".join(lines)
 
     def lint(self):
-        """Automatic checks: out-of-key notes, ranges, clashes on strong beats, empty bars, loop wrap leaps."""
+        """Automatic checks: out-of-key notes, ranges, semitone clashes on the beats (between tracks of stems that play
+        together), drum tracks sharing channel 10, doubled hits, empty bars, repetition, loop wrap leaps."""
         out = [f"# lint {self.cue}"]
         bar_t = self.bpb * TPB
         if self.kind == "loop":
@@ -594,8 +607,22 @@ class Song:
                 late = [x for x in t.notes if x[0] >= self.loop_ticks]
                 if late:
                     out.append(f"ERROR [{t.name}] {len(late)} notes start at/after the loop end")
+        for s in self.stems:
+            kits = [t.name for t in self.tracks if t.stem == s and t.program == DRUMS]
+            if len(kits) > 1:
+                out.append(f"WARN [stem {s}] drum tracks {kits} share MIDI channel 10: the last one's vol/pan/reverb/chorus apply to all")
+            hits = {}
+            for t in self.tracks:
+                if t.stem == s:
+                    for (st, d, p, v) in t.notes:
+                        hits.setdefault((t.channel, st, p), []).append(t.name)
+            dup = [(k, v) for k, v in hits.items() if len(v) > 1]
+            if dup:
+                (ch, st, p), names = dup[0]
+                out.append(f"INFO [stem {s}] {len(dup)} doubled hits (same channel, pitch and tick), e.g. bar {self._bar_of(st)} "
+                           f"{name_of(p) if ch != 9 else next((k for k, x in DR.items() if x == p), p)} in {names}")
         for t in self.tracks:
-            if t.program == DRUMS:
+            if t.program == DRUMS or t.program in UNPITCHED:
                 continue
             lo, hi = RANGES.get(t.program, RANGES["default"])
             bad = [p for (_, _, p, _) in t.notes if p < lo or p > hi]
@@ -606,23 +633,25 @@ class Song:
                 if t.notes and ok < len(t.notes):
                     chrom = sorted({name_of(p)[:-1] for (_, _, p, _) in t.notes if not self.key.in_key(p)})
                     out.append(f"INFO [{t.name}] {len(t.notes) - ok}/{len(t.notes)} notes outside {self.key}: {chrom}")
-        # sounding pitches on each beat (non-drum), minor-2nd / major-7th / tritone clashes between different tracks
+        # sounding pitches on each beat (pitched tracks), minor-2nd / major-7th clashes between different tracks whose
+        # stems can play together (Song.mixes; day and night only meet in a crossfade)
+        together = {(a, b) for m in self.mixes for a in m for b in m} | {(a, a) for a in self.stems}
         sounding = {}
-        for t in self.tracks:
-            if t.program == DRUMS:
+        for ti, t in enumerate(self.tracks):
+            if t.program == DRUMS or t.program in UNPITCHED:
                 continue
             for (st, d, p, v) in t.notes:
                 # a note counts on a beat when it starts within an eighth after it or is still held an eighth past it
                 for k in range(st // TPB, (st + d - 1) // TPB + 2):
                     if st <= k * TPB + TPB // 8 and st + d > k * TPB + TPB // 8:
-                        sounding.setdefault(k, []).append((p, t.name, t.stem))
+                        sounding.setdefault(k, []).append((p, t.name, t.stem, ti))
         clashes = 0
         examples = []
         for k, ps in sorted(sounding.items()):
             for i in range(len(ps)):
                 for j in range(i + 1, len(ps)):
                     a, b = ps[i], ps[j]
-                    if a[1] == b[1]:
+                    if a[3] == b[3] or (a[2], b[2]) not in together:
                         continue
                     iv = abs(a[0] - b[0]) % 12
                     if iv in (1, 11) and abs(a[0] - b[0]) < 24:
@@ -633,24 +662,31 @@ class Song:
             out.append(f"WARN {clashes} minor-2nd/major-7th clashes on beats (between tracks): " + "; ".join(examples))
         for s in self.stems:
             trs = [t for t in self.tracks if t.stem == s]
-            filled = {st // bar_t for t in trs for (st, _, _, _) in t.notes}
+            filled = {self._bar_of(st) for t in trs for (st, _, _, _) in t.notes}
             empty = [b for b in range(self.bars) if b not in filled]
             if empty:
                 out.append(f"INFO [stem {s}] empty bars: {empty}")
         if self.kind == "loop":
             for t in self.tracks:
-                if t.program == DRUMS or not t.notes:
+                if t.program == DRUMS or t.program in UNPITCHED or not t.notes:
                     continue
-                ns = sorted(t.notes)
-                first, last = ns[0], ns[-1]
-                if first[0] < TPB and last[0] > self.loop_ticks - 2 * TPB and abs(first[2] - last[2]) > 12:
-                    out.append(f"INFO [{t.name}] leap {name_of(last[2])} -> {name_of(first[2])} across the loop point")
-        # repetition: identical bars across the whole cue
+                # the top voice: the highest note struck in the first beat vs the last one struck in the last two beats
+                head = [x for x in t.notes if x[0] < TPB]
+                tail = [x for x in t.notes if x[0] > self.loop_ticks - 2 * TPB]
+                if head and tail:
+                    first = max(head, key=lambda x: x[2])
+                    last_t = max(x[0] for x in tail)
+                    last = max((x for x in tail if x[0] == last_t), key=lambda x: x[2])
+                    if abs(first[2] - last[2]) > 12:
+                        out.append(f"INFO [{t.name}] leap {name_of(last[2])} -> {name_of(first[2])} across the loop point")
+        # repetition: identical bars across the whole cue (positions on a 16th grid, so humanize does not hide it)
+        def q(x):
+            return int(round(x / (TPB / 4)))
         for s in self.stems:
             sig = {}
             for b in range(self.bars):
-                key = tuple(sorted((t.name, st - b * bar_t, d, p) for t in self.tracks if t.stem == s
-                                   for (st, d, p, _) in t.notes if b * bar_t <= st < (b + 1) * bar_t))
+                key = tuple(sorted((t.name, q(st - b * bar_t), q(d), p) for t in self.tracks if t.stem == s
+                                   for (st, d, p, _) in t.notes if self._bar_of(st) == b))
                 if key:
                     sig.setdefault(key, []).append(b)
             uniq = len(sig)
