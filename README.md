@@ -89,6 +89,7 @@ Builds\Windows\FishingKing.exe -fkfresh -fkrich -fkgear -fksave test -fkscene Fi
 - [수족관](Docs/aquarium.md) — 먹이·생먹이, 배부름·성장·관람 수입, 청소, 장식, 수조 5단계, 오프라인 보정
 - [Blender 에셋 파이프라인](Docs/art_pipeline.md) — 스크립트별 역할, 하이브리드 스타일 규칙, 빌드·설치, Unity 임포터
 - [데이터 표](Docs/data_reference.md) — 스테이지·어종·장비·루어·수조·사료·장식, SaveData 필드와 마이그레이션
+- [배경음](Docs/music.md) — 덱·스템·크로스페이드·sting·칩튠 대체, 낚시 씬의 곡 규칙, 설정 (작곡·빌드: [Tools/Music/README.md](Tools/Music/README.md))
 - [변경 기록](CHANGELOG.md)
 
 사양서:
