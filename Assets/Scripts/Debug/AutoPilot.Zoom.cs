@@ -370,6 +370,9 @@ namespace FishingKing
         IEnumerator ZoomPlace(FishingController ctl, Vector3 at, string tag)
         {
             yield return ToReady(ctl);
+            // (out at 1x first: a wind-in cut short, as a snag cut free, leaves the view still easing out, and the
+            // zoom-in after the rig comes down would only ease the rest of the way)
+            for (float w = 0f; w < 1f && ZoomNow.Level > 0f; w += Time.deltaTime) yield return null;
             if (!ctl.DebugPlaceRig(at))
             {
                 ZCheck(tag + "_place", false, $"state {ctl.State}");
@@ -481,9 +484,13 @@ namespace FishingKing
             }
             FishingController.NoBites = true;
             EquipTest("bait_worm", ctl);
+            // (no snags: the cue rigs sit in the lake's weed bed and are wound out through it)
+            float snagWas = Obstacles.SnagMult;
+            Obstacles.SnagMult = 0f;
             yield return ZoomCueCase(ctl, "cue_pan", false);
             yield return ZoomCueCase(ctl, "cue_out", true);
             w.DebugLurk(null);
+            Obstacles.SnagMult = snagWas;
             yield return ToReady(ctl);
         }
 

@@ -72,7 +72,8 @@ namespace FishingKing
             {
                 this.hold = hold;
                 this.steady = steady;
-                gain = steady ? 3f : 1f;
+                // (the gauge: 8, more than any two spots in the window differ by, so a clear spot is kept)
+                gain = steady ? 8f : 1f;
             }
 
             public void Clear()

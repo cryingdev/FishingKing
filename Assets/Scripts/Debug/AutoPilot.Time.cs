@@ -278,6 +278,9 @@ namespace FishingKing
             FishingController.NoBites = true;
             SteerGear("rod_carbon", "reel_highgear", null);   // (the line reaches past the rock: the fight's glass rod casts short)
             EquipTest("bait_worm", ctl);
+            // (no snags: the float drifts up against the rock, and a snag roll there would end the drift early)
+            float snagWas = Obstacles.SnagMult;
+            Obstacles.SnagMult = 0f;
             yield return null;
             var tk = ctl.Tackle;
             var wf = ctl.Stage.Water;
@@ -338,7 +341,8 @@ namespace FishingKing
             LogShot("cur_rock_after");
             yield return NamedShot("cur_rock_after");
             CCheck(string.Format(CIc, "rock: the float drifts up to md25.0's footprint ({0:0.00} m at ({1:0.00}, {2:0.00}), <= 0.15) and on round it in sight (top hidden at most {3:0.00} s, <= 0.5; at the end ({4:0.00}, {5:0.00}) shows {6}) in {7:0.0} s",
-                minD, nearAt.x, nearAt.z, hiddenMax, e.x, e.z, endShows, t), minD <= 0.15f && hiddenMax <= 0.5f && endShows);
+                minD, nearAt.x, nearAt.z, hiddenMax, e.x, e.z, endShows, t) + $" (state {ctl.State}, rig {tk.State})", minD <= 0.15f && hiddenMax <= 0.5f && endShows);
+            Obstacles.SnagMult = snagWas;
             yield return ToReady(ctl);
         }
 
@@ -470,7 +474,8 @@ namespace FishingKing
             EquipTest("bait_spinner", ctl);
             yield return null;
             var tk = ctl.Tackle;
-            ctl.DebugPlaceRig(new Vector3(15f, 0f, 10f));
+            // (open ebb water, 9 m clear of every tetrapod: against them the tide runs slack)
+            ctl.DebugPlaceRig(new Vector3(12f, 0f, 24f));
             // held 0.5 m deep until it hangs
             for (float w = 0f; w < 0.6f; w += Time.deltaTime)
             {
@@ -481,8 +486,10 @@ namespace FishingKing
             float d0 = tk.Depth;
             for (float w = 0f; w < 6f; w += Time.deltaTime) yield return null;
             float moved = new Vector2(tk.Surface.x - p0.x, tk.Surface.z - p0.z).magnitude;
-            Log(string.Format(CIc, "[CUR] hang: c_along {0:+0.00;-0.00} m/s ({1:0.00} rev/s of the {2} reel), hanging {3}, in band {4}, Q {5:0.00}, moved {6:0.00} m, depth {7:0.00} -> {8:0.00}",
-                ctl.Rhythm.CAlong, ctl.Rhythm.CAlong / Game.I.Reel.retrieve, Game.I.Reel.id, ctl.Rhythm.Hanging, ctl.Rhythm.InBand, ctl.Rhythm.Q, moved, d0, tk.Depth));
+            float cushion = ctl.Stage.Current.Cushion(tk.Surface.x, tk.Surface.z);
+            Log(string.Format(CIc, "[CUR] hang: c_along {0:+0.00;-0.00} m/s ({1:0.00} rev/s of the {2} reel), hanging {3}, in band {4}, Q {5:0.00}, moved {6:0.00} m, depth {7:0.00} -> {8:0.00}, cushion {9:0.00} at ({10:0.0}, {11:0.0})",
+                ctl.Rhythm.CAlong, ctl.Rhythm.CAlong / Game.I.Reel.retrieve, Game.I.Reel.id, ctl.Rhythm.Hanging, ctl.Rhythm.InBand, ctl.Rhythm.Q, moved, d0, tk.Depth, cushion, tk.Surface.x, tk.Surface.z));
+            CCheck(string.Format(CIc, "hang spot in open water: cushion {0:0.00} >= 0.99", cushion), cushion >= 0.99f);
             yield return NamedShot("cur_sea_hang");
             CCheck(string.Format(CIc, "hang: Q {0:0.00} >= 0.5 and the rig moved {1:0.00} m < 0.3 (hanging {2})", ctl.Rhythm.Q, moved, ctl.Rhythm.Hanging),
                 ctl.Rhythm.Q >= 0.5f && moved < 0.3f && ctl.Rhythm.Hanging);
