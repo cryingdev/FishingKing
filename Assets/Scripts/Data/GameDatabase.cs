@@ -496,8 +496,8 @@ namespace FishingKing
                 orbitSpeed = new Vector2(0.28f, 0.5f), orbitDepth = -0.8f, hover = new Vector2(-0.7f, -50f),
                 finAmp = 0.6f, flare = 25f, scull = 10f,
             };
-            // the frog is a topwater lure: the tease is watched from above, the legend a shadow under the murk (the
-            // popper, without top frames, keeps the underwater view)
+            // the frog and the popper are topwater lures: the tease is watched from above, the legend a shadow under the
+            // murk (each has its top frames, lure_frog_top_* / lure_popper_top_*; a key without them keeps the side view)
             e.teaseView = TeaseView.Top;
             e.top = new TopViewDef { set = "swamp_top", noseInText = "떠오른다…!", holdCredit = "…아래에서 노려본다" };
             e.keyLures["bait_frog"] = 1.0f;

@@ -319,12 +319,13 @@ namespace FishingKing
     public enum TeaseView { Side, Top }
 
     /// <summary>
-    /// The top view of a topwater legend's tease (EncounterView's top mode; the arapaima's frog): the encounter opens
-    /// underwater as usual, the camera rises through the waterline at the approach's end and looks straight down at the
+    /// The top view of a topwater legend's tease (EncounterView's top mode; the arapaima's frog and popper): the encounter
+    /// opens underwater as usual, the camera rises through the waterline at the approach's end and looks straight down at the
     /// lure for the whole tease and nose-in (the lure driven by the player's input, the legend a dark shadow under the
     /// murky surface), and cuts back to the full-screen underwater view for the lunge and the bite. The art is
     /// Tools/Blender/variants/hybrid/encounter_sets/&lt;set&gt;.py (Resources/Sprites/Encounter): uw_&lt;set&gt;_bg / _mid /
-    /// _fore / _float_*, lure_&lt;lure&gt;_top_0..3 and the shared fx_top_*. A lure without top frames keeps the side view.
+    /// _fore / _float_*, lure_&lt;lure&gt;_top_0..3 (24x28, the same pivot and line tie for every lure; 0 at rest, 1 / 2 the
+    /// two beats of a swim stroke, 3 the pop) and the shared fx_top_*. A lure without top frames keeps the side view.
     /// Distances in metres (set frame), screen axes: x across the window, y up it (away from the angler).
     /// </summary>
     public class TopViewDef

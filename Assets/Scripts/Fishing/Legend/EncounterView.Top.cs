@@ -515,7 +515,8 @@ namespace FishingKing
             frogAnimT += dt;
             int fr = 0;
             if (hopT < 0.2f) fr = 3;
-            else if (winding) fr = strokePh < StrokeKick ? 1 : 2;   // legs drawn in, then kicked back and trailing in the glide
+            // legs drawn in, then kicked back and trailing in the glide (the popper: its face digging in, then planing)
+            else if (winding) fr = strokePh < StrokeKick ? 1 : 2;
             float hop = hopT < 0.2f ? 2.5f * Mathf.Sin(hopT / 0.2f * Mathf.PI) : 0f;
             // a gentle weave while it glides (1 px either way, one sway per stroke)
             float weave = winding ? Mathf.Round(Mathf.Sin(strokePh * Mathf.PI * 2f) * 0.8f) : 0f;
@@ -832,7 +833,7 @@ namespace FishingKing
             return r.width > 0f && r.height > 0f;
         }
 
-        /// <summary>The lure in the top view (render-target pixels): the frog with its kicked legs and its hop.</summary>
+        /// <summary>The lure in the top view (render-target pixels): the frog with its kicked legs and its hop (the popper fits inside).</summary>
         Rect TopLureBox => new Rect(anchor.x - 12f, anchor.y - 10f - topShiftPx, 24f, 31f);
     }
 }

@@ -23,6 +23,12 @@ the screen (the line leaves the frog's nose downwards):
   lure_frog_top_0..3.png     24x24, the frog lure from above (fk_items bait_frog materials, rendered top-down), nose
                              DOWN; pivot = body centre (12, 16) top-down: 0 idle float, 1 legs drawn in (knees out),
                              2 legs kicked straight back, 3 hop (lifted a little, its shadow on the water)
+  lure_popper_top_0..3.png   24x28, the popper from above (fk_items bait_popper parts / materials, the frog's light,
+                             pivot and line tie), nose DOWN, its frames meaning what the frog's do: 0 at rest
+                             (tail-down, the cup's hollow tipped up, the feathers sunk in the murk), 1 the chug (the face
+                             digs in, the feathers flare), 2 the glide (level, the feathers streaming back), 3 the pop
+                             (the nose kicked up, the cup to the sky, its shadow on the water); the spray, wake and
+                             rings are the shared fx_top_* (no splash in the frames)
   fx_top_ring_0..3.png       32x32 expanding ring (crest + trough), pivot centre
   fx_top_wake_0..2.png       40x48 V-wake + leg churn behind the swimming frog, pivot (20, 32) = the frog's pivot
   fx_top_splash_0..3.png     32x32 "퐁" splash: crown -> droplets -> landing rings, pivot centre (= the frog's pivot)
@@ -44,7 +50,7 @@ import hyb_encounter_kit as E
 
 SET = "swamp_top"
 PRESET = "swamp"
-LURES = []                  # no side-view billboards (frog / popper belong to swamp.py); the top frog is made here
+LURES = []                  # no side-view billboards (frog / popper belong to swamp.py); their top frames are made here
 HORIZON = 0                 # straight down: no horizon
 REVIEW = dict(ray=("#c8b478", 0.0, 470, 0), mid=(-64, 100), fore=(0, 400 - 128))
 
@@ -536,21 +542,22 @@ def _frog_scene(pose):
     return objs
 
 
-def _render_top(tag):
+def _render_top(tag, ppu=FROG_PPU, lure="frog"):
+    """Straight down at the model (x right, y back = screen up), its origin on the sprite's pivot FROG_PIV."""
     sc = bpy.context.scene
     cd = bpy.data.cameras.new("TopCam")
     cam = bpy.data.objects.new("TopCam", cd)
     C.link(cam)
     sc.camera = cam
     cd.type = "ORTHO"
-    cd.ortho_scale = max(FROG_W, FROG_H) / FROG_PPU
+    cd.ortho_scale = max(FROG_W, FROG_H) / ppu
     cd.clip_start = 0.1
     cd.clip_end = 200
-    cam.location = ((FROG_W / 2 - FROG_PIV[0]) / FROG_PPU, (FROG_PIV[1] - FROG_H / 2) / FROG_PPU, 50.0)
+    cam.location = ((FROG_W / 2 - FROG_PIV[0]) / ppu, (FROG_PIV[1] - FROG_H / 2) / ppu, 50.0)
     cam.rotation_euler = (0, 0, 0)
     sc.render.resolution_x = FROG_W
     sc.render.resolution_y = FROG_H
-    raw = os.path.join(R.WORK, "frog_top_%s_raw.png" % tag)
+    raw = os.path.join(R.WORK, "%s_top_%s_raw.png" % (lure, tag))
     C.render_raw(raw)
     arr = C.pixelize(C.load_pixels(raw), outline=True)
     return arr[::-1].copy()
@@ -590,6 +597,144 @@ def frog_frames():
             a = img[..., 3] > 0.5
             E.put(img, R.shift(a, 3, 2, False) & ~a, WATER[1])
         out["lure_frog_top_%d" % pose] = img
+    return out
+
+
+# ============================================================================ popper lure from above (Blender render)
+# fk_items build_popper's parts, sizes and materials (pearl body with a blue back, red cupped face, metal tie, painted
+# eyes, white / red feather tail), rebuilt mirror-symmetric for the top view like the frog: both eyes, the feathers
+# fanned sideways, the trebles left out (they hang under the body, as the frog's back hooks are left out). Same canvas,
+# light, outline and pivot as lure_frog_top_* (24x28, body pivot (12, 19), the line tie 7 px under it, nose DOWN), so
+# EncounterView.Top draws it with the frog's constants, and its frames mean what the frog's mean there: 0 at rest,
+# 1 / 2 the two beats of a swim stroke (1 the short one before the surge, 2 the glide), 3 the pop (0.2 s). No spray in
+# the frames: the water FX are the game's fx_top_* for any lure (the V-wake, the "퐁" splash and its ring), as fk_items'
+# Fx* splash drops are icon-only accents.
+POP_PPU = 8.0                              # px per bait_popper unit: its 2.0-unit body is 16 px (the frog's is 13)
+POP_TIE = Vector((1.03, 0.0, -0.02))       # the line tie on the cup face (build_popper frame: nose +x, z up)
+POP_TIE_PX = 7.0                           # under the pivot, like the frog's nose (EncounterView.Top FrogTie)
+POP_WL = 0.12                              # the waterline on the level popper: the blue back rides above it
+POP_ROCK = Vector((0.15, 0.0, POP_WL))     # it rocks about this point on the waterline
+POP_SINK, POP_SINK_D = 0.5, 0.5           # under water its colour goes up to POP_SINK towards the water by this depth
+# per frame: pitch (deg, + = nose up), the feathers' half-spread at the tips / length / droop at the tips, scale
+POP_POSE = {0: (18, 0.18, 0.62, -0.08, 1.0),   # at rest: tail-down, the cup's hollow tipped to the sky, feathers sunk
+            1: (-5, 0.30, 0.56, 0.0, 1.0),     # the chug: the face digs in (nose down), the feathers flare out
+            2: (4, 0.07, 0.72, 0.04, 1.0),     # the glide: planing level, the feathers streaming back together
+            3: (40, 0.20, 0.60, -0.10, 1.1)}   # the pop: the nose kicked up out of the water (lifted: its shadow)
+# bait_popper / lure_popper_0/1 colours (blue back, pearl, red face, cup, metal, eye, feathers, outlines) + the tones
+# its blue / white / red take under the murky water
+POP_PAL = ["#5dbaff", "#3a78d8", "#234da6", "#182751", "#111b43",
+           "#f4f2ea", "#f4f0e8", "#a19fb4", "#56557a", "#4c4855", "#353247",
+           "#e0343a", "#e03a3a", "#931f2a", "#4e0c1a", "#1d081c",
+           "#5a1424", "#461425", "#380919", "#1a020d",
+           "#c8d0da", "#8388a7", "#403f51", "#fff070", "#101010", "#0c0a19",
+           "#3762a1", "#b6b5ad", "#a83f34", "#70362b", "#49211e"]
+
+
+def _sink(mat):
+    """Below the waterline (world z < POP_WL) the toon colour fades towards the murky water with the depth."""
+    nt = mat.node_tree
+    em = next(n for n in nt.nodes if n.type == "EMISSION")
+    src = em.inputs["Color"].links[0].from_socket
+    geo = nt.nodes.new("ShaderNodeNewGeometry")
+    sep = nt.nodes.new("ShaderNodeSeparateXYZ")
+    nt.links.new(geo.outputs["Position"], sep.inputs[0])
+    d = nt.nodes.new("ShaderNodeMath")
+    d.operation = "SUBTRACT"
+    d.inputs[0].default_value = POP_WL
+    nt.links.new(sep.outputs[2], d.inputs[1])
+    k = nt.nodes.new("ShaderNodeMath")
+    k.operation = "MULTIPLY"
+    k.use_clamp = True
+    k.inputs[1].default_value = 1.0 / POP_SINK_D
+    nt.links.new(d.outputs[0], k.inputs[0])
+    f = nt.nodes.new("ShaderNodeMath")
+    f.operation = "MULTIPLY"
+    f.inputs[1].default_value = POP_SINK
+    nt.links.new(k.outputs[0], f.inputs[0])
+    mx = nt.nodes.new("ShaderNodeMix")
+    mx.data_type = "RGBA"
+    fin = [s for s in mx.inputs if s.name == "Factor" and s.type == "VALUE"][0]
+    cols = [s for s in mx.inputs if s.type == "RGBA"]
+    nt.links.new(f.outputs[0], fin)
+    nt.links.new(src, cols[0])
+    cols[1].default_value = C.lin(WATER[3])
+    nt.links.new([s for s in mx.outputs if s.type == "RGBA"][0], em.inputs["Color"])
+
+
+def _popper_scene(pose):
+    import fk_items as I
+    C.reset_scene()
+    pitch, spread, flen, droop, scale = POP_POSE[pose]
+    keep = (C.LIGHT_DIR, C.HALF_DIR)
+    C.LIGHT_DIR = FROG_LIGHT
+    C.HALF_DIR = (FROG_LIGHT + Vector((0, 0, 1))).normalized()
+    try:
+        pearl = I.split_material("Pearl", "#3a78d8", "#f4f2ea", z=0.14, shine=1.0)
+        face = I.M("Face", "#e0343a", shine=0.6)
+        cup = I.M("CupIn", "#5a1424")
+        metal = I.M("Metal", "#c8d0da", shine=1.0)
+        iris = I.M("EyeI", "#fff070", flat=True)
+        pupil = I.M("EyeP", "#101010", flat=True)
+        featw = I.M("FeatW", "#f4f0e8")
+        featr = I.M("FeatR", "#e03a3a")
+    finally:
+        C.LIGHT_DIR, C.HALF_DIR = keep
+    for m in (pearl, face, cup, metal, iris, pupil, featw, featr):
+        _sink(m)
+    objs = [C.tube_along("Body", [(-1.02, 0, 0.02), (-0.7, 0, 0.02), (0.0, 0, 0), (0.6, 0, 0), (0.9, 0, 0)],
+                         [0.1, 0.24, 0.4, 0.45, 0.45], pearl, 16),
+            C.tube_along("Rim", [(0.86, 0, 0), (0.98, 0, 0)], 0.45, face, 16),
+            C.tube_along("Cup", [(0.9, 0, 0), (0.995, 0, 0)], 0.3, cup, 16),
+            I.torus("Tie", metal, 0.08, 0.035, tuple(POP_TIE), rot=(0, math.radians(90), 0))]
+    # the painted eyes on the head's shoulders, facing out and up (flat discs like fk_items eye_dot)
+    phi = math.radians(45)
+    for sy in (-1, 1):
+        n = Vector((0.0, sy * math.sin(phi), math.cos(phi)))
+        rot = Matrix.Rotation(math.atan2(math.cos(phi), sy * math.sin(phi)), 4, "X") @ Matrix.Diagonal((1, 0.4, 1, 1))
+        p = Vector((0.62, 0.0, 0.0)) + n * 0.43
+        e = I.sphere("Eye", iris, 0.14, (0, 0, 0))
+        e.matrix_world = Matrix.Translation(p) @ rot
+        q = I.sphere("Pupil", pupil, 0.14 * 0.55, (0, 0, 0))
+        q.matrix_world = Matrix.Translation(p + n * 0.05 + Vector((0.03, 0, 0))) @ rot
+        objs += [e, q]
+    # the feather tail fanned sideways: white outside, the red strand on top in the middle (side: fan position -1..1,
+    # radius at the root / tip, length factor, raised by)
+    for u, mat, r0, r1, ln, dz in ((-1.0, featw, 0.08, 0.03, 1.0, 0.0), (1.0, featw, 0.08, 0.03, 1.0, 0.0),
+                                   (-0.45, featw, 0.075, 0.03, 0.95, 0.01), (0.45, featw, 0.075, 0.03, 0.95, 0.01),
+                                   (0.0, featr, 0.1, 0.05, 0.85, 0.1)):
+        pts, rr = [], []
+        for i in range(7):
+            t = i / 6
+            pts.append((-1.0 - flen * ln * t, u * (0.04 + spread * t), 0.02 + dz + droop * t * t))
+            rr.append(r0 + (r1 - r0) * t)
+        objs.append(C.tube_along("Feather", pts, rr, mat, 6))
+    bpy.context.view_layer.update()
+    # the pose: rocked about the waterline point, (3) lifted closer about the tie; then nose DOWN on the screen with
+    # the tie POP_TIE_PX under the pivot (the model origin = the sprite's pivot)
+    M = Matrix.Translation(POP_ROCK) @ Matrix.Rotation(math.radians(-pitch), 4, "Y") @ Matrix.Translation(-POP_ROCK)
+    tie = M @ POP_TIE
+    if scale != 1.0:
+        M = Matrix.Translation(tie) @ Matrix.Scale(scale, 4) @ Matrix.Translation(-tie) @ M
+    Rz = Matrix.Rotation(math.radians(-90), 4, "Z")
+    t2 = Rz @ tie
+    M = Matrix.Translation(Vector((-t2.x, -POP_TIE_PX / POP_PPU - t2.y, 0.0))) @ Rz @ M
+    for o in objs:
+        o.matrix_world = M @ o.matrix_world
+    bpy.context.view_layer.update()
+    return objs
+
+
+def popper_frames():
+    out = {}
+    for pose in range(4):
+        _popper_scene(pose)
+        img = _render_top(pose, POP_PPU, "popper")
+        if POP_PAL is not None:
+            img = _snap(img, POP_PAL)
+        if pose == 3:                                                  # popped up: its shadow on the water, lower right
+            a = img[..., 3] > 0.5
+            E.put(img, R.shift(a, 3, 2, False) & ~a, WATER[1])
+        out["lure_popper_top_%d" % pose] = img
     return out
 
 
@@ -962,6 +1107,7 @@ def sprites():
     out = {}
     out.update(floats())
     out.update(frog_frames())
+    out.update(popper_frames())
     out.update(fx_frames())
     return out
 
@@ -980,7 +1126,7 @@ def _emit(bg, mid):
             shutil.copy2(os.path.join(out_dir, k + ".png"), os.path.join(inst, k + ".png"))
         print("ENC installed", len(sp), "top-view sprites ->", inst)
     rows = [[sp[k] for k in sp if k.startswith("uw_swamp_top_float")],
-            [sp[k] for k in sp if k.startswith("lure_frog_top")] + [sp["fx_top_bubble"]],
+            [sp[k] for k in sp if k.startswith("lure_frog_top") or k.startswith("lure_popper_top")] + [sp["fx_top_bubble"]],
             [sp[k] for k in sp if k.startswith("fx_top_ring") or k.startswith("fx_top_splash")],
             [sp[k] for k in sp if k.startswith("fx_top_wake") or k.startswith("fx_top_bulge")]]
     sheet = R.flow_sheet(rows, tuple(E.rgb(WATER[3])), scale=4, pad=12)
