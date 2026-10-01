@@ -13,7 +13,7 @@
 ## 이후 변경
 
 ### 릴 클릭음 (녹음)
-- 추가: `Assets/Resources/Audio/Sfx/reel_click_1..N.wav`(`Sfx.ReelClick`): 감기 시작(0.35초 넘게 멈춘 뒤) 첫 클릭은 1번, 이어서 2번부터 순서대로 돌고 끝나면 2번으로.
+- 추가: `Assets/Resources/Audio/Sfx/reel_click_1..9.wav`(`Sfx.ReelClick`): 감기 시작(0.35초 넘게 멈춘 뒤) 첫 클릭은 1번, 이어서 2번부터 순서대로 돌고 끝나면 2번으로.
   있는 번호까지 자동으로 읽음(1번부터 빈 번호 전까지). 핸들 1바퀴에 4클릭(예전과 같음). 파일이 없으면 예전 합성 `ReelTick`.
 
 ### 녹음한 효과음 2개
