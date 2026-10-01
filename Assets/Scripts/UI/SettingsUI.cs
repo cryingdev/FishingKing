@@ -32,6 +32,27 @@ namespace FishingKing
                 "반시계방향", "시계방향", "blue", "blue");
             Choice(w, 3, "캐스팅 후 줌인", () => Game.Data.zoomMode, v => Game.I.SetZoomMode((ZoomMode)v),
                 ("끔", (int)ZoomMode.Off), ("1.25배", (int)ZoomMode.X125), ("1.5배", (int)ZoomMode.X150), ("액티브", (int)ZoomMode.Active));
+            // (the hold's two choices live in their own window like the volumes: two more rows would take the window past the
+            // smallest canvas, 540 with the ribbon)
+            var ctrl = UIKit.Button(w, "조작", "blue", () => OpenControls(), new Vector2(120, 56), 20, null, "Controls");
+            ctrl.GetComponent<RectTransform>().At(new Vector2(0, 0), new Vector2(44, 28), new Vector2(120, 56), new Vector2(0, 0));
+            var done = UIKit.Button(w, "닫기", "grey", close, new Vector2(160, 56));
+            done.GetComponent<RectTransform>().At(new Vector2(0.5f, 0), new Vector2(0, 28), new Vector2(160, 56), new Vector2(0.5f, 0));
+        }
+
+        /// <summary>
+        /// The 조작 window (over 설정; 닫기 goes back to it): 손잡이 오른손 / 왼손 (which hand holds the rod: 오른손 = the rod in
+        /// the left hand, the right hand cranking, as the game always had; 왼손 mirrored) and 낚싯대 위치 옆 / 가운데 (out at
+        /// the hip / in front of the belly). Both apply at once, even mid-fight (Angler.ReadSettings).
+        /// </summary>
+        public static void OpenControls(Action onClose = null)
+        {
+            var w = Dialog.Window("조작", new Vector2(Width, Height), out var close, onClose: onClose);
+            Choice(w, 0, "손잡이", () => Game.Data.leftHanded ? 1 : 0, v => Game.I.SetLeftHanded(v == 1), ("오른손", 0), ("왼손", 1));
+            Choice(w, 1, "낚싯대 위치", () => Game.Data.rodCentre ? 1 : 0, v => Game.I.SetRodCentre(v == 1), ("옆", 0), ("가운데", 1));
+            var note = UIKit.Label(w, "왼손: 낚싯대를 오른손에 들고 왼손으로 릴을 감아요.\n가운데: 두 손으로 배 앞에 들고 끝은 정면을 향해요.", 18, UIKit.Ink, TextAnchor.UpperLeft, false);
+            note.rectTransform.At(new Vector2(0, 1), new Vector2(44, FirstRowY - 2 * RowStep + 26), new Vector2(Width - 88, 96), new Vector2(0, 1));
+            note.name = "ControlsNote";
             var done = UIKit.Button(w, "닫기", "grey", close, new Vector2(160, 56));
             done.GetComponent<RectTransform>().At(new Vector2(0.5f, 0), new Vector2(0, 28), new Vector2(160, 56), new Vector2(0.5f, 0));
         }
