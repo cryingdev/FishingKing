@@ -165,7 +165,9 @@ namespace FishingKing
             var L = ctl.Stage.L;
             FishingController.NoBites = true;
             EquipTest("bait_paste", ctl);
-            var at = new Vector3(ctl.Angler.X + 2f, 0f, 14f);
+            // (far enough out that the wide frame holds the fish with the rod tip, raised in the fight, with room to spare:
+            // the step back up wants that room)
+            var at = new Vector3(ctl.Angler.X + 2f, 0f, 24f);
             yield return ZoomPlace(ctl, at, "wide");
             if (ctl.State != FishingController.S.Waiting || !ctl.DebugHook(GameDatabase.GetFish("carp"), 50f, 99, new Vector3(at.x, -1.2f, at.z)))
             {
@@ -174,7 +176,7 @@ namespace FishingKing
                 yield break;
             }
             ctl.Fight.Hold(9999f);
-            var home = new Vector3(at.x, -1f, at.z);
+            var home = new Vector3(at.x, -0.5f, at.z);
             ctl.DebugFishHold = home;
             int asked = z.StepPxAsked, floor = Step125(z);
             yield return new WaitForSeconds(1.6f);
@@ -253,7 +255,10 @@ namespace FishingKing
                     break;
                 }
             }
-            ZCheck("wide_back_up", upAt >= 0f && fitAgain >= 0f && upAt - fitAgain >= ViewZoom.StepUpHold - 0.05f && upAt - fitAgain <= ViewZoom.StepUpHold + ViewZoom.EaseTime + 1.5f
+            // (never sooner than the hold after it fits again; the room to spare it wants comes on the way back, so by the rig
+            // at the latest: within the hold and its ease once there)
+            ZCheck("wide_back_up", upAt >= 0f && fitAgain >= 0f && upAt - fitAgain >= ViewZoom.StepUpHold - 0.05f
+                                   && (back < 0f || upAt - back <= ViewZoom.StepUpHold + ViewZoom.EaseTime + 0.3f)
                                    && z.PixelExact && fishOut == 0 && tipOut == 0 && border == 0 && changes == 1,
                 $"back by the rig {Z2(back)} s, the wide frame held it again {Z2(fitAgain)} s, the wide step at rest {Z2(upAt)} s (hold {ViewZoom.StepUpHold} s + ease {ViewZoom.EaseTime} s); " +
                 $"{frames} frames: fish out {fishOut}, tip out {tipOut}, crop outside {border}, step changes {changes}; {ZDesc(z)}");

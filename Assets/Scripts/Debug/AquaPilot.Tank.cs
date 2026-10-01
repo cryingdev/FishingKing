@@ -150,8 +150,9 @@ namespace FishingKing
             float live1 = DirtCols(-6.2f, -5.8f);
             Check(live1 - far0 > 0.25f, $"a rotten sardine / shrimp much more: {far0:0.000} -> {live1:0.000}");
 
-            // ---- a dirty tank (the debris a hair under the algae: the top hint's tie would flip with the seconds of growth)
-            AquaTank.SetAll(0.8f, 0.78f);
+            // ---- a dirty tank, the algae clearly ahead of the debris and the bottom dirt (a tie flips with the seconds of
+            // growth: the dirt grows faster than the algae), so the top hint is the algae's
+            AquaTank.SetAll(0.8f, 0.78f, 0.76f);
             Game.I.Save();
             SceneFlow.Go("Aquarium");
             yield return new WaitForSeconds(2.4f);
@@ -217,10 +218,11 @@ namespace FishingKing
             Check(clean.HeldId == AquaTank.NetId, "pressed: the net is up");
             Vector2 cur = nh;
             var dip = new Vector2(8f, 3f);
-            yield return Carry(cur, () => dip, 0.5f);
-            cur = dip;
+            // (counted before the carry: a bit drifting past may be scooped on the way to the dip)
             int sc0 = clean.Scooped;
             bits = clean.BitsAlive;
+            yield return Carry(cur, () => dip, 0.5f);
+            cur = dip;
             bool shotNet = false;
             float until = Time.time + 45f;
             while (clean.BitsAlive > 0 && Time.time < until)

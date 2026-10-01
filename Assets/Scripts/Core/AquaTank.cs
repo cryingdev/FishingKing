@@ -493,18 +493,19 @@ namespace FishingKing
             if (T.debris < 0.0005f) T.debris = 0f;
         }
 
-        /// <summary>Every level set to <paramref name="v"/> (uniform maps: the test switches, the autopilot).</summary>
-        public static void SetAll(float v, float? debris = null)
+        /// <summary>Every level set to <paramref name="v"/> (uniform maps: the test switches, the autopilot); the debris and the bottom dirt may differ.</summary>
+        public static void SetAll(float v, float? debris = null, float? dirt = null)
         {
             Bind();
             v = Level(v);
+            float dv = Level(dirt ?? v);
             for (int i = 0; i < algaeMap.Length; i++) algaeMap[i] = v;
-            for (int i = 0; i < dirtMap.Length; i++) dirtMap[i] = v;
+            for (int i = 0; i < dirtMap.Length; i++) dirtMap[i] = dv;
             T.debris = Level(debris ?? v);
             T.at = SaveSystem.Now;
             MapsChanged();
             Commit();
-            Log($"tank: set algae / dirt {v:0.00}, debris {T.debris:0.00}");
+            Log($"tank: set algae {v:0.00}, dirt {dv:0.00}, debris {T.debris:0.00}");
         }
 
         // ------------------------------------------------------------------ ownership

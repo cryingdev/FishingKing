@@ -574,8 +574,10 @@ namespace FishingKing
         sealed class ZFightStats
         {
             public int frames, outFish, outTip, notStep, inexact, border, beyond, stepEase, stepChanges, lastStep = -1, minStep = 99, maxStep;
-            public float maxSpeed, path, fishTop;   // (fishTop: the fish's own top speed on the target, over 0.25 s)
+            public float maxSpeed, path, fishTop, tipTop;   // (fishTop / tipTop: the fish's / the rod tip's own top speed on the target, over 0.25 s)
             public readonly System.Collections.Generic.Queue<Vector3> fishTrail = new System.Collections.Generic.Queue<Vector3>();
+            public readonly System.Collections.Generic.Queue<Vector3> tipTrail = new System.Collections.Generic.Queue<Vector3>();
+            public readonly System.Collections.Generic.Queue<Vector3> panTrail = new System.Collections.Generic.Queue<Vector3>();
             public Vector2 min = new Vector2(1e9f, 1e9f), max = new Vector2(-1e9f, -1e9f);
             public bool arrowDone;
         }
@@ -608,8 +610,9 @@ namespace FishingKing
                 var pan = z.PanPx;
                 var fishPx = z.WorldToPx(ctl.Fish2D(ctl.Hooked));
                 var tipPx = z.WorldToPx(ctl.RodTip2D);
-                // (a fish beyond the whole view, e.g. under the sea's breakwater, is out at 1x too: the crop stays on the target)
-                if (!whole.Contains(fishPx)) st.beyond++;
+                // (a fish beyond the whole view, e.g. under the sea's breakwater, is out at 1x too: the crop stays on the target;
+                // nor can a crop of this size on the target hold it with the rod tip when they lie farther apart than it)
+                if (!whole.Contains(fishPx) || !OneCropHolds(z, whole, fishPx, tipPx, 1f)) st.beyond++;
                 else if (!InCropPx(z, fishPx, 0f)) st.outFish++;
                 if (!InCropPx(z, tipPx, 0f)) st.outTip++;
                 if (z.Level < 1f) st.notStep++;
@@ -627,13 +630,14 @@ namespace FishingKing
                 // frame's, so this frame's delta, read now at its end)
                 float fdt = Time.deltaTime;
                 // (a step easing moves the crop's centre by itself where the crop stops at the target's edge: not a pan)
-                if (fdt > 0f && !skipSpeed && !z.StepEasing) st.maxSpeed = Mathf.Max(st.maxSpeed, step / Mathf.Max(fdt, 1f / 120f));
+                // measured over 0.25 s like the fish's and the rod tip's (a single frame's sample is mostly the crop's
+                // whole-pixel snapping and the frame time's jitter); a skipped frame starts the window again
+                if (fdt <= 0f || skipSpeed || z.StepEasing) st.panTrail.Clear();
+                else st.maxSpeed = Mathf.Max(st.maxSpeed, TrailSpeed(st.panTrail, pan));
                 skipSpeed = false;
-                // the fish's own speed on the target, over the last 0.25 s
-                st.fishTrail.Enqueue(new Vector3(fishPx.x, fishPx.y, Time.time));
-                while (st.fishTrail.Count > 1 && Time.time - st.fishTrail.Peek().z > 0.25f) st.fishTrail.Dequeue();
-                var old = st.fishTrail.Peek();
-                if (Time.time - old.z >= 0.2f) st.fishTop = Mathf.Max(st.fishTop, ((Vector2)fishPx - (Vector2)old).magnitude / (Time.time - old.z));
+                // the fish's and the rod tip's own speeds on the target, over the last 0.25 s (both are kept in frame)
+                st.fishTop = Mathf.Max(st.fishTop, TrailSpeed(st.fishTrail, fishPx));
+                st.tipTop = Mathf.Max(st.tipTop, TrailSpeed(st.tipTrail, tipPx));
                 st.min = Vector2.Min(st.min, pan);
                 st.max = Vector2.Max(st.max, pan);
                 if ((logT -= dt) <= 0f)
@@ -668,20 +672,42 @@ namespace FishingKing
             PointerInput.SimDown = false;
         }
 
+        /// <summary>A point's speed on the target over the last 0.25 s (0 until 0.2 s of trail).</summary>
+        static float TrailSpeed(System.Collections.Generic.Queue<Vector3> trail, Vector2 px)
+        {
+            trail.Enqueue(new Vector3(px.x, px.y, Time.time));
+            while (trail.Count > 1 && Time.time - trail.Peek().z > 0.25f) trail.Dequeue();
+            var old = trail.Peek();
+            return Time.time - old.z >= 0.2f ? (px - (Vector2)old).magnitude / (Time.time - old.z) : 0f;
+        }
+
+        /// <summary>A crop the size of the one shown, on the target, holds both points at least <paramref name="m"/> px inside.</summary>
+        static bool OneCropHolds(ViewZoom z, Rect whole, Vector2 a, Vector2 b, float m)
+        {
+            var size = z.CropPx.size;
+            for (int ax = 0; ax < 2; ax++)
+            {
+                float lo = Mathf.Max(Mathf.Max(a[ax], b[ax]) + m - size[ax], whole.min[ax]);
+                float hi = Mathf.Min(Mathf.Min(a[ax], b[ax]) - m, whole.max[ax] - size[ax]);
+                if (lo > hi + 1e-3f) return false;
+            }
+            return true;
+        }
+
         void ZFightChecks(string tag, ZFightStats st, bool mustMove)
         {
             var range = st.max - st.min;
             ZCheck(tag + "_in_frame", st.frames > 30 && st.outFish == 0 && st.outTip == 0,
-                $"{st.frames} frames: the fish out {st.outFish}, the rod tip out {st.outTip} (the fish beyond the whole 1x view {st.beyond})");
+                $"{st.frames} frames: the fish out {st.outFish}, the rod tip out {st.outTip} (the fish beyond the whole 1x view or no crop on it holding the fish with the rod tip {st.beyond})");
             ZCheck(tag + "_exact", st.notStep == 0 && st.inexact == 0 && st.border == 0,
                 $"off the step {st.notStep}, not pixel exact {st.inexact}, crop outside the target {st.border} frames; steps {st.minStep}..{st.maxStep} px ({st.stepChanges} changes, {st.stepEase} frames easing between them)");
-            // (1.5배: its smaller frame must keep up with a fast run to keep the fish in: gentle then means never faster than
-            // the fish it follows)
-            bool wide = zMode == ZoomMode.X150;
-            float limit = wide ? Mathf.Max(90f, st.fishTop) : 90f;
+            // (a run faster than the gentle pace reaches the frame's edge and the keep-in-frame pull must keep up with it to
+            // keep the fish in, at any step, as must the rod tip snapping up as a run ends: gentle then means never faster than
+            // the fastest point it keeps in frame)
+            float limit = Mathf.Max(90f, Mathf.Max(st.fishTop, st.tipTop));
             ZCheck(tag + "_follows", (!mustMove || Mathf.Max(range.x, range.y) >= 6f) && st.maxSpeed <= limit,
-                string.Format(CIz, "pan range {0:0.0} x {1:0.0} px, path {2:0.0} px, top speed {3:0.0} px/s (gentle: <= {4:0}{5}); the fish's own top speed {6:0.0} px/s",
-                    range.x, range.y, st.path, st.maxSpeed, limit, wide ? ", 1.5배: no faster than the fish" : "", st.fishTop));
+                string.Format(CIz, "pan range {0:0.0} x {1:0.0} px, path {2:0.0} px, top speed {3:0.0} px/s (gentle: <= 90, or no faster than the fish / the rod tip: <= {4:0}); their own top speeds {5:0.0} / {6:0.0} px/s",
+                    range.x, range.y, st.path, st.maxSpeed, limit, st.fishTop, st.tipTop));
         }
 
         IEnumerator ZoomFightLand(FishingController ctl)
@@ -1263,15 +1289,25 @@ namespace FishingKing
             yield return new WaitForEndOfFrame();
             if ((Time.frameCount & 1) != 0) yield return new WaitForEndOfFrame();
             var on = GrabRT();
+            // (off again: the frame-to-frame noise of the frozen scene, which differs between grabs, is left out)
+            FrontOcclusion.Enabled = false;
+            yield return null;
+            yield return new WaitForEndOfFrame();
+            if ((Time.frameCount & 1) != 0) yield return new WaitForEndOfFrame();
+            var off2 = GrabRT();
+            FrontOcclusion.Enabled = true;
             int n = 0;
-            if (off != null && on != null)
+            if (off != null && on != null && off2 != null)
             {
                 var a = off.GetPixels32();
                 var b = on.GetPixels32();
-                for (int i = 0; i < a.Length; i++) if (a[i].r != b[i].r || a[i].g != b[i].g || a[i].b != b[i].b) n++;
+                var a2 = off2.GetPixels32();
+                for (int i = 0; i < a.Length; i++)
+                    if (a[i].r == a2[i].r && a[i].g == a2[i].g && a[i].b == a2[i].b && (a[i].r != b[i].r || a[i].g != b[i].g || a[i].b != b[i].b)) n++;
             }
             if (off != null) Destroy(off);
             if (on != null) Destroy(on);
+            if (off2 != null) Destroy(off2);
             result(n);
         }
     }

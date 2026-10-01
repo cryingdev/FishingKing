@@ -46,6 +46,7 @@ namespace FishingKing
         /// <summary>Seconds the larger step must hold every must-see point (with room to spare) before it is taken again.</summary>
         public const float StepUpHold = 1f;
         const float FitSlack = 3f, FitSlackUp = 12f;   // game px of room a step must leave to be kept / to be taken again
+        const float HoldMargin = 1f;   // game px: a must-see point is held at least this far inside the crop whenever one crop holds them all
 
         /// <summary>Called every frame before the zoom moves (the fishing controller): calls <see cref="Want"/>, <see cref="Focus"/>, <see cref="Keep"/>.</summary>
         public System.Action<ViewZoom> Director;
@@ -236,7 +237,11 @@ namespace FishingKing
                 panF = jumpPan ? tgt : Vector2.Lerp(panF, tgt, 1f - Mathf.Exp(-dt / focusTau));
                 jumpPan = false;
             }
-            if (keeps.Count > 0) panF = Vector2.Lerp(panF, Constrain(panF, half, topIn, false), 1f - Mathf.Exp(-dt / KeepTau));
+            if (keeps.Count > 0)
+            {
+                panF = Vector2.Lerp(panF, Constrain(panF, half, topIn, false), 1f - Mathf.Exp(-dt / KeepTau));
+                panF = HoldIn(panF, half);
+            }
             panF = Clamp(panF, half, W, H);
             hasFocus = false;
             keeps.Clear();
@@ -385,6 +390,26 @@ namespace FishingKing
             Range(half, topIn, withSoft, false, out var lo, out var hi);
             c.x = lo.x <= hi.x ? Mathf.Clamp(c.x, lo.x, hi.x) : (lo.x + hi.x) * 0.5f;
             c.y = lo.y <= hi.y ? Mathf.Clamp(c.y, lo.y, hi.y) : (lo.y + hi.y) * 0.5f;
+            return c;
+        }
+
+        /// <summary>
+        /// When the margins cannot all be kept (the rod tip and a fish far apart: the pull settles between them, short of
+        /// both), the must-see points themselves still stay in the crop, <see cref="HoldMargin"/> inside, per axis wherever
+        /// one crop holds them (the HUD strip may then cover the rod tip): at once, so a point never slips out at the edge.
+        /// </summary>
+        Vector2 HoldIn(Vector2 c, Vector2 half)
+        {
+            var lo = new Vector2(float.MinValue, float.MinValue);
+            var hi = new Vector2(float.MaxValue, float.MaxValue);
+            foreach (var k in keeps)
+            {
+                float m = Mathf.Min(HoldMargin, k.z);
+                lo = Vector2.Max(lo, new Vector2(k.x + m - half.x, k.y + m - half.y));
+                hi = Vector2.Min(hi, new Vector2(k.x - m + half.x, k.y - m + half.y));
+            }
+            if (lo.x <= hi.x) c.x = Mathf.Clamp(c.x, lo.x, hi.x);
+            if (lo.y <= hi.y) c.y = Mathf.Clamp(c.y, lo.y, hi.y);
             return c;
         }
 
