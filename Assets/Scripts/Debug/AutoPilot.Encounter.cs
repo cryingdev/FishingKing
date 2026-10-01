@@ -109,6 +109,9 @@ namespace FishingKing
                 EncCheck($"RunPause prompt shows {EncounterHUD.VerbIconOf(Verb.RunPause)} ({verbRunPause} of {verbRunPauseWant} frames)", verbRunPause == verbRunPauseWant);
             // (-fkencwinh: the narrowed window must make it move)
             if (EncounterView.DebugWinH > 0f) EncCheck($"gauge moved in the narrowed window ({EncounterView.DebugWinH:0} px: {gaugeMovesTotal} moves)", gaugeMovesTotal > 0);
+            // (and there the prompt and the name card must keep off the frog too: outside the window when they must)
+            if (EncounterView.DebugWinH > 0f && capTopFrames > 0)
+                EncCheck($"no prompt or name card on the top view's lure in the narrowed window ({capFrogOverlays} frames)", capFrogOverlays == 0);
             Log($"encounter test done ({encId}): {encFails} failed");
             yield return new WaitForSeconds(0.5f);
             PointerInput.SimActive = false;

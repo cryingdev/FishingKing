@@ -43,6 +43,10 @@ namespace FishingKing
         // (outside: a last resort, only when every spot in the window is on the face or the frog, 1000 and up)
         static readonly float[] CaptionPrefs = { 0f, 4f, 6f, 6f, 8f, 8f, 900f, 901f };
         const float CaptionPop = 0.1f, CaptionPopBig = 0.18f;   // the caption's pop-in (Tween.Punch amount; large ones)
+        const float PromptPop = 0.08f, CardPop = 0.15f;          // the prompt's and the name card's
+        // the prompt's and the name card's spots outside the window: a last resort, only while every spot inside it is on
+        // the face or the frog, the frog on one at least (a narrow window), so normal windows place them as before
+        const float OutPref = 900f, OutRuled = 5000f;
         // the gauge: the window's bottom band (0-2), the band under the prompt (3-5), just outside the window's frame (6-7)
         static readonly string[] GaugeSpots = { "bottom", "bottom-left", "bottom-right", "top", "top-left", "top-right", "below", "above" };
         static readonly float[] GaugePrefs = { 0f, 2f, 2f, 6f, 7f, 7f, 10f, 11f };
@@ -60,6 +64,8 @@ namespace FishingKing
         CanvasGroup promptGroup, gaugeGroup, captionGroup, cardGroup;
         float captionT, captionLen, redT = -1f, goldT = -1f, cardT = -1f, cardShow, cardWait;
         float captionPopT = 99f;                   // since the caption's pop-in began (unscaled s, like the punch)
+        float promptPopT = 99f, cardPopT = 99f;    // the same for the prompt's and the name card's
+        bool cardPunch;                            // the name card pops in as it starts to show (not while it waits)
         bool cardClear = true;
         bool big, named, revealed;
 
@@ -75,7 +81,8 @@ namespace FishingKing
             public float held, better;
             public readonly List<Rect> rects = new List<Rect>();
             public readonly List<float> prefs = new List<float>();
-            // (the caption's: all a spot takes while it pops in, kept off the face and the frog themselves)
+            // (the caption's, the prompt's, the name card's: all a spot takes while it pops in, kept off the face and the
+            // frog themselves)
             public readonly List<Rect> reach = new List<Rect>();
 
             public Spot(float hold, bool steady = false)
@@ -292,7 +299,8 @@ namespace FishingKing
             verbIcon.enabled = vi != null;
             promptText.rectTransform.Fill(vi != null ? 48 : 14, 12, 2, 2);
             prompt.sizeDelta = new Vector2(promptText.preferredWidth + (vi != null ? 62 : 28), 40);
-            Tween.Punch(prompt, 0.08f);
+            promptPopT = 0f;
+            Tween.Punch(prompt, PromptPop);
         }
 
         void OnPhase(LegendEncounter.Phase p)
@@ -410,14 +418,21 @@ namespace FishingKing
             return w > 0f && h > 0f ? w * h : 0f;
         }
 
+        /// <summary>The face grown by <paramref name="m"/>, stopped at the window's frame while <see cref="faceClip"/> is set.</summary>
+        Rect FaceZone(float m)
+        {
+            var f = Grow(face, m);
+            if (faceClip is Rect w) f = Rect.MinMaxRect(Mathf.Max(f.xMin, w.xMin), Mathf.Max(f.yMin, w.yMin), Mathf.Min(f.xMax, w.xMax), Mathf.Min(f.yMax, w.yMax));
+            return f;
+        }
+
         /// <summary>What a spot costs: on the face (with its margin) 1000 and up, on another overlay / the lure / the reel 100.</summary>
         float Cost(Rect r, bool current)
         {
             float c = 0f;
             if (hasFace)
             {
-                var f = Grow(face, FacePad + (current ? 0f : Hyst));
-                if (faceClip is Rect w) f = Rect.MinMaxRect(Mathf.Max(f.xMin, w.xMin), Mathf.Max(f.yMin, w.yMin), Mathf.Min(f.xMax, w.xMax), Mathf.Min(f.yMax, w.yMax));
+                var f = FaceZone(FacePad + (current ? 0f : Hyst));
                 float a = Area(r, f);
                 if (a > 0f) c += 1000f + a / 100f;
             }
@@ -433,8 +448,8 @@ namespace FishingKing
         }
 
         /// <summary>
-        /// A spot's <see cref="Cost"/>, and for the caption also what it reaches while it pops in: 1000 and up on the face
-        /// or the frog themselves (a unit round them, for the drawn position's rounding).
+        /// A spot's <see cref="Cost"/>, and for the caption, the prompt and the name card also what it reaches while it pops
+        /// in: 1000 and up on the face or the frog themselves (a unit round them, for the drawn position's rounding).
         /// </summary>
         float Cost(Spot s, int i, bool current)
         {
@@ -443,7 +458,7 @@ namespace FishingKing
             var r = s.reach[i];
             if (hasFace)
             {
-                float a = Area(r, Grow(face, 1f));
+                float a = Area(r, FaceZone(1f));
                 if (a > 0f) c += 1000f + a / 100f;
             }
             if (hasFrog)
@@ -453,6 +468,36 @@ namespace FishingKing
             }
             return c;
         }
+
+        /// <summary>The rect scaled by <paramref name="s"/> about its pivot (0..1 across it), as a punch draws it.</summary>
+        static Rect Scaled(Rect r, Vector2 pivot, float s) =>
+            new Rect(r.x + r.width * pivot.x * (1f - s), r.y + r.height * pivot.y * (1f - s), r.width * s, r.height * s);
+
+        /// <summary>
+        /// The window is too narrow for the spot's first <paramref name="n"/> rects (those inside it): each is on the face
+        /// or the frog (or reaches them as it pops in), and the frog is on at least one, so it is the frog that has
+        /// narrowed the choice (in a normal window the face alone never sends an overlay outside).
+        /// </summary>
+        bool NoRoomInside(Spot s, int n)
+        {
+            if (!hasFrog) return false;
+            bool frogOn = false;
+            for (int i = 0; i < n; i++)
+            {
+                if (Cost(s, i, true) < 1000f) return false;
+                if (Area(s.rects[i], Grow(frog, 2f)) > 0f || (i < s.reach.Count && Area(s.reach[i], Grow(frog, 1f)) > 0f)) frogOn = true;
+            }
+            return frogOn;
+        }
+
+        /// <summary>
+        /// The preference of a spot outside the window (<paramref name="r"/>, kept inside the safe area from
+        /// <paramref name="r0"/>): a last resort, ruled out unless there is <see cref="NoRoomInside"/>; off the reel, and
+        /// all but ruled out where the safe area pushes it back towards the window.
+        /// </summary>
+        float OutCost(Spot s, int nIn, Rect r, Rect r0, Rect scr) =>
+            OutPref + (NoRoomInside(s, nIn) ? 0f : OutRuled) + (r.Overlaps(ReelRect(scr)) ? 100f : 0f) +
+            ((r.position - r0.position).sqrMagnitude > 4f ? 500f : 0f);
 
         /// <summary>
         /// Picks the spot: the cheapest (its preference plus <see cref="Cost"/>) at first; after that the current one is
@@ -539,20 +584,31 @@ namespace FishingKing
                 cardT = 0f;
                 cardShow = 2.2f;
                 cardWait = 0f;
-                Tween.Punch(card, 0.15f);
+                cardPunch = true;
             }
             if (cardT >= 0f)
             {
                 // (from above the legend circles the lure mid-window: the card waits, up to 3 s, for a spot clear of
                 // its head and the lure)
                 if (view.TopView && cardT <= 0f && !cardClear && cardWait < 3f) cardWait += dt;
-                else cardT += dt;
+                else
+                {
+                    cardT += dt;
+                    if (cardPunch)
+                    {
+                        cardPunch = false;
+                        cardPopT = 0f;
+                        Tween.Punch(card, CardPop);
+                    }
+                }
                 cardGroup.alpha = view.Open ? Mathf.Clamp01(Mathf.Min(cardT / 0.3f, (cardShow + 0.3f - cardT) / 0.3f)) : 0f;
                 if (cardT > cardShow + 0.3f) cardT = -1f;
             }
             else cardGroup.alpha = 0f;
             Place(dt, ph, windowUp && tease);
             captionPopT += Time.unscaledDeltaTime;
+            promptPopT += Time.unscaledDeltaTime;
+            cardPopT += Time.unscaledDeltaTime;
             if (captionT > 0f)
             {
                 captionT -= dt;
@@ -587,23 +643,45 @@ namespace FishingKing
             float frame = 4f * k + 4f;   // the window's frame and its corner studs reach about this far out
             blocks.Clear();
             bool gaugeLow, gaugeHigh;
+            bool promptOut;
+            float outBelow, outAbove;   // where an overlay goes just outside the window's frame, past those already there
             // (only what is showing, or coming up, is in the way: an overlay fading out is not)
             {
                 // the prompt inside the top edge: centred, or slid to a side
                 var ps = prompt.sizeDelta;
                 float top = win.yMax - 4f * k;
+                // (judged at its size as drawn, and while it pops in by all its punch reaches from its pivot, the top
+                // centre; like the caption's)
+                var pPivot = new Vector2(0.5f, 1f);
+                float pNow = Mathf.Max(1f, prompt.localScale.x);
+                float pPeak = promptPopT < Tween.PunchTime ? Mathf.Max(Tween.PunchPeak(PromptPop), pNow) : pNow;
                 promptSpot.Clear();
-                promptSpot.Add(new Rect(win.center.x - ps.x * 0.5f, top - ps.y, ps.x, ps.y), 0f);
-                promptSpot.Add(new Rect(win.xMin + 6f * k, top - ps.y, ps.x, ps.y), 4f);
-                promptSpot.Add(new Rect(win.xMax - 6f * k - ps.x, top - ps.y, ps.x, ps.y), 4f);
+                void PromptAt(Rect r, float pref) => promptSpot.Add(r, pref, Scaled(r, pPivot, pPeak));
+                PromptAt(new Rect(win.center.x - ps.x * 0.5f, top - ps.y, ps.x, ps.y), 0f);
+                PromptAt(new Rect(win.xMin + 6f * k, top - ps.y, ps.x, ps.y), 4f);
+                PromptAt(new Rect(win.xMax - 6f * k - ps.x, top - ps.y, ps.x, ps.y), 4f);
                 // (from above the head can cross the whole top band as the legend turns: the prompt may drop to just
                 // above the gauge's band)
                 if (view.TopView)
-                    promptSpot.Add(new Rect(win.center.x - ps.x * 0.5f, win.yMin + 5f * k - 4f + (gauge.sizeDelta.y + 8f) + 4f, ps.x, ps.y), 10f);
+                    PromptAt(new Rect(win.center.x - ps.x * 0.5f, win.yMin + 5f * k - 4f + (gauge.sizeDelta.y + 8f) + 4f, ps.x, ps.y), 10f);
+                // (just above the window's frame, else just below it, past the gauge when that is drawn there, when there
+                // is no room inside it: a narrow window)
+                faceClip = win;   // (outside the window it covers nothing of the face, like the gauge)
+                int pIn = promptSpot.rects.Count;
+                for (int i = 0; i < 2; i++)
+                {
+                    float under = teaseUp && gaugeDrawn == 6 ? gaugeAt.yMin - 4f : win.yMin - frame;
+                    var r0 = new Rect(win.center.x - ps.x * 0.5f, i == 0 ? win.yMax + frame : under - ps.y, ps.x, ps.y);
+                    var r = Inside(r0, safe);
+                    PromptAt(r, OutCost(promptSpot, pIn, r, r0, scr) + i);
+                }
                 Choose(promptSpot, dt);
+                faceClip = null;
                 var pr = promptSpot.Chosen;
                 prompt.anchoredPosition = new Vector2(Mathf.Round(pr.center.x), Mathf.Round(pr.yMax));
                 if (teaseUp) blocks.Add(pr);
+                bool promptAbove = teaseUp && promptSpot.cur == pIn, promptBelow = teaseUp && promptSpot.cur == pIn + 1;
+                promptOut = promptAbove || promptBelow;
 
                 // the gauge (its plate reaches 6 / 4 units past it): inside the bottom edge or under the prompt (its band:
                 // the top edge when the prompt has dropped), centred or slid to a side; else just outside the window's
@@ -619,7 +697,8 @@ namespace FishingKing
                 var reelR = ReelRect(scr);
                 for (int i = 6; i < 8; i++)
                 {
-                    var r0 = new Rect(win.center.x - gs.x * 0.5f, i == 6 ? win.yMin - frame - gs.y : win.yMax + frame, gs.x, gs.y);
+                    // (above: past the prompt when that has gone there)
+                    var r0 = new Rect(win.center.x - gs.x * 0.5f, i == 6 ? win.yMin - frame - gs.y : promptAbove ? pr.yMax + 4f : win.yMax + frame, gs.x, gs.y);
                     var r = Inside(r0, safe);
                     gaugeSpot.Add(r, GaugePrefs[i] + (r.Overlaps(reelR) ? 100f : 0f) + ((r.position - r0.position).sqrMagnitude > 4f ? 500f : 0f));
                 }
@@ -638,25 +717,48 @@ namespace FishingKing
                 gaugeHigh = gaugeDrawn >= 3 && gaugeDrawn <= 5;
                 if (teaseUp) blocks.Add(gr);
 
-                // the name card: top-left under the prompt, else top-right, else low (above the gauge)
+                // (just outside the window's frame, below or above it: past the gauge / the prompt when they are there)
+                outBelow = promptBelow ? pr.yMin - 4f : teaseUp && gaugeDrawn == 6 ? gaugeAt.yMin - 4f : win.yMin - frame;
+                outAbove = teaseUp && gaugeDrawn == 7 ? gaugeAt.yMax + 4f : promptAbove ? pr.yMax + 4f : win.yMax + frame;
+
+                // the name card: top-left under the prompt, else top-right, else low (above the gauge); when there is no
+                // room in those (a narrow window), just outside the window's frame, below it or above it. Judged at its
+                // size as drawn, and until its pop-in is over by all the punch reaches from its pivot, the top left.
                 var cs = card.sizeDelta;
+                var cPivot = new Vector2(0f, 1f);
+                float cNow = Mathf.Max(1f, card.localScale.x);
+                float cPeak = cardT >= 0f && (cardPunch || cardPopT < Tween.PunchTime) ? Mathf.Max(Tween.PunchPeak(CardPop), cNow) : cNow;
                 float cardTop = win.yMax - 26f * k, cardLow = (teaseUp && gaugeLow ? gr.yMax : win.yMin + 5f * k) + 4f;
                 cardSpot.Clear();
-                cardSpot.Add(new Rect(win.xMin + 6f * k, cardTop - cs.y, cs.x, cs.y), 0f);
-                cardSpot.Add(new Rect(win.xMax - 6f * k - cs.x, cardTop - cs.y, cs.x, cs.y), 2f);
-                cardSpot.Add(new Rect(win.xMin + 6f * k, cardLow, cs.x, cs.y), 5f);
-                cardSpot.Add(new Rect(win.xMax - 6f * k - cs.x, cardLow, cs.x, cs.y), 5f);
+                void CardAt(Rect r, float pref) => cardSpot.Add(r, pref, Scaled(r, cPivot, cPeak));
+                CardAt(new Rect(win.xMin + 6f * k, cardTop - cs.y, cs.x, cs.y), 0f);
+                CardAt(new Rect(win.xMax - 6f * k - cs.x, cardTop - cs.y, cs.x, cs.y), 2f);
+                CardAt(new Rect(win.xMin + 6f * k, cardLow, cs.x, cs.y), 5f);
+                CardAt(new Rect(win.xMax - 6f * k - cs.x, cardLow, cs.x, cs.y), 5f);
+                faceClip = win;   // (outside the window it covers nothing of the face, like the gauge)
+                for (int i = 0; i < 2; i++)
+                {
+                    var r0 = new Rect(win.center.x - cs.x * 0.5f, i == 0 ? outBelow - cs.y : outAbove, cs.x, cs.y);
+                    var r = Inside(r0, safe);
+                    CardAt(r, OutCost(cardSpot, 4, r, r0, scr) + i);
+                }
                 var saved = blocks.Count;
                 if (view.LureShown) blocks.Add(LureRect(k));
                 Choose(cardSpot, dt);
-                cardClear = Cost(cardSpot.Chosen, true) < 1000f;
+                cardClear = Cost(cardSpot, cardSpot.cur, true) < 1000f;
+                faceClip = null;
                 blocks.RemoveRange(saved, blocks.Count - saved);
                 var cr = cardSpot.Chosen;
                 float slide = cardT >= 0f ? Mathf.Clamp01(cardT / 0.3f) : 0f;
                 bool fromRight = cardSpot.cur == 1 || cardSpot.cur == 3;
                 card.anchoredPosition = new Vector2(Mathf.Round(cr.xMin), Mathf.Round(cr.yMax)) +
                                         new Vector2((fromRight ? 40f : -40f) * (1f - slide * (2f - slide)), 0f);
-                if (cardT >= 0f && view.Open && !(view.TopView && cardT <= 0f)) blocks.Add(cr);
+                if (cardT >= 0f && view.Open && !(view.TopView && cardT <= 0f))
+                {
+                    blocks.Add(cr);
+                    if (cardSpot.cur == 4) outBelow = cr.yMin - 4f;
+                    else if (cardSpot.cur == 5) outAbove = cr.yMax + 4f;
+                }
             }
 
             // the caption: the window's band just above the gauge (or its bottom edge) / under the prompt, or from the
@@ -684,14 +786,14 @@ namespace FishingKing
             {
                 var gr = gaugeAt;
                 lowY = (teaseUp && gaugeLow ? gr.yMax : win.yMin + 5f * k) + 4f;
-                highY = (teaseUp ? gaugeHigh ? gr.yMin : promptSpot.Chosen.yMin : win.yMax - 5f * k) - 4f;
+                highY = (teaseUp ? gaugeHigh ? gr.yMin : promptOut ? win.yMax - 5f * k : promptSpot.Chosen.yMin : win.yMax - 5f * k) - 4f;
                 left = win.xMin + 6f * k;
                 right = win.xMax - 6f * k;
             }
             float cx = big ? scr.center.x : win.center.x;
-            // just outside the window's frame, or past the gauge when it is drawn there during the tease
-            float belowTop = teaseUp && gaugeDrawn == 6 ? gaugeAt.yMin - 4f : win.yMin - frame;
-            float aboveBottom = teaseUp && gaugeDrawn == 7 ? gaugeAt.yMax + 4f : win.yMax + frame;
+            // just outside the window's frame, or past the gauge, the prompt and the name card when they are drawn there
+            float belowTop = outBelow;
+            float aboveBottom = outAbove;
             int spots = big ? 6 : CaptionSpots.Length;
             captionSpot.Clear();
             for (int i = 0; i < spots; i++)
