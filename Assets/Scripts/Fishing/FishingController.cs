@@ -931,8 +931,8 @@ namespace FishingKing
 
         /// <summary>
         /// The time of day, the tide and the spot on a fish's appetite (spec 9.5): sqrt(activity) x the sea's tide (0.6 +
-        /// 0.75 s) x the stream's spot (a slack pocket 1.3, the fast lane 0.85) x a natural drift (a float riding the moving
-        /// water with no drag, 1.15), within 0.25..2. 0 when the species is not about at all now.
+        /// 0.75 s) x the stream's spot (a slack pocket 1.3, the fast lane 0.85) x a natural drift (a float riding water that
+        /// really moves with no drag, 1.15), within 0.25..2. 0 when the species is not about at all now.
         /// </summary>
         public float BiteMult(FishAgent f)
         {
@@ -949,14 +949,41 @@ namespace FishingKing
                 else if (cf.Lane(hook.x, hook.z) >= 0.8f && pocket >= 0.999f) spot = 0.85f;
             }
 
-            if (Tackle.UsesFloat && cf != null && cf.Moving && Tackle.RelSpeed <= 0.08f) m *= 1.15f;
+            // (a float lying on the sea at dead slack is not drifting: the water must move at the hook, >= 0.05 m/s)
+            if (Tackle.UsesFloat && cf != null && cf.Moving && Tackle.RelSpeed <= 0.08f
+                && (DebugOldTide || cf.Water(hook.x, hook.z).sqrMagnitude >= StillWater * StillWater)) m *= 1.15f;
             // near structure (Docs/obstacles_spec.md 8; the stream's pocket and the structure are not stacked: the larger wins)
             m *= StructureBite(f, hook, spot);
             return Mathf.Clamp(m, 0.25f, 2f);
         }
 
+        /// <summary>Below this the water at the hook counts as still (m/s): no natural-drift bonus.</summary>
+        const float StillWater = 0.05f;
+
+        /// <summary>Test hook (-fkauto tidebites): the tide's bite rules as before the reach (for the before / after numbers).</summary>
+        internal static bool DebugOldTide;
+
         /// <summary>The sea's tide on bites: 0.6 at slack .. 1.35 at the peak of the stream; 1 elsewhere.</summary>
         public float TideMult() => L.id == "sea" ? 0.6f + 0.75f * Mathf.Clamp01(GameClock.Tide.S) : 1f;
+
+        /// <summary>
+        /// The sea's tide on how far a fish senses the bait (Docs/time_currents_spec.md 7.3): the running tide carries its
+        /// scent, 0.85 at slack .. 1.3 at the peak of the stream; 1 elsewhere. (The per-roll <see cref="TideMult"/> alone
+        /// hardly changes the bites: a fish in reach rolls again every second until it comes; this brings more fish in.)
+        /// </summary>
+        public float TideReach() => L.id == "sea" && !DebugOldTide ? 0.85f + 0.45f * Mathf.Clamp01(GameClock.Tide.S) : 1f;
+
+        /// <summary>
+        /// How far a fish senses the rig now (m): a lure 5 + 4 Q (Q = how well it is worked), a float bait 5, a glowing one
+        /// 2 m further in the cave and under the ice; x the sea's tide (<see cref="TideReach"/>).
+        /// </summary>
+        public float SenseRange()
+        {
+            var bait = Tackle.Bait;
+            float sense = bait.isLure ? 5f + 4f * Rhythm.Q : 5f;
+            if (bait.glow && (Stage.Def.id == "cave" || L.IsIce)) sense += 2f;
+            return sense * TideReach();
+        }
 
         /// <summary>A lure's strike roll x clamp(sqrt(activity) x the tide, 0.5, 1.5).</summary>
         public float StrikeMult(FishAgent f) => Mathf.Clamp(Mathf.Sqrt(Mathf.Max(0f, TimeActivity.Now(f.Sp.id))) * TideMult(), 0.5f, 1.5f) * StrikeBonus();
@@ -1238,6 +1265,21 @@ namespace FishingKing
             if (State == S.Fighting && Hooked != null) FishEscaped();
         }
 
+        /// <summary>
+        /// Test hook (-fkauto tidebites): the biting fish lets go and swims off as after a missed bite, but the bait stays on
+        /// and the rig in the water (back to waiting, no wind-in).
+        /// </summary>
+        internal bool DebugLetBiteGo()
+        {
+            if (State != S.Biting) return false;
+            biteMark.enabled = false;
+            Tackle.ResetDip();
+            if (biter != null) biter.Flee();
+            biter = null;
+            SetState(S.Waiting);
+            return true;
+        }
+
         // ------------------------------------------------------------------ fish interest
         public bool CanFishEngage(FishAgent f)
         {
@@ -1252,7 +1294,8 @@ namespace FishingKing
         /// <summary>
         /// Whether a wandering fish comes over to the bait (rolled every ~1 s per fish). A lure is sensed from 5 + 4 Q m and
         /// draws 0.15 + 1.25 Q as much (Q = how well it is worked, <see cref="Rhythm"/>); a float bait from 5 m, drawing less
-        /// while the rig moves. A glowing bait or lure is seen 2 m further in the cave and under the ice.
+        /// while the rig moves. A glowing bait or lure is seen 2 m further in the cave and under the ice; the sea's running
+        /// tide carries it further (<see cref="SenseRange"/>).
         /// </summary>
         public bool WantsToApproach(FishAgent f)
         {
@@ -1263,9 +1306,7 @@ namespace FishingKing
             float dist = new Vector2(hook.x - f.Pos.x, hook.z - f.Pos.z).magnitude;
             var bait = Tackle.Bait;
             float q = Rhythm.Q;
-            float sense = bait.isLure ? 5f + 4f * q : 5f;
-            if (bait.glow && (Stage.Def.id == "cave" || L.IsIce)) sense += 2f;
-            if (dist > sense) return false;
+            if (dist > SenseRange()) return false;
             if (Mathf.Abs(f.Depth - Tackle.Depth) > 2.5f) return false;
             float appeal = f.Sp.Appeal(bait);
             if (appeal <= 0) return false;

@@ -503,7 +503,9 @@ ebb and a quiet low slack, the night has the high slack and the night ebb.
 - **Current** (8.3): the tidal stream along the breakwater, `0.8 m/s x s`, flood towards the harbour (left), ebb out to
   sea (right).
 - **Bites**: `m_tide = 0.6 + 0.75 s` (0.6 at the slack's centre, 0.86 at its edges, 1.35 at the peak), for every sea
-  species (9.5).
+  species (9.5), and the **reach** `r_tide = 0.85 + 0.45 s` (the running tide carries the bait's scent: a float bait is
+  sensed from 4.25 m at slack, 6.5 m at the peak). Together: about **+50 % bites per minute at the peak** against slack
+  water (measured x1.56), slack water ~15 % below the old rate (`-fkauto tidebites`, 15).
 - **Depth**: on the sea `StageLayout.DepthAt(z) + 0.4 h` (the bottom is 0.4 m deeper at high water, shallower at low);
   `StageLayout.TideOffset` (static, set by the clock on the sea, 0 elsewhere) is added inside `DepthAt`.
 - **Visuals** (10.2): flow lines, slack slicks, weed lean, a wet band on the tetrapods at low water, the buoy's wake.
@@ -664,10 +666,19 @@ m_drift, 0.25, 2.0)`, `p <= 0.95`:
 | `a` | the species' activity now (6.1) |
 | `m_tide` | sea: `0.6 + 0.75 s` (7.3); elsewhere 1 |
 | `m_spot` | stream: the hook in a pocket (`Pocket <= 0.4`) 1.3; in the fast lane (`Lane >= 0.8`, `Pocket = 1`) 0.85; else 1 |
-| `m_drift` | float rigs where `Water != 0`: `RelSpeed <= 0.08` (a natural, mended drift) 1.15; else 1 |
+| `m_drift` | float rigs where the water at the hook moves (`|Water| >= 0.05` m/s: not the sea at dead slack): `RelSpeed <= 0.08` (a natural, mended drift) 1.15; else 1 |
 
 The lure strike roll (`FishAgent.UpdateApproach`) multiplies its chance by `clamp(sqrt(a) x m_tide, 0.5, 1.5)`.
 Examples: 고등어 at 새벽 peak flood `sqrt(1.5) x 1.35 = 1.65`; at 밤 low slack `sqrt(0.4) x 0.6 = 0.38`.
+
+**The reach** (`FishingController.SenseRange`): a fish rolls only within `sense x r_tide` of the hook (horizontal), `sense`
+= 5 + 4 Q for a lure, 5 for a float bait (+2 for a glowing one in the cave / under the ice), `r_tide` = sea `0.85 + 0.45 s`
+(7.3), elsewhere 1. Why both: a wandering fish within reach rolls about once a second until it comes, so `m_tide` alone
+mostly changes how many rolls a fish needs, not how many fish come: x2.25 per roll at the peak gave only x1.23 bites per
+minute with the float cast again whenever the flood pinned it, and x0.82 with the float left where the flood takes it (the
+left edge / the tetrapods, thin water); the line's drag at the peak also loses `m_drift`, which the still float at dead
+slack wrongly kept. `r_tide` changes how many fish come within reach (about x2.3 the area at the peak against slack), and
+that sets the bite rate: x1.56 (15, `-fkauto tidebites`).
 
 ### 9.6 Fish in the current
 
@@ -935,6 +946,7 @@ Each agent: tune the drafts on the review sheet, add the section 3.9 lights, run
 | `-fkclocklog` | once a real second: `[CLOCK] 05:40 dawn f 0.00 tide flood r +0.71 h -0.71 cur (-0.55,-0.08) 0.56 m/s bow 0.8` |
 | `-fkauto periods` | the capture scenario of phase 2 (15) |
 | `-fkauto current` | the gameplay test of phase 4 (15) |
+| `-fkauto tidebites` | the tide on bites per minute (15, phase 4b); `-fktidesecs <s>` the soak per run (default 2400 game s) |
 
 `-fkwaterstrip` (existing) combines with `-fktime`, `-fktide`, `-fkgust` for the motion strips.
 
@@ -948,6 +960,7 @@ Each agent: tune the drafts on the review sheet, add the section 3.9 lights, run
 | 2 Unity time of day | every stage at the four period centres, one mid-dissolve frame per stage, the map in the four periods | `-fkrich -fkauto periods -fktimescale 0 -fkshots <dir>`: for each stage and period, 3 s settle, then the RT (480x270, no UI) and the full screen | `per_<stage>_<period>.png`, `per_<stage>_<period>_hud.png` (28 + 28), `per_<stage>_x.png` at F = 0.5 of 07:45–08:15 (7), `map_<period>.png` (4) |
 | 3 moving water | motion strips: the stream (a surge passing), the sea at flood / high slack / ebb, the ocean drift, a lake gust | `-fkrich -fkwaterstrip <dir> -fkstripn 6 -fkstripdt 0.5` with `-fkwaterstages stream` / `sea -fktide flood` / `sea -fktide high` / `sea -fktide ebb` / `ocean` / `lake -fkgust` | 6 strips |
 | 4 gameplay | drift, bow and mend, tide bites, the hanging lure, fights in the current | `-fkrich -fkauto current -fkshots <dir>` (below) | one log with `[CUR] CHECK` lines + 4 shots |
+| 4b tide bites | bites per minute at high slack vs the flood's peak | sea: `-fkfresh -fkrich -fkscene Fishing -fkstage sea -fkbait bait_shrimp -fkfish mackerel -fkauto tidebites`; ocean (no tide, the control): `... -fkstage ocean -fkbait bait_squid -fkauto tidebites` (below) | one log each with `[TIDE] CHECK` lines |
 
 `-fkauto current` (new `AutoPilot.Current.cs`):
 
@@ -962,6 +975,23 @@ Each agent: tune the drafts on the review sheet, add the section 3.9 lights, run
 4. **fight**: the stream, a hooked rainbow trout, 6 runs with side pressure against every with-current run:
    `CHECK downstream` = at least one downstream run logged; `CHECK turn` = a with-current run turned and the next 4 s
    show `CurrentLoad` x 0.3. Shots `cur_fight_run.png`, `cur_fight_turned.png`.
+
+`-fkauto tidebites` (`AutoPilot.TideBites.cs`): the bite rate itself. The clock frozen at 12:30, one rig (카본 루어 로드,
+하이기어 릴, 나일론 4호, the `-fkbait` bait on a float), the tide fixed at high slack (0.5) and at the flood's peak (0.25);
+for each, the stage reloaded from the same seed, the float laid at (Angler.X, 14) and soaked 2400 game s on a fixed 1/60 s
+step (as fast as the machine draws). Every bite is counted and let go (the fish swims off, the bait stays on, the rig stays
+out). Bites per minute of soak, the approaches and rolls and the fish within reach while none is coming are logged
+(`[TIDE]`). On the sea it runs with the rule before the reach
+(`FishingController.DebugOldTide`) and with the rule now: `CHECK` bites/min at the peak >= 1.3 x at slack (now), the
+factors (bite x0.60 / x1.35, reach x0.85 / x1.30) and, on a fresh save, the first cast's `tideHint`. Elsewhere (the ocean
+with 오징어 as the control): `CHECK` the factors are 1 at both phases and both runs bite; the two rates are logged, not
+checked (the same rules run at both: they show the run-to-run spread, about x0.7–1.4 for the ocean's mixed stock of 7).
+The float is laid again when the water has carried it 8 m off or holds it against an edge (moving less than half its
+free drift over a second): at the sea's flood peak a float left alone is carried to the left edge / the tetrapods in
+about 10 s and slides along it towards the shore, in thin water (measured before the reach: x0.82 of slack, left there).
+
+Measured (the sea, 고등어 only, 새우, 2400 s per run): before the reach slack 4.57 / peak 5.65 bites/min (x1.23); now
+slack 3.85 / peak 6.00 (x1.56; slack x0.84 of before).
 
 No other capture rounds.
 

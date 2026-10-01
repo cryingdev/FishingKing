@@ -25,6 +25,7 @@
 | `-fklegend <id>` | `-fkencounter`와 함께: 불러낼 전설어 (먼바다: `blue_marlin` / `great_white`) |
 | `-fkencdebug` | 조우 중 0.1초마다 감기 속도·원 인식 등 `[ENC] dbg` 로그 |
 | `-fkauto periods` / `-fkauto current` | 시간대 4종 렌더 확인 / 물살·물때·멘딩·파이트 검사 (물때: 같은 물고기·같은 프레임에서 들물 최강 / 만조 정조의 한 번 굴림당 접근 확률 비교, 실제 접근 횟수는 로그만) |
+| `-fkauto tidebites [-fktidesecs <s>]` | 물때별 분당 입질 수: 만조 정조 / 들물 최강에서 같은 채비(찌, `-fkbait`)를 같은 시드로 각각 2400초(게임 시간, 1/60초 고정 스텝으로 빨리 감기) 담가 입질마다 세고 놓아줌, 8 m 흘러가거나 가장자리에 걸려 멈추면 다시 던짐. 바다는 바뀌기 전 규칙(도달 거리 고정)과 지금 규칙 둘 다 재고 지금 들물/정조 ≥ 1.3배 확인 (예: `-fkfresh -fkrich -fksave tide -fkscene Fishing -fkstage sea -fkbait bait_shrimp -fkfish mackerel -fkauto tidebites`), 물때 없는 곳(먼바다 `-fkbait bait_squid`)은 물때 배율이 두 위상 모두 1인지 확인(두 입질 수는 같은 규칙의 실행 간 편차로 로그만); `[TIDE] CHECK` 줄 |
 | `-fklurebites` | `-fkauto lure`와 함께: Q를 재는 동안에도 물고기가 덤빔 (기본은 안 덤빔) |
 | `-fkencwinh <px>` | 테스트 전용(기본 꺼짐): 조우 창 높이를 강제로 줄임(64..136, 위쪽 고정). 개구리·얼굴이 HUD 자리를 막아 게이지가 다른 자리로 옮겨 가는지 확인 — 예: `-fkstage swamp -fkencounter now -fkauto encounter -fkencwinh 96` (`[CAP] gauge a -> b`·페이드 인 줄, gauge_<id>_N_<자리> 캡처, "gauge moved in the narrowed window" 검사) |
 | `-fktime <hh:mm>` · `-fktimescale <x>` · `-fktide <phase>` | 게임 시계 시각·속도·물때 강제 |

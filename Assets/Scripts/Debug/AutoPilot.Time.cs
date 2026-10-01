@@ -348,7 +348,7 @@ namespace FishingKing
         /// (the game's own reach and depth tests), its chance to come per roll (<see cref="FishingController.WantsToApproach"/>'s
         /// formula) is taken twice in the same frame, the tide set to the flood's peak and to high slack, nothing else
         /// changed. The approaches the game rolled in each window are logged, but not checked: every let-go fish waits 3-6 s
-        /// to come again, so the counts saturate and flip between runs.
+        /// to come again, so the counts saturate and flip between runs (the bites per minute: -fkauto tidebites).
         /// </summary>
         IEnumerator CurTide()
         {
@@ -371,8 +371,8 @@ namespace FishingKing
                 var hook = tk.HookPos;
                 var bait = tk.Bait;
                 float q = ctl.Rhythm.Q;
-                float sense = bait.isLure ? 5f + 4f * q : 5f;
-                if (new Vector2(hook.x - f.Pos.x, hook.z - f.Pos.z).magnitude > sense || Mathf.Abs(f.Depth - tk.Depth) > 2.5f) return -1f;
+                // (the reach too follows the tide: a fish only within the slack's reach is sampled at both)
+                if (new Vector2(hook.x - f.Pos.x, hook.z - f.Pos.z).magnitude > ctl.SenseRange() || Mathf.Abs(f.Depth - tk.Depth) > 2.5f) return -1f;
                 float appeal = f.Sp.Appeal(bait);
                 if (appeal <= 0f) return -1f;
                 float activity = bait.isLure ? 0.15f + 1.25f * q : tk.RelSpeed < 0.4f ? 1f : 0.35f;
