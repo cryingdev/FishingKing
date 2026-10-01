@@ -37,7 +37,12 @@ namespace FishingKing
         float thrashWant, thrashUntil = -1f;
         /// <summary>Seconds the thrash loop fades in / out over.</summary>
         const float ThrashFade = 0.25f;
-        float dragWant, dragSeen = -1f, ambMult = 1f;
+        float dragWant, dragSeen = -1f, ambMult = 1f, ambGain = 1f;
+        /// <summary>
+        /// The base ambience's level for a recorded loop (Resources/Audio/Ambience/amb_&lt;stage&gt;, normalized to -24 dBFS RMS)
+        /// against the synthesized ones (peak-normalized, much hotter): x this on top of AmbBase.
+        /// </summary>
+        const float RecordedAmbGain = 1.4f;
         static readonly System.Collections.Generic.Dictionary<string, AudioClip> loops = new System.Collections.Generic.Dictionary<string, AudioClip>();
 
         void InitFoley()
@@ -145,12 +150,17 @@ namespace FishingKing
         public static void StageAmbience(string stageId, string kind)
         {
             if (I == null) return;
-            var b = StageLoop(stageId);
+            // a recorded loop for the stage wins over the synthesized one
+            var b = Resources.Load<AudioClip>("Audio/Ambience/amb_" + stageId);
+            float gain = b != null ? RecordedAmbGain : 1f;
+            if (b == null) b = StageLoop(stageId);
             if (b == null)
             {
                 Ambience(kind);
                 return;
             }
+            I.ambGain = gain;
+            I.ambience.volume = AmbBase * I.ambMult * I.ambGain;
             SetLoop(I.ambience, b);
             SetLoop(I.dawnSrc, DawnLoop(stageId));
             SetLoop(I.nightSrc, NightLoop(stageId));

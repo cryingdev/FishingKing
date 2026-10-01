@@ -67,6 +67,8 @@ namespace FishingKing
             AudioClip c = kind == "cave" ? ambCave : kind == "snow" ? ambWind : kind == "none" ? null : ambWater;
             SetLoop(I.dawnSrc, null);
             SetLoop(I.nightSrc, null);
+            I.ambGain = 1f;
+            I.ambience.volume = AmbBase * I.ambMult;
             SetLoop(I.ambience, c);
         }
 
@@ -75,7 +77,7 @@ namespace FishingKing
         {
             if (I == null || I.ambience == null) return;
             I.ambMult = Mathf.Clamp01(mult);
-            I.ambience.volume = AmbBase * I.ambMult;
+            I.ambience.volume = AmbBase * I.ambMult * I.ambGain;
         }
 
         /// <summary>The line rubbing on structure: the rasp loop at this volume (0 stops it).</summary>

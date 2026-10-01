@@ -9,10 +9,12 @@ namespace FishingKing.EditorTools
     /// stems run at once, a full decode would cost tens of MB), not loaded with the scene but in the background when a
     /// cue asks for it (Music waits for every stem before the sample-locked start), the sample rate and the stereo kept.
     /// Every platform gets the same settings, so a stem is never resampled or re-encoded differently from its partners.
+    /// <para>The recorded ambience loops under Resources/Audio/Ambience (Sfx.StageAmbience) get the same, except that they
+    /// load with the clip (they start playing the moment the stage opens).</para>
     /// </summary>
     public class MusicImporter : AssetPostprocessor
     {
-        const string Root = "Assets/Resources/Audio/Music/";
+        const string Root = "Assets/Resources/Audio/Music/", AmbienceRoot = "Assets/Resources/Audio/Ambience/";
         /// <summary>
         /// Vorbis quality (0..1). The sources are oggenc -q 2 (about 96 kb/s) and Unity encodes them again: at 0.6 that
         /// second generation stays clean on the soft pads and long reverb tails, at roughly a megabyte a minute of stereo.
@@ -20,21 +22,23 @@ namespace FishingKing.EditorTools
         const float Quality = 0.6f;
 
         // bump whenever the settings below change, so Unity reimports the affected assets
-        public override uint GetVersion() => 1;
+        public override uint GetVersion() => 2;
 
         void OnPreprocessAudio()
         {
-            if (!assetPath.Replace('\\', '/').StartsWith(Root)) return;
+            string path = assetPath.Replace('\\', '/');
+            bool ambience = path.StartsWith(AmbienceRoot);
+            if (!ambience && !path.StartsWith(Root)) return;
             var ai = (AudioImporter)assetImporter;
             ai.forceToMono = false;
             ai.ambisonic = false;
-            ai.loadInBackground = true;
+            ai.loadInBackground = !ambience;
             var s = ai.defaultSampleSettings;
             s.loadType = AudioClipLoadType.CompressedInMemory;
             s.compressionFormat = AudioCompressionFormat.Vorbis;
             s.quality = Quality;
             s.sampleRateSetting = AudioSampleRateSetting.PreserveSampleRate;
-            s.preloadAudioData = false;
+            s.preloadAudioData = ambience;
             ai.defaultSampleSettings = s;
             foreach (var platform in new[] { "Standalone", "Android", "iOS", "WebGL" })
                 if (ai.ContainsSampleSettingsOverride(platform)) ai.ClearSampleSettingOverride(platform);

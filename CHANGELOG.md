@@ -12,6 +12,11 @@
 
 ## 이후 변경
 
+### 계곡 환경음 (녹음)
+- 추가: `Assets/Resources/Audio/Ambience/amb_stream.ogg`(54초 루프, 스테레오): 산골 계곡의 기본 환경음이 합성 급류 대신 이 녹음으로.
+  RMS −24 dBFS로 맞추고 드문 피크만 부드럽게 눌렀으며, 게임에서 `Sfx.RecordedAmbGain`(1.4)배로 틀어 예전 합성 급류와 비슷한 크기.
+  `Audio/Ambience/amb_<스테이지 id>`가 있으면 어느 스테이지든 녹음이 합성보다 우선(새벽·밤 층은 그대로).
+
 ### 물고기 참방거림 (녹음)
 - 추가: `Assets/Resources/Audio/Sfx/fish_thrash.wav`(`Sfx.Thrash`, 3.1초 루프): 챔질 순간 1.2초, 파이트 중 물고기가 수면 가까이(0.7 m 안) 있는 동안
   (질주 중 0.75, 아니면 0.45). 점프 중엔 멈추고, 호출이 끊기면 0.25초에 걸쳐 사라짐.
