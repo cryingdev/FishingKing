@@ -101,6 +101,7 @@ namespace FishingKing
             Current = new CurrentField(L);
             Obstacles = FishingKing.Obstacles.Load(L);
             if (Current.K == CurrentField.Kind.Stream) CurrentField.AlignRocks(Obstacles.PocketRocks());
+            else if (Current.K == CurrentField.Kind.Sea) Current.SetPile(Obstacles.PileDiscs());
             horizonY = L.focalPx * Mathf.Tan(L.pitch * Mathf.Deg2Rad) / PixelView.PPU;
             LoadPeriods(id);
             backA = Layer(backs[0], OrderBack, "Back");

@@ -506,8 +506,10 @@ ebb and a quiet low slack, the night has the high slack and the night ebb.
   sea (right).
 - **Bites**: `m_tide = 0.6 + 0.75 s` (0.6 at the slack's centre, 0.86 at its edges, 1.35 at the peak), for every sea
   species (9.5), and the **reach** `r_tide = 0.85 + 0.45 s` (the running tide carries the bait's scent: a float bait is
-  sensed from 4.25 m at slack, 6.5 m at the peak). Together: about **+50 % bites per minute at the peak** against slack
-  water (measured x1.56), slack water ~15 % below the old rate (`-fkauto tidebites`, 15).
+  sensed from 4.25 m at slack, 6.5 m at the peak). Together, at the peak against slack water: about **+60 % bites per
+  minute for a float kept drifting** (cast again when the tide has carried it off or stopped it; measured x1.64) and
+  about +25 % for one left alone, which lies in the slack against the tetrapods (8.3; x1.26); slack water ~15 % below
+  the old rate (`-fkauto tidebites`, 15).
 - **Depth**: on the sea `StageLayout.DepthAt(z) + 0.4 h` (the bottom is 0.4 m deeper at high water, shallower at low);
   `StageLayout.TideOffset` (static, set by the clock on the sea, 0 elsewhere) is added inside `DepthAt`.
 - **Visuals** (10.2): flow lines, slack slicks, weed lean, a wet band on the tetrapods at low water, the buoy's wake.
@@ -567,10 +569,18 @@ him (-z) and passes him.
 
 ### 8.3 Sea — the tidal stream
 
-`Water(x, z) = 0.8 x s(t) x k(x, z) x d`, with `s` from 7.1, `d = normalize(-1, -0.15)` on the flood (towards the
+`Water(x, z) = 0.8 x s(t) x k(x, z) x c(x, z) x d`, with `s` from 7.1, `d = normalize(-1, -0.15)` on the flood (towards the
 harbour behind the mole on the left, slightly in) and `normalize(1, 0.1)` on the ebb (out to sea on the right);
 `k(x, z) = (0.6 + 0.6 smoothstep(4, 40, z)) x (|x| > 5 and z < 8 ? 0.5 : 1)` (weaker close in and in the lee of the
 tetrapod mounds, strongest off the head).
+
+**The slack against the tetrapods** (`CurrentField.Cushion`): the tide piles up against the tetrapod mounds and runs
+slack there (the cushion of a 반탄류), `c = smoothstep(0.4, 3, D)`, D = the distance off the mound's footprint: off the
+nearest `tet` solid of `obstacles_sea.json`, hub or leg (`|p - C| - R`). So the water runs freely 3 m off the tetrapods
+and dies away to nothing 0.4 m off them; `c = 1` everywhere else. A float the flood carries to the left mound slows in
+it and lies in the slack at the tetrapods' face (9.1), in deep water (6–7 m) at the edge of the run, instead
+of being pinned there with the running tide dragging past it. The flow lines fade out in it (10.2). Only on the sea,
+only while the tide runs (at dead slack `Water` is 0 anyway).
 
 ### 8.4 Ocean — the boat drifts
 
@@ -613,7 +623,9 @@ In `Tackle.Update` (state Water, not on the ice), after the float / lure motion 
 `Surface += v dt`, also while winding (added to the wind), then clamped: `|x| <= xLim - 0.6`; `z <= zFar - 1`;
 the horizontal distance from the anchor at most `castDist + 6` m (projected back onto that circle: the line holds it
 and it swings round, as `Tackle.Drag` already does); `z >= zNear + 1.0` (in the shallows at his feet the drift stops;
-that is not a retrieve). New `Tackle.RelSpeed` = |the hook's velocity - v without `v_bow`| (smoothed like `MoveSpeed`):
+that is not a retrieve). At the edge of the view or the front layer it stops and slides along it; but on the sea, a rig
+that the last of the tide or the line's belly presses onto the tetrapods where the water is slack (`c < 0.35`, 8.3)
+**lodges** where it touches: it lies in the slack at their face instead of sliding along it. New `Tackle.RelSpeed` = |the hook's velocity - v without `v_bow`| (smoothed like `MoveSpeed`):
 0 for a float riding the water freely, the wind speed while winding, `0.12 |Bow|` for a float dragged by its line.
 
 ### 9.2 The line bow and mending
@@ -680,7 +692,10 @@ mostly changes how many rolls a fish needs, not how many fish come: x2.25 per ro
 minute with the float cast again whenever the flood pinned it, and x0.82 with the float left where the flood takes it (the
 left edge / the tetrapods, thin water); the line's drag at the peak also loses `m_drift`, which the still float at dead
 slack wrongly kept. `r_tide` changes how many fish come within reach (about x2.3 the area at the peak against slack), and
-that sets the bite rate: x1.56 (15, `-fkauto tidebites`).
+that sets the bite rate: x1.64 for a float kept drifting, x1.26 for one left alone in the slack against the tetrapods
+(15, `-fkauto tidebites`). The float in that slack keeps the tide's reach: the slack is a cushion at most 3 m wide beside
+the run, which carries the scent past along the tetrapods' face (with the slack's reach there instead it bit only x0.82:
+the tetrapods' face is at the edge of the stocked water, about half the fish within reach of the open water).
 
 ### 9.6 Fish in the current
 
@@ -748,8 +763,8 @@ the rig move at the true speed.
 
 ### 10.2 Sea
 
-- **Flow lines**: 20 `DFlow` dashes, 0.6–1.4 m long, drawn along x, velocity `Water x 2.5`, alpha `0.35 + 0.45 s`
-  (off while s < 0.15), colour `lit`, spawned at z 6–45.
+- **Flow lines**: 20 `DFlow` dashes, 0.6–1.4 m long, drawn along x, velocity `Water x 2.5`, alpha `(0.35 + 0.45 s) x c`
+  (off while s < 0.15; fading out in the slack against the tetrapods, 8.3), colour `lit`, spawned at z 6–45.
 - **Slack slicks**: while s < 0.3, 4 glassy slicks: 3 rows each of long `DLight` runs (1.5–3 m, alpha 0.25) almost
   still, fading in over 3 real s — the calm of 만조 / 간조.
 - **Weed lean**: one in five foam spots of kind 1 / 2 (water below a tetrapod) carries a 2 px weed tuft (`#3c5a2c`,
@@ -818,6 +833,7 @@ under the fish icon, pointing the run's screen direction. The first time in a ru
 | `tideHint` | the first sea visit, after the first cast | `물때: 들물·날물엔 입질이 활발하고, 만조·간조엔 뜸해요` |
 | `driftHint` | the first stream cast whose float drifts to z <= zNear + 1.5 | `찌가 물살에 흘러왔어요 — 감아서 다시 던져요` |
 | `mendHint` | the first time `|Bow| >= 1.5` | `줄이 휘어 찌가 끌려가요 — 휜 반대쪽으로 밀어 줄을 고쳐요` |
+| `pinHint` | the sea / ocean: the first time a float in running water is held at the edge of the view (it moves less than half its free drift, >= 0.1 m/s, for 2 s in a row; not in the slack against the tetrapods) | `찌가 물살에 밀려 멈췄어요 — 감아서 물살 위쪽에 다시 던져요` |
 
 ### 11.4 The map
 
@@ -929,6 +945,7 @@ Each agent: tune the drafts on the review sheet, add the section 3.9 lights, run
 | `tideHint` | bool | false | the sea's tide hint was shown |
 | `driftHint` | bool | false | the stream drift hint was shown |
 | `mendHint` | bool | false | the mending hint was shown |
+| `pinHint` | bool | false | the hint for a float the water holds at the edge of the view was shown |
 
 `SaveSystem.Sanitize`: `clockMin = clamp(clockMin, 0, 1439.99)` (a NaN -> 600), `clockDay = max(1, clockDay)`.
 
@@ -982,18 +999,30 @@ Each agent: tune the drafts on the review sheet, add the section 3.9 lights, run
 하이기어 릴, 나일론 4호, the `-fkbait` bait on a float), the tide fixed at high slack (0.5) and at the flood's peak (0.25);
 for each, the stage reloaded from the same seed, the float laid at (Angler.X, 14) and soaked 2400 game s on a fixed 1/60 s
 step (as fast as the machine draws). Every bite is counted and let go (the fish swims off, the bait stays on, the rig stays
-out). Bites per minute of soak, the approaches and rolls and the fish within reach while none is coming are logged
-(`[TIDE]`). On the sea it runs with the rule before the reach
-(`FishingController.DebugOldTide`) and with the rule now: `CHECK` bites/min at the peak >= 1.3 x at slack (now), the
-factors (bite x0.60 / x1.35, reach x0.85 / x1.30) and, on a fresh save, the first cast's `tideHint`. Elsewhere (the ocean
-with 오징어 as the control): `CHECK` the factors are 1 at both phases and both runs bite; the two rates are logged, not
-checked (the same rules run at both: they show the run-to-run spread, about x0.7–1.4 for the ocean's mixed stock of 7).
-The float is laid again when the water has carried it 8 m off or holds it against an edge (moving less than half its
-free drift over a second): at the sea's flood peak a float left alone is carried to the left edge / the tetrapods in
-about 10 s and slides along it towards the shore, in thin water (measured before the reach: x0.82 of slack, left there).
+out). Bites per minute of soak, the approaches and rolls, the fish within reach while none is coming, where the float
+lies (in the tetrapods' slack, the depth under it) and whether the pin hint came are logged (`[TIDE]`). The peak is
+fished two ways: **recast**, the float laid again when the water has carried it 8 m off, holds it against an edge (moving
+less than half its free drift over a second) or has stopped it (under 0.1 m in a second: the slack against the
+tetrapods), as an active player would; and **left alone**, laid once and left where the water takes it (laid again only
+after a snag). On the sea the rules are measured three ways: before the reach (`FishingController.DebugOldTide`: slack,
+peak recast), before the tetrapods' slack (`CurrentField.DebugNoCushion`: peak recast and left alone; at slack nothing
+moves, so its slack is the slack now) and now (slack, peak recast, peak left alone). `CHECK` (now): recast at the peak
+>= 1.3 x slack; left alone >= 1.0 x slack, lying in the slack against the tetrapods (>= 75 % of the soak) over >= 5.5 m
+of water (not in the shallows); the factors (bite x0.60 / x1.35, reach x0.85 / x1.30); on a fresh save the first cast's
+`tideHint`; and the pin hint (11.3): a float laid at (Angler.X, 24), beyond the tetrapods, is held at the left edge of the
+view by the flood and shows it, the float left alone in the slack does not. Elsewhere (the ocean with 오징어 as the
+control): `CHECK` the factors are 1 at both phases and both runs bite; the two rates are logged, not checked (the same
+rules run at both: they show the run-to-run spread, about x0.7–1.4 for the ocean's mixed stock of 7).
 
-Measured (the sea, 고등어 only, 새우, 2400 s per run): before the reach slack 4.57 / peak 5.65 bites/min (x1.23); now
-slack 3.85 / peak 6.00 (x1.56; slack x0.84 of before).
+Measured (the sea, 고등어 only, 새우, 2400 s per run; runs of the same rules spread about +-10 %):
+
+| rules | slack | peak recast | peak left alone | where the float left alone lies |
+|---|---|---|---|---|
+| before the reach | 4.57 (4.62) | 5.65 (4.80): x1.23 | x0.82 (earlier measurement) | — |
+| the reach, before the tetrapods' slack | 3.85 (= now's: nothing moves at slack) | 6.00 (6.57): x1.56 (x1.75) | 4.65: x1.24 | pinned at the tetrapods' face (-7.3, 12.6) with the flood running past it at 0.45 m/s (the pin hint came) |
+| now | 3.75 | 6.15: x1.64 | 4.72: x1.26 | in the slack at the tetrapods' face (-7.3, 12.5), water 0.01 m/s, 6.5 m deep, from 23 s on (99 % of the soak) |
+
+(In brackets: this round's runs of the older rules.) Kept drifting, the float bites x1.3 more than left alone.
 
 No other capture rounds.
 

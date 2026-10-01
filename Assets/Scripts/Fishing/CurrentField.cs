@@ -10,7 +10,7 @@ namespace FishingKing
     /// <item>stream - a strong one-way flow down the channel towards the angler (-z), fastest in the meandering lane,
     ///                slack (and a slow back-eddy) behind the mid-stream rocks, surging every 6-9 s;</item>
     /// <item>sea    - the tidal stream along the breakwater (0.8 m/s x the tide's flow), to the harbour on the left on the
-    ///                flood, out to sea on the right on the ebb;</item>
+    ///                flood, out to sea on the right on the ebb; slack against the tetrapod piles;</item>
     /// <item>ocean  - the boat drifts: the water slides past it at ~0.18 m/s, its heading veering over hours;</item>
     /// <item>lake / swamp - still water; now and then a gust drifts floating things (the lake keeps a 0.02 m/s breeze);</item>
     /// <item>ice / cave - nothing.</item>
@@ -125,6 +125,50 @@ namespace FishingKing
 
         // the sea's peak tidal flow (m/s, before the distance factor): 0.8 carried a float to the tetrapods in ~10 s
         const float SeaTide = 0.65f;
+
+        // ---- the sea: the slack cushion against the tetrapod piles (Docs/time_currents_spec.md 8.3)
+        /// <summary>Test hook (-fkauto tidebites' "before" runs): no cushion, the tide runs right up to the tetrapods as it did.</summary>
+        public static bool DebugNoCushion;
+        // the piles' tet solids (x, z, R) and their bounds grown by the cushion's width
+        Vector3[] pile;
+        Rect pileBox;
+        // the tide dies away from CushionW m off a pile's footprint to CushionCore m off it
+        const float CushionW = 3f, CushionCore = 0.4f;
+
+        /// <summary>The sea: the tetrapod piles the tide runs slack against (<see cref="Obstacles.PileDiscs"/>).</summary>
+        public void SetPile(List<Vector3> discs)
+        {
+            if (discs == null || discs.Count == 0) return;
+            pile = discs.ToArray();
+            float x0 = 1e9f, x1 = -1e9f, z0 = 1e9f, z1 = -1e9f;
+            foreach (var d in pile)
+            {
+                x0 = Mathf.Min(x0, d.x - d.z); x1 = Mathf.Max(x1, d.x + d.z);
+                z0 = Mathf.Min(z0, d.y - d.z); z1 = Mathf.Max(z1, d.y + d.z);
+            }
+            pileBox = Rect.MinMaxRect(x0 - CushionW, z0 - CushionW, x1 + CushionW, z1 + CushionW);
+        }
+
+        /// <summary>
+        /// The sea: the share of the running tide at (x, z), 1 in open water. Against the tetrapods the tide piles up and
+        /// runs slack (the 반탄류 cushion): from 3 m off a pile's footprint (its nearest tet solid, hub or leg) it dies away
+        /// (smoothstep) to nothing 0.4 m off it. 1 elsewhere, and with <see cref="DebugNoCushion"/>.
+        /// </summary>
+        public float Cushion(float x, float z)
+        {
+            if (K != Kind.Sea || pile == null || DebugNoCushion || !pileBox.Contains(new Vector2(x, z))) return 1f;
+            float best = CushionW;
+            foreach (var d in pile)
+            {
+                float dx = x - d.x, dz = z - d.y;
+                if (Mathf.Abs(dx) - d.z >= best || Mathf.Abs(dz) - d.z >= best) continue;
+                best = Mathf.Min(best, Mathf.Sqrt(dx * dx + dz * dz) - d.z);
+            }
+            return SS(CushionCore, CushionW, best);
+        }
+
+        /// <summary>The sea: a rig at (x, z) is in the slack against the tetrapods (the water there under a third of the tide's).</summary>
+        public bool Slack(float x, float z) => K == Kind.Sea && Cushion(x, z) < 0.35f;
 
         static float SS(float e0, float e1, float x)
         {
@@ -283,7 +327,7 @@ namespace FishingKing
                     if (t.S <= 0f) return Vector2.zero;
                     var d = t.R >= 0f ? new Vector2(-1f, -0.15f).normalized : new Vector2(1f, 0.1f).normalized;
                     float k = (0.6f + 0.6f * SS(4f, 40f, z)) * (Mathf.Abs(x) > 5f && z < 8f ? 0.5f : 1f);
-                    return SeaTide * t.S * k * Mult * d;
+                    return SeaTide * t.S * k * Cushion(x, z) * Mult * d;
                 }
                 case Kind.Ocean:
                 {

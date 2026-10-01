@@ -205,7 +205,8 @@ namespace FishingKing
         /// wound in; a float rig and a lure at rest for 0.3 s), and the rig drifts: a float with 0.85 x the water plus the
         /// wind plus the bow's drag (0.12 Bow along the normal), a lure on the film with 0.7 x the water plus half the wind,
         /// a lure under it with 0.7 x the water x exp(-depth / 4) (x 0.1 on the bottom, none while hanging); then it is kept
-        /// in the water, within the line's reach, and never drifts into the shallows at his feet.
+        /// in the water, within the line's reach, and never drifts into the shallows at his feet. Pressed onto the sea's
+        /// tetrapods, in the slack against them, it lodges there.
         /// </summary>
         public void StepCurrent(float dt, CurrentField cf, Vector3 anchor, Vector3 shore, bool winding, float maxDist)
         {
@@ -279,6 +280,14 @@ namespace FishingKing
                 // (and never into a prop standing in the water: it stops against it and slides along it)
                 bool Ok(Vector3 p) => (Open(p) || (!fromOpen && Mathf.Abs(p.x) <= Mathf.Abs(from.x))) && Mathf.Abs(p.x) <= L.xLim - 0.6f + 1e-3f
                                       && new Vector2(p.x - anchor.x, p.z - anchor.z).magnitude <= maxDist + 1e-3f && !Blocked(p);
+                // the sea's tide runs slack against the tetrapods (CurrentField.Cushion): a rig that the last of it or the
+                // line's belly presses onto them lodges in that slack where it touches, instead of sliding along their face
+                // (which took a float left alone at the flood's peak into the shallows at his feet)
+                if (!Ok(Surface) && cf.Slack(from.x, from.z))
+                {
+                    Surface = new Vector3(from.x, 0f, from.z);
+                    return;
+                }
                 // against a prop's face (or a midstream rock's painted top that would hide the float): the water carries it
                 // on round the prop's side, not pinned there for good (spec 4.9 "stops at it and swings round")
                 if (!Ok(Surface) && Obst != null && !Obst.Empty)

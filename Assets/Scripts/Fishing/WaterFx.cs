@@ -1248,13 +1248,14 @@ namespace FishingKing
         }
 
         // ------------------------------------------------------------------ the sea: the tide's flow lines
-        /// <summary>A flow line (fx_flow_&lt;len&gt;_&lt;strength&gt;, flowing right, flipped for left): alpha 0.35 + 0.45 s, off below s 0.15.</summary>
+        /// <summary>A flow line (fx_flow_&lt;len&gt;_&lt;strength&gt;, flowing right, flipped for left): alpha (0.35 + 0.45 s) x the tetrapods' cushion, off below s 0.15.</summary>
         void DrawFlow(ref Dash d, float cc, float rr, float ppm, float a)
         {
             if (cur == null) return;
             float s = Mathf.Clamp01(GameClock.Tide.S * CurrentField.Mult);
             if (s < 0.15f) return;
-            a *= 0.35f + 0.45f * s;
+            // (they fade out in the slack against the tetrapods, where the tide dies away)
+            a *= (0.35f + 0.45f * s) * cur.Cushion(d.x, d.z);
             if (a < 0.125f) return;
             var w = cur.Water(d.x, d.z);
             Proj(d.x + w.x, 0, d.z + w.y, out float c2, out _, out _);

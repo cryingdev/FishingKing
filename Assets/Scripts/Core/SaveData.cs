@@ -96,6 +96,7 @@ namespace FishingKing
         public bool tideHint;            // the sea's tide hint was shown
         public bool driftHint;           // the stream drift hint was shown
         public bool mendHint;            // the mending hint was shown
+        public bool pinHint;             // the hint for a float the tide holds at the edge of the view was shown
 
         public static SaveData NewGame()
         {

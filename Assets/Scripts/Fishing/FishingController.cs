@@ -888,6 +888,46 @@ namespace FishingKing
                 Game.I.Save();
                 hud.Flash("줄이 휘어 찌가 끌려가요 — 휜 반대쪽으로 밀어 줄을 고쳐요", UIKit.Sky, 2.8f);
             }
+            PinHint(dt, winding);
+        }
+
+        // the pin hint's watch: the float's way over each second against its free drift, and how long it has been held
+        float pinT, pinMoved, pinFree, pinHeldT;
+        Vector3 pinLast;
+        bool pinHas;
+
+        /// <summary>
+        /// The tide (the sea) or the boat's drift (the ocean) holds the float at the edge of the view in running water: it
+        /// moves less than half its free drift (>= 0.1 m/s) for 2 s in a row. Once ever: recast up-current (spec 11.3).
+        /// (Lodged in the slack against the tetrapods its free drift is ~0: not held, it lies in the slack.)
+        /// </summary>
+        void PinHint(float dt, bool winding)
+        {
+            var cf = Stage.Current;
+            if (Game.Data.pinHint || winding || !Tackle.UsesFloat || cf == null || (cf.K != CurrentField.Kind.Sea && cf.K != CurrentField.Kind.Ocean))
+            {
+                pinHas = false;
+                pinT = pinMoved = pinFree = pinHeldT = 0f;
+                return;
+            }
+            var s = Tackle.Surface;
+            if (pinHas)
+            {
+                pinMoved += new Vector2(s.x - pinLast.x, s.z - pinLast.z).magnitude;
+                pinFree += Tackle.FreeDrift.magnitude * dt;
+                pinT += dt;
+            }
+            pinLast = s;
+            pinHas = true;
+            if (pinT < 1f) return;
+            bool held = pinFree >= 0.1f && pinMoved < 0.5f * pinFree && !cf.Slack(s.x, s.z);
+            pinHeldT = held ? pinHeldT + pinT : 0f;
+            pinT = pinMoved = pinFree = 0f;
+            if (pinHeldT < 2f) return;
+            Game.Data.pinHint = true;
+            Game.I.Save();
+            hud.Flash("찌가 물살에 밀려 멈췄어요 — 감아서 물살 위쪽에 다시 던져요", UIKit.Sky, 2.8f);
+            Debug.Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "[CUR] pin hint: the float held at ({0:0.00}, {1:0.00})", s.x, s.z));
         }
 
         /// <summary>
@@ -970,6 +1010,8 @@ namespace FishingKing
         /// The sea's tide on how far a fish senses the bait (Docs/time_currents_spec.md 7.3): the running tide carries its
         /// scent, 0.85 at slack .. 1.3 at the peak of the stream; 1 elsewhere. (The per-roll <see cref="TideMult"/> alone
         /// hardly changes the bites: a fish in reach rolls again every second until it comes; this brings more fish in.)
+        /// (A float lying in the slack against the tetrapods keeps it: the slack is a thin cushion beside the run, which
+        /// carries the scent past along their face.)
         /// </summary>
         public float TideReach() => L.id == "sea" && !DebugOldTide ? 0.85f + 0.45f * Mathf.Clamp01(GameClock.Tide.S) : 1f;
 

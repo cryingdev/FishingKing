@@ -773,6 +773,14 @@ namespace FishingKing
             return r;
         }
 
+        /// <summary>The sea's tetrapod piles (time_currents_spec 8.3): every tet solid (hubs and legs) as (x, z, R), for CurrentField.</summary>
+        public List<Vector3> PileDiscs()
+        {
+            var r = new List<Vector3>();
+            foreach (var s in Solids) if (s.Has("tet")) r.Add(new Vector3(s.C.x, s.C.y, s.R));
+            return r;
+        }
+
         public static string F(float v) => v.ToString("0.00", CI);
     }
 }

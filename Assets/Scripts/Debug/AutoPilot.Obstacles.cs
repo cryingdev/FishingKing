@@ -44,7 +44,7 @@ namespace FishingKing
             GameClock.Min = GameClock.Centre(Period.Day);
             // (the one-time hints would cover the captures' flashes)
             var sd = Game.Data;
-            sd.sweepHint = sd.tideHint = sd.driftHint = sd.mendHint = sd.sideHint = sd.timeHint = true;
+            sd.sweepHint = sd.tideHint = sd.driftHint = sd.mendHint = sd.sideHint = sd.timeHint = sd.pinHint = true;
             var ctl = FindAnyObjectByType<FishingController>();
             if (ctl != null && ctl.Stage.Def.id == "ocean")
             {
