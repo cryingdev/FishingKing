@@ -5,22 +5,24 @@ using UnityEngine.UI;
 namespace FishingKing
 {
     /// <summary>
-    /// Settings dialog: sound, the reel-gesture ring (circle + direction arrows), which way a drawn circle winds in
-    /// (clockwise by default, counter-clockwise for players who prefer it) and the fishing view's zoom after the cast
-    /// (끔 / 1.25배 (default) / 1.5배 / 액티브, <see cref="ZoomMode"/>).
+    /// Settings dialog: sound, the background music (<see cref="Music"/>), the reel-gesture ring (circle + direction
+    /// arrows), which way a drawn circle winds in (clockwise by default, counter-clockwise for players who prefer it) and
+    /// the fishing view's zoom after the cast (끔 / 1.25배 (default) / 1.5배 / 액티브, <see cref="ZoomMode"/>).
     /// </summary>
     public static class SettingsUI
     {
-        const float Width = 700, RowStep = 72, FirstRowY = -96;
+        // (five rows: 64 apart and 488 high keep the window and its ribbon inside the smallest canvas, 540 high)
+        const float Width = 700, Height = 488, RowStep = 64, FirstRowY = -96;
 
         public static void Open()
         {
-            var w = Dialog.Window("설정", new Vector2(Width, 444), out var close);
+            var w = Dialog.Window("설정", new Vector2(Width, Height), out var close);
             Row(w, 0, "소리", () => Game.Data.soundOn, on => Game.I.SetSound(on));
-            Row(w, 1, "릴 감기 원 · 방향 화살표", () => Game.Data.reelRing, on => Game.I.SetReelRing(on));
-            Row(w, 2, "원을 그려 감는 방향", () => Game.Data.reelReverse, on => Game.I.SetReelReverse(on),
+            Row(w, 1, "배경음", () => Game.Data.musicOn, on => Game.I.SetMusic(on));
+            Row(w, 2, "릴 감기 원 · 방향 화살표", () => Game.Data.reelRing, on => Game.I.SetReelRing(on));
+            Row(w, 3, "원을 그려 감는 방향", () => Game.Data.reelReverse, on => Game.I.SetReelReverse(on),
                 "반시계방향", "시계방향", "blue", "blue");
-            Choice(w, 3, "캐스팅 후 줌인", () => Game.Data.zoomMode, v => Game.I.SetZoomMode((ZoomMode)v),
+            Choice(w, 4, "캐스팅 후 줌인", () => Game.Data.zoomMode, v => Game.I.SetZoomMode((ZoomMode)v),
                 ("끔", (int)ZoomMode.Off), ("1.25배", (int)ZoomMode.X125), ("1.5배", (int)ZoomMode.X150), ("액티브", (int)ZoomMode.Active));
             var done = UIKit.Button(w, "닫기", "grey", close, new Vector2(160, 56));
             done.GetComponent<RectTransform>().At(new Vector2(0.5f, 0), new Vector2(0, 28), new Vector2(160, 56), new Vector2(0.5f, 0));

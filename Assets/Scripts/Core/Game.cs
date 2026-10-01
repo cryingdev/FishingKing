@@ -37,6 +37,7 @@ namespace FishingKing
             I = go.AddComponent<Game>();
             I.data = SaveSystem.Load();
             go.AddComponent<Sfx>();
+            go.AddComponent<Music>();
             go.AddComponent<SceneFlow>();
             AudioListener.volume = I.data.soundOn ? 1f : 0f;
             Application.targetFrameRate = 60;
@@ -68,6 +69,8 @@ namespace FishingKing
         // -fkobstacles show|off  obstacles (Docs/obstacles_spec.md 12): show = every obstacle drawn in every state, off = no
         //                    obstacle data loaded (the game as before); -fkobstlog an [OBST] line for every event;
         //                    -fksnag <x> the snag rates x x (0 = never, 99 = at once); -fkobstseed <n> the obstacle rolls' seed
+        // -fkmusic off|chiptune  no background music / the old chiptune for every cue; -fkmusiclog a [MUSIC] line for every
+        //                    music event (read by Music itself at boot: see Music)
         static string Arg(string key)
         {
             var args = Environment.GetCommandLineArgs();
@@ -455,6 +458,13 @@ namespace FishingKing
         {
             data.soundOn = on;
             AudioListener.volume = on ? 1f : 0f;
+            Notify();
+        }
+
+        /// <summary>설정 → 배경음 (Music follows the save: its decks fade out / the cue comes back).</summary>
+        public void SetMusic(bool on)
+        {
+            data.musicOn = on;
             Notify();
         }
 

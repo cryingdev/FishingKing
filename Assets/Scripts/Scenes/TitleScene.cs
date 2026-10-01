@@ -25,7 +25,7 @@ namespace FishingKing
             var angler = Angler.Create(stage);
             angler.SetPose("idle");
             Toast.Init();
-            Sfx.Music(true);
+            Music.Play("title");
 
             var canvas = UIKit.CreateCanvas("TitleUI", 10);
             var root = (RectTransform)canvas.transform;

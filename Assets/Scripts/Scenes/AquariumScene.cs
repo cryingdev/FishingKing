@@ -47,7 +47,7 @@ namespace FishingKing
             Fx.Ensure();
             Toast.Init();
             Sfx.Ambience("none");
-            Sfx.Music(true);
+            Music.Play("aquarium");
             var root = uiRoot = BuildUI();
             Rebuild();
             feed = new GameObject("AquaFeed").AddComponent<AquaFeed>();
