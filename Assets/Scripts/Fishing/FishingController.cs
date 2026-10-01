@@ -206,12 +206,14 @@ namespace FishingKing
             Watch = LegendWatch.For(this);
             if (Watch != null) Debug.Log($"[ENC] {Stage.Def.id}: legend watch {string.Join(", ", Watch.Legends.Select(f => f.id))} (debug {LegendWatch.DebugMode ?? "off"}{(LegendWatch.DebugLegend != null ? ", " + LegendWatch.DebugLegend : "")})");
             InitZoom();   // (the view zooms in on the rig once it lands: FishingController.Zoom.cs)
+            InitMusic();  // (the stage's cue and everything the state does to it: FishingController.Music.cs)
             SetState(S.Ready);
         }
 
         void OnDestroy()
         {
             Sfx.Rasp(0f);
+            LeaveMusic();
             GameClock.PeriodBegan -= OnPeriodBegan;
             GameClock.Stopped();
             if (Game.I != null)
@@ -303,6 +305,7 @@ namespace FishingKing
         void Update()
         {
             TickClock();
+            TickMusic(Time.unscaledDeltaTime);
             Angler.WalkInput = 0f; // he only walks while ready (UpdateReady)
             // the line's belly in the current shows while the rig is in the water
             if (State != S.Waiting && State != S.Retrieving && State != S.Biting) Angler.LineBow = Vector3.zero;
@@ -1968,6 +1971,7 @@ namespace FishingKing
         /// </summary>
         void FishOff()
         {
+            FishOffMusic();
             bool keep = Tackle.FloatFight == Tackle.FightFloat.Line;
             EndFightCommon(keep);
             Angler.SetPose("idle");
@@ -2026,6 +2030,7 @@ namespace FishingKing
                 yield return null;
             }
             Sfx.Play(Sfx.Catch, 0.9f);
+            CatchMusic(fish.Sp);
             Fx.Burst(P.To2D(fish.Pos), UIKit.Gold, 16, 4f);
             var cf = Game.I.MakeCatch(fish.Sp, fish.Cm, Stage.Def.id);
             var rep = Game.I.RegisterCatch(cf);

@@ -179,8 +179,8 @@ def songs():
     for b, line in CELESTA.items():
         v = 74 if b == 10 else 68                                         # lean into the climax
         ce.seq(b, 0, [(p, d, v - (5 if i else 0)) for i, (p, d) in enumerate(line)], legato=0.94)
-    for b, beat, line in VIBES:
-        vb.seq(b, beat, line, vel=64 if b == 8 else 76, legato=0.95)   # the answers sit over the comp; the counter-line under the celesta
+    for b, beat, line in VIBES:  # the answers sit over the comp, the counter-line (bar 8) under the celesta
+        vb.seq(b, beat, line, vel=64 if b == 8 else 76, legato=0.95)
 
     # --- accompaniment
     harp_part(hp)

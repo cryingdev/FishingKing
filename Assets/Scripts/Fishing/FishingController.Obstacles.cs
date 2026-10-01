@@ -665,6 +665,7 @@ namespace FishingKing
             {
                 Sfx.Play(Sfx.Snap, 1f);
                 view.Shake(0.3f, 0.35f);
+                SnagBreakMusic();
             }
             string msg = cut ? "줄을 끊었어요" : "밑걸림으로 줄이 끊어졌다!";
             if (lure) msg += "  (루어를 잃었다)";

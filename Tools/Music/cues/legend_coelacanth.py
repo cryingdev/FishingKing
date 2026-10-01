@@ -17,7 +17,8 @@ Form (one chord per bar):
                                             cellos, tambourine; the climb to D6 (bar 13), a full cadence on Am
   B   16-23 F Am/C Dm E | F G#o7 Am E       contrast: half-time drums, harp arpeggios, crystal on every half bar, a
                                             chant in two choir voices (peak A5, bar 22) answered by kalimba; the
-                                            strings rest, then build (violas double the chant, high tremolo, roll)
+                                            violins rest, then it builds (violas double the chant, high tremolo,
+                                            pumping cellos, the marimba back in sixteenths, a snare roll)
   B'  24-31 Dm Am/C G#o7/B E | F Dm E7 E7   the motif turned upside down in a rising sequence, violas in harmony,
                                             the climax F6 (bar 29), then the turnaround on an E pedal (E Phrygian
                                             dominant): rising/falling string runs, marimba sweeps, timpani + snare
@@ -121,7 +122,7 @@ THEME = {
     31: [("B5", 1), ("G#5", .5), ("F5", .5), ("E5", .5), ("D5", .25), ("C5", .25), ("B4", .5), ("G#4", .5)],
 }
 THEME_VEL = {**{b: 90 for b in range(0, 8)}, **{b: 96 for b in range(8, 12)}, **{b: 102 for b in range(12, 16)},
-             **{b: 98 for b in range(24, 28)}, **{b: 100 for b in range(28, 32)}}
+             **{b: 98 for b in range(24, 28)}, **{b: 100 for b in range(28, 31)}, 31: 96}
 
 # the B chant (choir, with a second voice): long notes, rising to A5 at bar 22, ending on the sigh
 CHANT = {
@@ -274,7 +275,7 @@ def songs():
     for b in list(range(0, 16)) + list(range(24, BARS)):
         lo, hi = (n("G3"), n("G#4")) if b < 8 else ((n("A3"), n("A#4")) if b < 16 else (n("B3"), n("C5")))
         v_ = voicing(PROG[b], prev, lo, hi)
-        choir.chord(b, 0, v_, 3.92, 62 if b < 8 else (70 if b < 16 else 74))
+        choir.chord(b, 0, v_, 3.92, 66 if b < 8 else (70 if b < 16 else 74))
         prev = v_
     for b, items in CHANT.items():
         phrase(choir, b, items, 84 if b < 20 else 90, legato=.97, harmony=choir, hvel=(74 if b < 20 else 80))
@@ -283,7 +284,7 @@ def songs():
         choir.swell(b, 0, 4, 84, 104).swell(b + 1, 0, 3.9, 104, 86)
     choir.cc(8, 0, 11, 92).swell(8, 0, 20, 92, 118).swell(14, 0, 8, 118, 92)
     choir.cc(16, 0, 11, 96).swell(16, 0, 24, 96, 120).swell(22, 0, 8, 120, 104)
-    choir.cc(24, 0, 11, 96).swell(24, 0, 28, 96, 118)
+    choir.cc(24, 0, 11, 96).swell(24, 0, 28, 96, 112)
 
     # --- crystal pad: a struck chord each bar, every half bar in B
     prev = None
@@ -398,7 +399,7 @@ def songs():
     roll(timp, 23, 1, 3, e2, 50, 98)
     for i in range(8):
         tp(30, i * .5, 76 + 2 * i, .45)
-    roll(timp, 31, 0, 4, e2, 58, 96)
+    roll(timp, 31, 0, 4, e2, 58, 90)
 
     # --- reverse cymbals: ~2.5 beats at E4 (peaks after ~1.27 s), landing on bars 8, 24 and 0; E4 is a chord tone
     # of the E it swells over

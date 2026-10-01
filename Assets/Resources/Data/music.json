@@ -145,6 +145,29 @@
    ]
   },
   {
+   "id": "stage_cave",
+   "kind": "loop",
+   "bpm": 76,
+   "beatsPerBar": 4,
+   "bars": 24,
+   "loopSamples": 3342317,
+   "desc": "Crystal cave: reverberant marimba arpeggios, crystal pad, kalimba melody and glockenspiel glints in C# minor; night: thinner marimba drips, low choir pad, vibraphone; fight: low toms and woodblocks, synth bass eighths, marimba ostinato",
+   "stems": [
+    {
+     "name": "day",
+     "clip": "Audio/Music/stage_cave_day"
+    },
+    {
+     "name": "night",
+     "clip": "Audio/Music/stage_cave_night"
+    },
+    {
+     "name": "fight",
+     "clip": "Audio/Music/stage_cave_fight"
+    }
+   ]
+  },
+  {
    "id": "stage_ice",
    "kind": "loop",
    "bpm": 66,

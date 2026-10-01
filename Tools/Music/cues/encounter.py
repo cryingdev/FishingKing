@@ -14,11 +14,13 @@ Bass: D D Eb D | D G G A | D Eb E F | G G A A.
 lurk      warm-pad drone in open fifths (tied common tones), sustained contrabass on the bass line with bowed
           swells, five sparse low piano clusters (chord tones plus a whole step, off the beat), four reverse-cymbal
           swells into bars 4, 8, 13 and 0. No melody.
-approach  cello pulse in eighths (3+3+2 accents, light; root / chord tones on the beats, a chromatic lead-in on the
-          last eighth; octave leaps and a rising register in the second half), violas holding the inner thirds.
+approach  cello pulse in eighths (3+3+2 accents, light; root / chord tones on the beats, a lead-in on the last
+          eighth: the leading tone from below, or the chord tone above, never a semitone against the held chord;
+          octave leaps and a rising register in the second half), violas holding the inner thirds.
 tease     high tremolo strings (A5..G6) whose top line hovers D6-Eb6, drops to A5 at bar 8 and climbs to G6;
-          glassy celesta figures (chromatic upper neighbours off the beat), denser and higher towards bar 13;
-          crystal bells on single chord tones.
+          the lure: the celesta plays the game's MOTIF head in D minor (A D E F— E D, bar 0; the head again at
+          bar 8); glassy celesta figures (chromatic upper neighbours off the beat), denser and higher towards
+          bar 13; crystal bells on single chord tones.
 
 The game also plays a heartbeat (38-50 Hz thumps at 0.5 / 0.8 Hz) and a drone (55-50 Hz every 1.6 s): nothing here
 strikes low notes on a regular quarter (or dotted-quarter) grid. The bass is sustained above D2, the cello pulse
@@ -27,7 +29,7 @@ Only chord tones sit on the beats in every track (neighbours and lead-ins on off
 only semitone inside a chord (A7b9's A against the tremolo's Bb) is kept more than two octaves apart.
 """
 
-from fk_music import Song, Key, GM, n
+from fk_music import Song, Key, GM, MOTIF, n
 
 KEY = Key("D", "minor")
 BARS = 16
@@ -179,18 +181,21 @@ ACCENTS = (0, 3, 6)          # 3+3+2, soft: the even eighths stay in front, not 
 
 
 def lead(bar, here):
-    """The last eighth of a bar: a step into the next bar's pulse (chromatic from below when rising)."""
+    """The last eighth of a bar: a step into the next bar's pulse. Rising, the leading tone from below when the
+    chord holds it (C# into D); otherwise the chord tone just above the target (Bb into A, A into G). A chromatic
+    note from below would rub a semitone against the root the bass, pad and violas are still holding."""
     nxt = n(CELLO[(bar + 1) % BARS][0][0])
     if nxt == here:
         return n(CELLO[bar][-1][1])
     if abs(nxt - here) <= 1:
         return here
-    if nxt > here:
+    ch = CH[HARM[bar][-1][1]]
+    if nxt > here and (nxt - 1) % 12 in ch:
         return nxt - 1
-    p = nxt + 1
-    while not KEY.in_key(p):
-        p += 1
-    return p
+    for p in (nxt + 1, nxt + 2, nxt + 3):
+        if p % 12 in ch:
+            return p
+    return here
 
 
 def approach(s):
@@ -226,7 +231,7 @@ def approach(s):
 # celesta figures per bar: (beat, kind, from, notes) in sixteenths. up / down = chord tones from `from`;
 # turn = a chord tone, its chromatic upper neighbour, the tone again, then two chord tones below
 FIGS = {
-    0: [(1.5, "up", "D5", 4)],
+    0: [],                                                       # the lure (LURES)
     1: [(2.25, "turn", "A5", 4)],
     2: [(0.5, "up", "G5", 4)],
     3: [(2.5, "down", "A6", 4)],
@@ -234,7 +239,7 @@ FIGS = {
     5: [(0.5, "turn", "D6", 4)],
     6: [(2.25, "up", "G5", 4)],
     7: [(0.25, "down", "E6", 4), (2.5, "turn", "C#6", 4)],
-    8: [(0.5, "up", "D5", 4), (2.75, "down", "F6", 4)],
+    8: [(2.75, "down", "D6", 4)],                               # after the lure's head
     9: [(0.25, "up", "Eb5", 5), (2.5, "turn", "Bb5", 4)],
     10: [(0.5, "turn", "G5", 4), (1.75, "up", "E5", 5)],
     11: [(0.25, "up", "D5", 4), (2.25, "up", "A5", 5)],
@@ -243,6 +248,11 @@ FIGS = {
     14: [(0.5, "down", "E6", 4), (2.25, "turn", "E6", 4)],
     15: [(0.75, "down", "Bb6", 4), (2.5, "down", "E6", 3)],
 }
+# the lure: the game's motif (MOTIF bar 1, sol do re mi— re do) turned to D minor, A D E F— E D, high in the
+# celesta, as if the legend were toying with the player's own theme: (bar, beat, notes, last note's beats).
+# Displaced by an off-beat so D and F (chord tones of Dm) land on the beats and E falls between them;
+# bar 8 has only the head (A D E F—), answered by a falling arpeggio
+LURES = [(0, 1.5, 6, 0.9), (8, 0.5, 4, 0.7)]
 # crystal bells: (bar, beat, pitch, beats, vel), one chord tone each
 BELLS = [(1, 2.5, "A6", 1.4, 62), (4, 1.5, "F6", 2.4, 58), (6, 2.5, "G6", 1.4, 62), (9, 1.5, "Bb6", 2.4, 62),
          (11, 2.5, "A6", 1.4, 66), (13, 0.5, "G6", 3.3, 72), (15, 1.5, "E6", 2.4, 64)]
@@ -278,6 +288,20 @@ def figure(tr, bar, beat, kind, start, count, vel):
         tr.note(bar, pos, p, d, v)
 
 
+def lure(tr, bar, beat, count, last, vel):
+    """The first `count` notes of MOTIF bar 1 in D minor from bar / beat (may cross the bar line)."""
+    pos = bar * 4 + beat
+    for i, (d, ln) in enumerate(MOTIF[0][:count]):
+        b, bt = divmod(pos, 4)
+        b = int(b)
+        p = KEY.deg(d, 6)
+        if is_beat(bt) and p % 12 not in HIGH_CH[seg_at(b, bt)[2]]:
+            raise ValueError(f"encounter: lure {p} on beat {bt} of bar {b} is not a chord tone")
+        dur = last if i == count - 1 else ln * 0.9
+        tr.note(b, bt, p, dur, vel + (4 if is_beat(bt) else 0) + (6 if ln > 1 else 0))
+        pos += ln
+
+
 def tease(s):
     tr = s.track("tremolo", GM["tremolo_strings"], stem="tease", vol=80, pan=10, reverb=86)
     ce = s.track("celesta", GM["celesta"], stem="tease", vol=100, pan=-26, reverb=96)
@@ -294,6 +318,8 @@ def tease(s):
     for bar, figs in FIGS.items():
         for (beat, kind, start, count) in figs:
             figure(ce, bar, beat, kind, start, count, 52 if bar < 8 else (58 if bar < 12 else 64))
+    for (bar, beat, count, last) in LURES:
+        lure(ce, bar, beat, count, last, 56 if bar < 8 else 60)
     for (bar, beat, p, d, v) in BELLS:
         cr.note(bar, beat, p, d, v)
 
