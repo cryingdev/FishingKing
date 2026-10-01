@@ -101,17 +101,32 @@ namespace FishingKing
             else MCheck($"{what}: the stems in sync", worst <= SyncTolMs, string.Format(CIm, "widest gap {0:0.00} ms", worst));
         }
 
-        /// <summary>The whole run: the current deck's stems read every 0.5 s.</summary>
+        /// <summary>
+        /// The whole run: the current deck's stems read every 0.5 s. A gap counts once it shows on two reads in a row of
+        /// the same deck: stems that really drifted stay apart, while a deck just scheduled can show one mixer block (21 ms)
+        /// on its first read that is gone on the next (logged as a transient).
+        /// </summary>
         IEnumerator MusicSyncWatch()
         {
+            float prev = -1f;
+            string prevCue = null;
             while (true)
             {
                 yield return new WaitForSecondsRealtime(0.5f);
                 float ms = Music.SyncMs();
-                if (ms < 0f) continue;
+                string cue = Music.Current;
+                if (ms < 0f)
+                {
+                    prev = -1f;
+                    continue;
+                }
                 musSyncReads++;
-                musSyncWorst = Mathf.Max(musSyncWorst, ms);
-                if (ms > SyncTolMs && musSyncBad++ < 10) Log(string.Format(CIm, "[MUSIC] sync gap {0:0.00} ms on {1}", ms, Music.Current));
+                float held = cue == prevCue && prev >= 0f ? Mathf.Min(ms, prev) : 0f;
+                musSyncWorst = Mathf.Max(musSyncWorst, held);
+                if (held > SyncTolMs && musSyncBad++ < 10) Log(string.Format(CIm, "[MUSIC] sync gap {0:0.00} ms on {1} (two reads in a row)", held, cue));
+                else if (ms > SyncTolMs) Log(string.Format(CIm, "[MUSIC] sync transient {0:0.00} ms on {1} (one read)", ms, cue));
+                prev = ms;
+                prevCue = cue;
             }
         }
 
