@@ -1146,7 +1146,8 @@ namespace FishingKing
                 "[ENC] penalty {0} \"{1}\" gauge={2:0} mood={3} tease={4:0.0}", k, text, Encounter.Gauge, LegendEncounter.MoodName(Encounter.Mood), Encounter.TeaseT));
             SetState(S.Encounter);
             hud.Flash("…!", UIKit.Gold, 0.8f);
-            Sfx.Play(Sfx.Drone, 0.6f);
+            // (under sting_omen's low swell the drone only marks the moment)
+            Sfx.Play(Sfx.Drone, Music.WillSting("sting_omen") ? OmenDroneUnderSting : 0.6f);
             Debug.Log(string.Format(System.Globalization.CultureInfo.InvariantCulture,
                 "[ENC] start {0} {1:0}cm lure {2} depth {3:0.00} z {4:0.0} q {5:0.00} gauge {6:0} (pity {7}, seen {8}, debug {9})",
                 sp.id, encCm, Tackle.Bait.id, Tackle.Depth, Tackle.Surface.z, Rhythm.Q, Encounter.Gauge, rec.pity, rec.seen, LegendWatch.DebugMode ?? "off"));
@@ -1487,7 +1488,9 @@ namespace FishingKing
         {
             biteMark.enabled = false;
             Sfx.Play(Sfx.Hook, 1f);
-            Sfx.Thrash(0.7f, 1.2f);   // the fish splashes as the hook goes home
+            // the fish splashes as the hook goes home: only one near the surface (not a bottom fish, nor under the ice),
+            // a big one louder
+            if (biter != null && biter.Pos.y > -1f && !L.IsIce) Sfx.Thrash(0.7f * ThrashSize(biter.Cm), 1.2f);
             view.Shake(0.12f, 0.15f);
             var f = biter;
             biter = null;
@@ -1938,7 +1941,7 @@ namespace FishingKing
             FightObstacles(dt, f, pos);
 
             // thrashing near the surface (its sound: louder while it runs)
-            if (depth < 0.7f && jumpTime < 0) Sfx.Thrash(running ? 0.75f : 0.45f);
+            if (depth < 0.7f && jumpTime < 0) Sfx.Thrash((running ? 0.75f : 0.45f) * ThrashSize(Hooked.Cm));
             splashT -= dt;
             if (splashT <= 0 && depth < 0.7f && jumpTime < 0)
             {
@@ -2201,7 +2204,8 @@ namespace FishingKing
                 // way up and while it hangs, so nothing nearer ever shows it in front of the rail / the pier's edge)
                 yield return null;
             }
-            Sfx.Play(Sfx.Catch, 0.9f);
+            // (the old jingle only when no catch sting will play: two fanfares in two keys clash)
+            if (!Music.WillSting(CatchSting(fish.Sp))) Sfx.Play(Sfx.Catch, 0.9f);
             CatchMusic(fish.Sp);
             Fx.Burst(P.To2D(fish.Pos), UIKit.Gold, 16, 4f);
             var cf = Game.I.MakeCatch(fish.Sp, fish.Cm, Stage.Def.id);

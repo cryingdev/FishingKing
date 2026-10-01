@@ -997,7 +997,9 @@ namespace FishingKing
                 Emit(bubbleS, at, 4, 14f, lureSr.sortingOrder + 1);
                 Emit(bubbleM, at, 2, 10f, lureSr.sortingOrder + 1);
                 PopRing(new Vector3(lure.x, set.surfaceY, lure.z), 12f);
-                Sfx.PlayVar(Sfx.Plop, 0.35f, 0.12f);
+                // the popper chugs as it does in normal fishing (Tackle); the frog's pop is a plop
+                if (bait != null && bait.id == "bait_popper") Sfx.PlayVar(Sfx.Pop, 0.5f, 0.1f);
+                else Sfx.PlayVar(Sfx.Plop, 0.35f, 0.12f);
             }
             falling = false;
             if (live && li.Winding)

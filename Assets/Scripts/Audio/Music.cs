@@ -16,8 +16,9 @@ namespace FishingKing
     /// ducks the decks (the one fading out too) while it sounds, then lets them back up. A loop cue (or the manifest)
     /// that is missing falls back to the old chiptune (<see cref="Sfx.Music"/>) so the game is never silent while the
     /// tracks are being made. An audio reset (a new output device) stops every source: the current deck is started again.
-    /// Lives on the persistent [Game] object; every fade runs on unscaled time. 설정 → 배경음 (<see cref="SaveData.musicOn"/>)
-    /// switches it off and on; 소리 (AudioListener) still silences everything.
+    /// Lives on the persistent [Game] object; every fade runs on unscaled time. 설정 → 음량 → 배경음 (<see cref="SaveData.musicOn"/>,
+    /// or its slider at 0) switches it off and on; the 배경음악 slider (<see cref="AudioMix.Bgm"/>) scales every deck, sting and
+    /// the chiptune live; 소리 (AudioListener) still silences everything.
     /// <code>
     /// -fkmusic off        no music at all (the save's setting is left alone)
     /// -fkmusic chiptune   the manifest ignored: every loop cue is the old chiptune, no stings
@@ -255,8 +256,16 @@ namespace FishingKing
                 $"mode {(forceOff ? "off" : forceChip ? "chiptune" : "normal")}");
         }
 
-        /// <summary>Music may sound: not -fkmusic off and 설정 → 배경음 on.</summary>
-        static bool On => !forceOff && (Game.I == null || Game.Data.musicOn);
+        /// <summary>Music may sound: not -fkmusic off, 설정 → 음량 → 배경음 on and its slider above 0.</summary>
+        static bool On => !forceOff && (Game.I == null || (Game.Data.musicOn && Game.Data.musicVol > 0));
+
+        /// <summary>
+        /// The sting <paramref name="cue"/> would sound if asked for now (music on, the sting in the manifest, its clip not
+        /// failed): the old chiptune jingles that would clash with it (Sfx.Catch, Sfx.Escape) stay quiet then.
+        /// </summary>
+        public static bool WillSting(string cue) =>
+            I != null && On && I.Find(cue, false) != null && I.stingClips.TryGetValue(cue, out var c) && c != null
+            && c.loadState != AudioDataLoadState.Failed;
 
         CueDef Find(string id, bool loop)
         {
@@ -383,6 +392,18 @@ namespace FishingKing
             return d.fade.v * d.level[i].v * I.duck.v * I.sduck.v;
         }
 
+        /// <summary>The AudioSource.volume a stem of the current deck plays at now (Volume x the 배경음악 slider x its gain), -1: none.</summary>
+        internal static float StemVolume(string stem)
+        {
+            var d = I?.current;
+            if (d == null) return -1f;
+            int i = d.Index(stem);
+            return i < 0 || d.src[i] == null ? -1f : d.src[i].volume;
+        }
+
+        /// <summary>The sting source's AudioSource.volume now (-1: no sting sounding).</summary>
+        internal static float StingVolume => I != null && I.stingSrc.isPlaying ? I.stingSrc.volume : -1f;
+
         /// <summary>The decks alive (the current one and those still fading out).</summary>
         internal static int DeckCount => I != null ? I.decks.Count : 0;
 
@@ -409,8 +430,9 @@ namespace FishingKing
 
         /// <summary>
         /// The widest gap between the current deck's playing stems (ms, the loop's wrap taken into account); -1 with fewer
-        /// than two. (The mixer moves every position on its own thread, a block at a time: a read that a block landed in
-        /// the middle of — the first stem's position changed by the end — is taken again.)
+        /// than two. (The mixer moves every position on its own thread, a block at a time, and not every source in the same
+        /// instant: a read can straddle a block and show one block's gap (21 ms at 48 kHz) that is not there. So it is
+        /// read four times and the smallest gap is taken: a real drift shows in every read.)
         /// </summary>
         internal static float SyncMs()
         {
@@ -422,12 +444,12 @@ namespace FishingKing
             if (first < 0) return -1f;
             var a = d.src[first];
             int len = Mathf.Max(1, d.clip[first].samples), rate = Mathf.Max(1, d.clip[first].frequency);
-            int n = 0, spread = 0;
+            int n = 0, best = int.MaxValue, last = 0;
             for (int attempt = 0; attempt < 4; attempt++)
             {
                 int p0 = a.timeSamples;
                 n = 1;
-                spread = 0;
+                int spread = 0;
                 for (int i = first + 1; i < d.src.Length; i++)
                 {
                     var s = d.src[i];
@@ -436,9 +458,11 @@ namespace FishingKing
                     spread = Mathf.Max(spread, Mathf.Min(gap, len - gap));
                     n++;
                 }
-                if (a.timeSamples == p0) break;
+                last = spread;
+                if (a.timeSamples == p0) best = Mathf.Min(best, spread);
             }
-            return n < 2 ? -1f : spread * 1000f / rate;
+            if (best == int.MaxValue) best = last;
+            return n < 2 ? -1f : best * 1000f / rate;
         }
 
         /// <summary>One line on what sounds: the deck and its stems' gains, the ducks, the sting, the chiptune.</summary>
@@ -697,7 +721,7 @@ namespace FishingKing
                 {
                     stingWaiting = false;
                     stingSrc.clip = stingClip;
-                    stingSrc.volume = Volume;
+                    stingSrc.volume = Volume * AudioMix.Bgm;
                     stingSrc.Play();
                     sduck.Go(stingDuckTo, StingAttack);
                 }
@@ -749,13 +773,15 @@ namespace FishingKing
             duck.Step(dt);
             TickSting(dt);
             sduck.Step(dt);
+            // (the 배경음악 slider, live: the sting sounding and the one being cut)
+            if (stingSrc.isPlaying) stingSrc.volume = Volume * AudioMix.Bgm;
             if (stingOut.isPlaying)
             {
                 // (stopped once its 0 has been set for StopHold s)
                 if (stingOutGain.v > 0f)
                 {
                     stingOutGain.Step(dt);
-                    stingOut.volume = Volume * stingOutGain.v;
+                    stingOut.volume = Volume * AudioMix.Bgm * stingOutGain.v;
                 }
                 else if ((stingOutQuiet += dt) >= StopHold) stingOut.Stop();
             }
@@ -803,7 +829,7 @@ namespace FishingKing
                 }
                 d.fade.Step(dt);
                 for (int i = 0; i < d.level.Length; i++) d.level[i].Step(dt);
-                float g = Volume * Heard(d);
+                float g = Volume * AudioMix.Bgm * Heard(d);
                 for (int i = 0; i < d.src.Length; i++)
                     if (d.src[i] != null) d.src[i].volume = g * d.level[i].v;
             }

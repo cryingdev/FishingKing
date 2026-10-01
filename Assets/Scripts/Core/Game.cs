@@ -39,7 +39,7 @@ namespace FishingKing
             go.AddComponent<Sfx>();
             go.AddComponent<Music>();
             go.AddComponent<SceneFlow>();
-            AudioListener.volume = I.data.soundOn ? 1f : 0f;
+            AudioMix.Apply();   // (the listener: the master slider, 0 while 소리 is off; the effect and ambience sources)
             Application.targetFrameRate = 60;
             QualitySettings.vSyncCount = 0;
         }
@@ -464,14 +464,22 @@ namespace FishingKing
         public void SetSound(bool on)
         {
             data.soundOn = on;
-            AudioListener.volume = on ? 1f : 0f;
+            AudioMix.Apply();
             Notify();
         }
 
-        /// <summary>설정 → 배경음 (Music follows the save: its decks fade out / the cue comes back).</summary>
+        /// <summary>설정 → 음량 → 배경음 켜짐/꺼짐 (Music follows the save: its decks fade out / the cue comes back).</summary>
         public void SetMusic(bool on)
         {
             data.musicOn = on;
+            Notify();
+        }
+
+        /// <summary>설정 → 음량: one slider (0..100, snapped to 10), applied live to every source (AudioMix).</summary>
+        public void SetVolume(AudioChannel ch, int percent)
+        {
+            AudioMix.Set(data, ch, percent);
+            AudioMix.Apply();
             Notify();
         }
 
@@ -497,6 +505,7 @@ namespace FishingKing
         public void ResetProgress()
         {
             data = SaveData.NewGame();
+            AudioMix.Apply();
             Notify();
         }
     }

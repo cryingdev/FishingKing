@@ -11,17 +11,23 @@ namespace FishingKing
     /// <summary>
     /// -fkauto music (Docs/music.md, Tools/Music/README.md 4): the background music through a session, checked as
     /// [MUSIC] CHECK lines (the cue and the stems heard, the ducks, the stings) and a summary. Start it on the title (no
-    /// -fkscene), e.g. -fkfresh -fkrich -fkgear -fksave music -fkstage lake -fkencounter now -fkauto music -fkmusiclog
-    /// -fkshots &lt;dir&gt;:
+    /// -fkscene), e.g. -fkfresh -fkrich -fkgear -fksave au_music -fkstage lake -fkencounter now -fkauto music -fkmusiclog
+    /// -fkshots &lt;dir&gt;. It takes over the pointer from the start (PointerInput.SimActive).
     /// <list type="number">
     /// <item>the title, then the map (their cues, crossfaded); a cue not in the manifest plays the chiptune, a real one
-    /// stops it; a save from before 배경음 reads it on; 설정 → 배경음 off (nothing heard, nothing left playing, a sting
-    /// silent) and on again (the map's cue back), shot music_settings;</item>
+    /// stops it; a save from before 배경음 / the sliders reads them on / 100 (soundOn=false kept); 설정 (shot
+    /// settings_main) → 음량 (shot audio_settings): 배경음 꺼짐 (nothing heard, nothing left playing, a sting silent) and
+    /// 켜짐 (the map's cue back); the sliders driven by their buttons and bars, each checked on the real AudioSource
+    /// volumes ([MIX] lines): 배경음악 50 % (every stem and the chiptune x 0.25), 효과음 0 (a one-shot, the drag, the rasp
+    /// at 0), 환경음 50 % (the ambience x 0.25), 전체 50 % (the listener 0.25; 소리 꺼짐 0, 켜짐 0.25), shot
+    /// audio_settings_changed, the save read back from disk with the same values, then all back to 100;</item>
     /// <item>the stage (-fkstage, default lake) by day (the day stem alone), the clock set to night (both stems half-way
     /// through the 8 s crossfade, then the night stem alone);</item>
     /// <item>a bite (the stage ducked), the hook set by a tap, the fish fought by circles (the fight stem 0.55..1 and
     /// rising and falling with the line's tension), landed (its sting by rarity, the stage ducked under it, then the fight
-    /// stem down and the stage back up); a rare fish landed (sting_rare); a fish shaken off (sting_escape);</item>
+    /// stem down and the stage back up); a rare fish landed (sting_rare); a fish shaken off (sting_escape); the line
+    /// snapped (sting_escape 0.4); a snag forced to break (sting_escape 0.45) and one cut with 끊기 (no sting); the
+    /// line's twang with the tension dithering at its threshold (no faster than every TingSlow s);</item>
     /// <item>with -fkencounter: an encounter played well (the omen: sting_omen, the stage gone; lurk; + approach;
     /// + tease; silence in the hook window; sting_hook; legend_&lt;id&gt;; landed: sting_legend, the fight's deck silent
     /// under it as it fades out; the stage back) and one played badly (sting_fail, the encounter's deck silent under
@@ -109,8 +115,171 @@ namespace FishingKing
             }
         }
 
+        /// <summary>One [MIX] line: the sliders' gains and the volumes the sources really play at.</summary>
+        void MixLog(string what)
+        {
+            Log(string.Format(CIm, "[MIX] {0}: listener {1:0.000} | gains bgm {2:0.00} sfx {3:0.00} amb {4:0.00} | stem main {5:0.000} gain {6:0.00} | sting {7:0.000} | chip {8:0.000} | amb {9:0.000} | one-shot {10:0.000} | drag {11:0.000} | rasp {12:0.000}",
+                what, AudioListener.volume, AudioMix.Bgm, AudioMix.Effects, AudioMix.Amb, Music.StemVolume("main"), Music.Gain("main"),
+                Music.StingVolume, Sfx.ChipVolume, Sfx.AmbienceVolumeNow, Sfx.LastOneShotVol, Sfx.DragVolumeNow, Sfx.RaspVolumeNow));
+        }
+
+        static Button ButtonNamed(string name) => FindObjectsByType<Button>(FindObjectsSortMode.None).FirstOrDefault(b => b.name == name);
+
+        static string ButtonText(Button b) => b != null && b.GetComponentInChildren<Text>() != null ? b.GetComponentInChildren<Text>().text : "-";
+
+        /// <summary>A tap on a volume bar at <paramref name="f"/> (0..1 of its width), through the UI's own pointer events.</summary>
+        static void TapBar(string name, float f, bool drag = false)
+        {
+            var go = GameObject.Find(name);
+            if (go == null)
+            {
+                Debug.Log("[AUTO] no bar " + name);
+                return;
+            }
+            var rt = (RectTransform)go.transform;
+            var c = new Vector3[4];
+            rt.GetWorldCorners(c);
+            var e = new UnityEngine.EventSystems.PointerEventData(UnityEngine.EventSystems.EventSystem.current)
+            {
+                position = new Vector2(Mathf.Lerp(c[0].x, c[2].x, f), (c[0].y + c[2].y) * 0.5f),
+            };
+            if (drag) UnityEngine.EventSystems.ExecuteEvents.Execute(go, e, UnityEngine.EventSystems.ExecuteEvents.dragHandler);
+            else UnityEngine.EventSystems.ExecuteEvents.Execute(go, e, UnityEngine.EventSystems.ExecuteEvents.pointerDownHandler);
+        }
+
+        static void Press(string name, int times)
+        {
+            var b = ButtonNamed(name);
+            for (int i = 0; i < times && b != null; i++) b.onClick.Invoke();
+            if (b == null) Debug.Log("[AUTO] no button " + name);
+        }
+
+        /// <summary>설정 → 음량: the music toggle, the four sliders on the real sources, persistence, back to 100.</summary>
+        IEnumerator AudioSettingsTest()
+        {
+            var old = JsonUtility.FromJson<SaveData>("{\"version\":1,\"coins\":123,\"soundOn\":false,\"reelRing\":true}");
+            MCheck("a save from before 배경음 and the sliders: musicOn on, every slider 100, soundOn=false kept (and a new game)",
+                old != null && old.musicOn && !old.soundOn && old.masterVol == 100 && old.musicVol == 100 && old.sfxVol == 100 && old.ambVol == 100
+                && SaveData.NewGame().musicOn && SaveData.NewGame().masterVol == 100);
+            var bad = JsonUtility.FromJson<SaveData>("{\"masterVol\":137,\"musicVol\":-5,\"sfxVol\":44,\"ambVol\":100}");
+            SaveSystem.Sanitize(bad);
+            MCheck("Sanitize: sliders clamped to 0..100 and snapped to 10", bad.masterVol == 100 && bad.musicVol == 0 && bad.sfxVol == 40 && bad.ambVol == 100,
+                $"{bad.masterVol} {bad.musicVol} {bad.sfxVol} {bad.ambVol}");
+            MixLog("defaults");
+            MCheck("defaults: the designed mix (listener 1, every gain 1)", Mathf.Abs(AudioListener.volume - 1f) < 1e-3f && AudioMix.Bgm == 1f
+                && AudioMix.Effects == 1f && AudioMix.Amb == 1f && Mathf.Abs(Music.StemVolume("main") - Music.Volume * Music.Gain("main")) < 0.01f);
+
+            SettingsUI.Open();
+            yield return new WaitForSecondsRealtime(0.6f);   // (the window's pop)
+            yield return Shot("settings_main");
+            Press("Volume", 1);
+            yield return new WaitForSecondsRealtime(0.6f);
+            var mt = ButtonNamed("Toggle_배경음");
+            MCheck("음량 has the 배경음 toggle, 켜짐, and four bars", mt != null && ButtonText(mt) == "켜짐" && Game.Data.musicOn
+                && GameObject.Find("VolumeBar_Master") != null && GameObject.Find("VolumeBar_Ambience") != null, $"it says {ButtonText(mt)}");
+            yield return Shot("audio_settings");
+            if (mt != null)
+            {
+                mt.onClick.Invoke();
+                yield return new WaitForSecondsRealtime(1f);
+                MCheck("배경음 꺼짐: saved, nothing heard, nothing left playing", !Game.Data.musicOn && ButtonText(mt) == "꺼짐" && Music.Current == null
+                    && !Music.Chiptune && Music.DeckCount == 0 && Music.StingNow == null, $"{Music.DeckCount} decks");
+                Music.Sting("sting_catch");
+                yield return null;
+                MCheck("배경음 꺼짐: a sting stays silent", Music.StingNow == null);
+                mt.onClick.Invoke();
+                yield return new WaitForSecondsRealtime(2.5f);
+                MCheck("배경음 켜짐: saved", Game.Data.musicOn && ButtonText(mt) == "켜짐");
+                CueCheck("배경음 켜짐: the map's cue back", "map", ("main", 0.95f, 1f));
+            }
+
+            // 배경음악 50 %: the stems (and a sting, and the chiptune) at 0.25 of their designed level, live
+            Press("Minus_Music", 5);
+            yield return new WaitForSecondsRealtime(0.3f);
+            MixLog("배경음악 50%");
+            float want = Music.Volume * 0.25f * Music.Gain("main");
+            MCheck("배경음악 50 %: the deck's source at 0.4 x 0.25 x its gain", Game.Data.musicVol == 50 && Mathf.Abs(Music.StemVolume("main") - want) < 0.005f,
+                string.Format(CIm, "source {0:0.000}, want {1:0.000}", Music.StemVolume("main"), want));
+            Music.Sting("sting_catch");
+            yield return new WaitForSecondsRealtime(0.3f);
+            MixLog("배경음악 50%, a sting");
+            if (Music.HasSting("sting_catch"))
+                MCheck("배경음악 50 %: the sting's source at 0.4 x 0.25", Mathf.Abs(Music.StingVolume - Music.Volume * 0.25f) < 0.005f,
+                    string.Format(CIm, "sting source {0:0.000}", Music.StingVolume));
+            for (float w = 0f; w < 6f && Music.StingNow != null; w += Time.unscaledDeltaTime) yield return null;
+            Music.Play("no_such_cue");
+            yield return new WaitForSecondsRealtime(1.6f);
+            MixLog("배경음악 50%, the chiptune");
+            MCheck("배경음악 50 %: the chiptune at 0.22 x 0.25", Music.Chiptune && Mathf.Abs(Sfx.ChipVolume - 0.22f * 0.25f) < 0.004f,
+                string.Format(CIm, "chip source {0:0.000}", Sfx.ChipVolume));
+            Music.Play("map");
+            yield return new WaitForSecondsRealtime(2.5f);
+
+            // 효과음 0 (dragged off the bar's left end): one-shots, the drag and the rasp silent
+            TapBar("VolumeBar_Effects", 0.5f);
+            TapBar("VolumeBar_Effects", 0f, true);
+            yield return null;
+            Sfx.Play(Sfx.Coin, 0.8f);
+            Sfx.Rasp(0.3f);
+            for (float w = 0f; w < 0.3f; w += Time.unscaledDeltaTime)
+            {
+                Sfx.Drag(1f);
+                yield return null;
+            }
+            MixLog("효과음 0%");
+            MCheck("효과음 0: a one-shot, the drag and the rasp at 0", Game.Data.sfxVol == 0 && Sfx.LastOneShotVol == 0f && Sfx.DragVolumeNow <= 1e-4f
+                && Sfx.RaspVolumeNow <= 1e-4f, string.Format(CIm, "one-shot {0:0.000} drag {1:0.000} rasp {2:0.000}", Sfx.LastOneShotVol, Sfx.DragVolumeNow, Sfx.RaspVolumeNow));
+            Sfx.Rasp(0f);
+
+            // 환경음 50 % (a tap on its 5th cell): the ambience x 0.25, live
+            float amb0 = Sfx.AmbienceVolumeNow;
+            TapBar("VolumeBar_Ambience", 0.452f);
+            yield return null;
+            MixLog("환경음 50%");
+            MCheck("환경음 50 % (a tap on the 5th cell): the ambience's source x 0.25", Game.Data.ambVol == 50 && Mathf.Abs(Sfx.AmbienceVolumeNow - amb0 * 0.25f) < 0.003f,
+                string.Format(CIm, "{0:0.000} -> {1:0.000}", amb0, Sfx.AmbienceVolumeNow));
+
+            // 전체 50 %, then 소리 꺼짐 / 켜짐
+            Press("Minus_Master", 5);
+            yield return null;
+            MixLog("전체 50%");
+            MCheck("전체 50 %: the listener at 0.25", Game.Data.masterVol == 50 && Mathf.Abs(AudioListener.volume - 0.25f) < 1e-3f, string.Format(CIm, "{0:0.000}", AudioListener.volume));
+            var mute = ButtonNamed("Toggle_소리");
+            mute?.onClick.Invoke();
+            yield return null;
+            MCheck("소리 꺼짐: the listener at 0, the slider kept", !Game.Data.soundOn && AudioListener.volume == 0f && Game.Data.masterVol == 50);
+            mute?.onClick.Invoke();
+            yield return null;
+            MCheck("소리 켜짐: back to 0.25", Game.Data.soundOn && Mathf.Abs(AudioListener.volume - 0.25f) < 1e-3f);
+            yield return Shot("audio_settings_changed");
+
+            // read back from disk
+            var disk = SaveSystem.Load();
+            MCheck("the sliders saved and read back", disk.masterVol == 50 && disk.musicVol == 50 && disk.sfxVol == 0 && disk.ambVol == 50 && disk.soundOn && disk.musicOn,
+                $"{disk.masterVol} {disk.musicVol} {disk.sfxVol} {disk.ambVol}");
+
+            // all back to 100 (the rest of the run at the designed mix)
+            Press("Plus_Master", 5);
+            Press("Plus_Music", 5);
+            Press("Plus_Effects", 10);
+            Press("Plus_Ambience", 5);
+            yield return null;
+            MixLog("back to 100");
+            MCheck("back to 100: the designed mix again", Game.Data.masterVol == 100 && Game.Data.musicVol == 100 && Game.Data.sfxVol == 100 && Game.Data.ambVol == 100
+                && Mathf.Abs(AudioListener.volume - 1f) < 1e-3f && Mathf.Abs(Sfx.AmbienceVolumeNow - amb0) < 1e-3f);
+            // 닫기 twice: the 음량 window, then 설정
+            var closes = FindObjectsByType<Button>(FindObjectsSortMode.None).Where(b => ButtonText(b) == "닫기").ToList();
+            var audioClose = closes.FirstOrDefault(b => b.transform.parent.Find("Toggle_배경음") != null);
+            audioClose?.onClick.Invoke();
+            yield return new WaitForSecondsRealtime(0.3f);
+            closes.FirstOrDefault(b => b != audioClose && b != null)?.onClick.Invoke();
+            yield return new WaitForSecondsRealtime(0.3f);
+        }
+
         IEnumerator MusicTest()
         {
+            PointerInput.SimActive = true;   // (the pointer is ours from the start: other runs share the desktop)
+            PointerInput.SimDown = false;
             StartCoroutine(MusicSyncWatch());
             var ids = Music.CueIds.ToList();
             var expect = new List<string> { "title", "map", "aquarium", "encounter" };
@@ -136,37 +305,7 @@ namespace FishingKing
             yield return new WaitForSecondsRealtime(2.5f);
             CueCheck("a real cue again: the chiptune stops", "map", ("main", 0.95f, 1f));
 
-            var old = JsonUtility.FromJson<SaveData>("{\"version\":1,\"coins\":123,\"soundOn\":true,\"reelRing\":true}");
-            MCheck("a save from before 배경음 reads it on (and a new game)", old != null && old.musicOn && SaveData.NewGame().musicOn);
-            SettingsUI.Open();
-            yield return new WaitForSecondsRealtime(0.6f);   // (the window's pop)
-            var label = FindObjectsByType<Text>(FindObjectsSortMode.None).FirstOrDefault(x => x.text == "배경음");
-            Button row = null;
-            if (label != null)
-            {
-                float y = label.rectTransform.anchoredPosition.y;
-                row = FindObjectsByType<Button>(FindObjectsSortMode.None).FirstOrDefault(b => b.transform.parent == label.transform.parent
-                    && Mathf.Abs(((RectTransform)b.transform).anchoredPosition.y - y) < 1f);
-            }
-            string RowText() => row != null ? row.GetComponentInChildren<Text>().text : "-";
-            MCheck("설정 has the 배경음 row, 켜짐", row != null && RowText() == "켜짐" && Game.Data.musicOn, $"row {row != null}, it says {RowText()}");
-            yield return Shot("music_settings");
-            if (row != null)
-            {
-                row.onClick.Invoke();
-                yield return new WaitForSecondsRealtime(1f);
-                MCheck("배경음 꺼짐: saved, nothing heard, nothing left playing", !Game.Data.musicOn && RowText() == "꺼짐" && Music.Current == null
-                    && !Music.Chiptune && Music.DeckCount == 0 && Music.StingNow == null, $"{Music.DeckCount} decks");
-                Music.Sting("sting_catch");
-                yield return null;
-                MCheck("배경음 꺼짐: a sting stays silent", Music.StingNow == null);
-                row.onClick.Invoke();
-                yield return new WaitForSecondsRealtime(2.5f);
-                MCheck("배경음 켜짐: saved", Game.Data.musicOn && RowText() == "켜짐");
-                CueCheck("배경음 켜짐: the map's cue back", "map", ("main", 0.95f, 1f));
-            }
-            Click("닫기");
-            yield return new WaitForSecondsRealtime(0.4f);
+            yield return AudioSettingsTest();
 
             // 2. the stage by day, then at night
             string stage = Arg("-fkstage") ?? "lake";
@@ -198,6 +337,10 @@ namespace FishingKing
             yield return MusicFight(ctl, cue, "bite");
             yield return MusicFight(ctl, cue, "rare");
             yield return MusicFight(ctl, cue, "escape");
+            yield return MusicFight(ctl, cue, "snap");
+            yield return MusicSnag(ctl, false);
+            yield return MusicSnag(ctl, true);
+            yield return TwangDither();
 
             // 4. the encounter, played well and then badly
             if (encMode != null && ctl.Watch != null)
@@ -232,6 +375,11 @@ namespace FishingKing
 
         IEnumerator MusicEnd()
         {
+            foreach (var s in GameDatabase.Stages)
+            {
+                var (bed, dawn, night) = Sfx.AmbienceRmsDb(s.id);
+                Log(string.Format(CIm, "[MIX] ambience {0}: base {1:0.0} dBFS RMS, dawn layer {2:0.0}, night layer {3:0.0} (at their designed levels; the stage bed sits near -29)", s.id, bed, dawn, night));
+            }
             MCheck("the stems stayed in sync all run", musSyncWorst <= SyncTolMs,
                 string.Format(CIm, "{0} reads, widest gap {1:0.00} ms, {2} over {3:0} ms", musSyncReads, musSyncWorst, musSyncBad, SyncTolMs));
             Log($"[MUSIC] summary: {musChecks} checks, {musFails} failed (the encounter plays' own checks: {encFails} failed)");
@@ -281,7 +429,9 @@ namespace FishingKing
             Log($"[MUSIC] {kind}: fighting {hooked.id} ({hooked.rarity})");
             // reel by circles, easing off at a high tension; the fight stem's level read every 0.5 s against the
             // tension smoothed as the director smooths it
-            float fightFor = kind == "bite" ? 7f : 2.5f, t = 0f, next = 1.5f, ang = 0f, sm = 0f;
+            // (a fish to lose is not wound in: a small one would be landed before it can get off)
+            bool lose = kind == "escape" || kind == "snap";
+            float fightFor = kind == "bite" ? 7f : lose ? 1.6f : 2.5f, t = 0f, next = 1.5f, ang = 0f, sm = 0f;
             var c = Scr(0.72f, 0.4f);
             float r = Screen.height * 0.13f, windSign = CircleGesture.Reversed ? -1f : 1f;
             bool winding = true, inRange = true;
@@ -301,7 +451,7 @@ namespace FishingKing
                 }
                 if (winding) ang -= windSign * dt * 2.3f * Mathf.PI * 2f;
                 else if (f != null && f.TensionRatio > 0.95f) ang += windSign * dt * 1.2f * Mathf.PI * 2f;
-                PointerInput.SimDown = true;
+                PointerInput.SimDown = !lose;
                 PointerInput.SimPos = c + new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * r;
                 if (t >= next && f != null)
                 {
@@ -330,6 +480,7 @@ namespace FishingKing
             float duck = FishingController.EscapeDuck;
             bool landed = false;
             if (kind == "escape") ctl.DebugRelease();
+            else if (kind == "snap") ctl.DebugBreak();
             else if (ctl.State == FishingController.S.Fighting) landed = ctl.DebugLand();
             else landed = ctl.State == FishingController.S.Landing || ctl.State == FishingController.S.Result;
             if (landed)
@@ -350,6 +501,45 @@ namespace FishingKing
             yield return new WaitForSecondsRealtime(0.8f);
             while (Time.realtimeSinceStartup - tEnd < FishingController.FightDown + 0.4f) yield return null;
             CueCheck($"{kind}: after the fight, the fight stem down and the stage back up", cue, ("night", 0.95f, 1f), ("fight", 0f, 0.02f));
+        }
+
+        /// <summary>A rig in the water, then the snag's line forced to break (sting_escape at SnagDuck) or cut with 끊기 (no sting).</summary>
+        IEnumerator MusicSnag(FishingController ctl, bool cut)
+        {
+            yield return ToReady(ctl);
+            for (float w = 0f; w < 8f && Music.StingNow != null; w += Time.unscaledDeltaTime) yield return null;
+            var L = ctl.Stage.L;
+            var at = L.IsIce ? new Vector3(L.holeX, 0f, L.holeZ) : new Vector3(ctl.Angler.X + 0.5f, 0f, Mathf.Min(L.zFar - 4f, L.zNear + 10f));
+            if (!ctl.DebugPlaceRig(at))
+            {
+                MCheck($"snag {(cut ? "cut" : "forced")}: a rig on the water", false, $"state {ctl.State}");
+                yield break;
+            }
+            yield return new WaitForSecondsRealtime(0.5f);
+            ctl.DebugSnagBreak(cut);
+            if (!cut) yield return StingCheck("a snag forced until the line broke", "sting_escape", FishingController.SnagDuck);
+            else
+            {
+                yield return new WaitForSecondsRealtime(0.5f);
+                MCheck("끊기: the line cut, no sting", Music.StingNow == null && ctl.State == FishingController.S.Ready, $"state {ctl.State}");
+            }
+        }
+
+        /// <summary>The line's twang fed a level dithering around its threshold every frame for 3 s: at most one ting per TingSlow s.</summary>
+        IEnumerator TwangDither()
+        {
+            int n0 = Sfx.TingCount;
+            float t = 0f;
+            int frame = 0;
+            while (t < 3f)
+            {
+                Sfx.LineStrain(frame++ % 2 == 0 ? 0f : 0.02f);
+                t += Time.unscaledDeltaTime;
+                yield return null;
+            }
+            int n = Sfx.TingCount - n0;
+            MCheck("the line's twang with the tension dithering at its threshold: no faster than every 0.9 s", n >= 1 && n <= 4,
+                $"{n} tings in 3 s over {frame} frames");
         }
 
         static float Corr(List<float> a, List<float> b)

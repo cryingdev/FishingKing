@@ -101,7 +101,8 @@ namespace FishingKing
 
         void FishEscaped()
         {
-            Sfx.Play(Sfx.Escape, 0.9f);
+            // (the old jingle only when no sting_escape will say it: two tunes in two keys clash)
+            if (!Music.WillSting("sting_escape")) Sfx.Play(Sfx.Escape, 0.9f);
             hud.Flash("물고기가 바늘을 털고 도망갔다...", UIKit.Bad, 2f);
             DropFromAir();
             Hooked.JumpT = -1;

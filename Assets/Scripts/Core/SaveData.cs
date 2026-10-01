@@ -81,7 +81,10 @@ namespace FishingKing
         public List<LegendRecord> legends = new List<LegendRecord>();
         public string lastStage = "lake";
         public bool soundOn = true;
-        public bool musicOn = true;      // 설정 → 배경음 (Music); a save from before it reads true (JsonUtility keeps the initialiser)
+        public bool musicOn = true;      // 설정 → 음량 → 배경음 켜짐/꺼짐 (Music); a save from before it reads true (JsonUtility keeps the initialiser)
+        // 설정 → 음량 (AudioMix): 0..100 in steps of 10, multipliers on the designed mix (100 = as designed); a save from
+        // before them reads 100 (the initialisers), soundOn stays the master mute on top
+        public int masterVol = 100, musicVol = 100, sfxVol = 100, ambVol = 100;
         public bool reelRing = true;     // the circle + direction arrows shown while drawing reel circles
         public bool reelReverse;         // counter-clockwise winds in (default: clockwise)
         public int zoomMode;             // 캐스팅 후 줌인 (ZoomMode): 0 1.25배 (default; older saves), 1 끔, 2 1.5배, 3 액티브
@@ -163,7 +166,7 @@ namespace FishingKing
             if (File.Exists(PathFile)) File.Delete(PathFile);
         }
 
-        static SaveData Sanitize(SaveData d)
+        internal static SaveData Sanitize(SaveData d)
         {
             d.ownedItems ??= new List<string>();
             d.baits ??= new List<BaitCount>();
@@ -184,6 +187,10 @@ namespace FishingKing
             d.clockMin = float.IsNaN(d.clockMin) || float.IsInfinity(d.clockMin) ? 600f : Mathf.Clamp(d.clockMin, 0f, 1439.99f);
             d.clockDay = Mathf.Max(1, d.clockDay);
             if (d.zoomMode < 0 || d.zoomMode > 3) d.zoomMode = 0;
+            d.masterVol = AudioMix.Snap(d.masterVol);
+            d.musicVol = AudioMix.Snap(d.musicVol);
+            d.sfxVol = AudioMix.Snap(d.sfxVol);
+            d.ambVol = AudioMix.Snap(d.ambVol);
             return d;
         }
     }

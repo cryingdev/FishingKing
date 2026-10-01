@@ -34,20 +34,20 @@ namespace FishingKing
         AudioSource dawnSrc, nightSrc, drag, thrash;
         /// <summary>The taut line twanging under load: one rubbery pluck (see <see cref="LineStrain"/>).</summary>
         public static AudioClip LineTing;
-        static float nextTing = -1f;
+        static float lastTing = -99f;
         /// <summary>Seconds between tings at the bottom / the top of the strain (they come faster as it climbs).</summary>
         const float TingSlow = 0.9f, TingFast = 0.16f;
         /// <summary>The pitch's curve over the strain (1 = straight; 2.5: half the strain gives under a fifth of the rise).</summary>
         const float StrainPitchCurve = 2.5f;
-        /// <summary>The hooked fish splashing at the surface (Resources/Audio/Sfx/fish_thrash, a loop; null = silent).</summary>
+        /// <summary>The hooked fish splashing at the surface: Resources/Audio/Sfx/fish_thrash (a loop) when present, else the synthesized splashing loop.</summary>
         public static AudioClip FishThrash;
         float thrashWant, thrashUntil = -1f;
         /// <summary>Seconds the thrash loop fades in / out over.</summary>
         const float ThrashFade = 0.25f;
-        float dragWant, dragSeen = -1f, ambMult = 1f, ambGain = 1f;
+        float dragWant, dragSeen = -1f, ambMult = 1f, ambGain = 1f, dawnW, nightW;
         /// <summary>
-        /// The base ambience's level for a recorded loop (Resources/Audio/Ambience/amb_&lt;stage&gt;, normalized to -24 dBFS RMS)
-        /// against the synthesized ones (peak-normalized, much hotter): x this on top of AmbBase.
+        /// The base ambience's level for a recorded loop (Resources/Audio/Ambience/amb_&lt;stage&gt;, meant to be normalized to
+        /// -24 dBFS RMS) on top of AmbBase. (The synthesized loops are only peak-capped at 0.9 by Make, never raised.)
         /// </summary>
         const float RecordedAmbGain = 1.4f;
         static readonly System.Collections.Generic.Dictionary<string, AudioClip> loops = new System.Collections.Generic.Dictionary<string, AudioClip>();
@@ -63,6 +63,7 @@ namespace FishingKing
             CastSwing = Resources.Load<AudioClip>("Audio/Sfx/cast_swing");
             FloatLand = Resources.Load<AudioClip>("Audio/Sfx/float_land");
             FishThrash = Resources.Load<AudioClip>("Audio/Sfx/fish_thrash");
+            if (FishThrash == null) FishThrash = BuildThrashLoop();
             thrash.clip = FishThrash;
             for (int k = 1; ; k++)
             {
@@ -83,14 +84,24 @@ namespace FishingKing
 
         void Update()
         {
+            if (audioReset)
+            {
+                // a new output device stopped every source: the loops that only start on a stage change play again
+                // (drag / thrash restart on their next call, the chiptune and the music by Music)
+                audioReset = false;
+                foreach (var s in new[] { ambience, dawnSrc, nightSrc })
+                    if (s != null && s.clip != null && !s.isPlaying) s.Play();
+                if (rasp != null && raspWant > 0f && !rasp.isPlaying) rasp.Play();
+            }
+            TickAfterSting();
             // the drag loop follows Drag() calls and fades out on its own once they stop (the fight ended, the scene left)
             if (drag == null) return;
             float age = Time.unscaledTime - dragSeen;
-            float want = age <= DragHold ? dragWant : 0f;
+            float want = (age <= DragHold ? dragWant : 0f) * AudioMix.Effects;
             drag.volume = Mathf.MoveTowards(drag.volume, want, Time.unscaledDeltaTime / DragHold);
             if (drag.volume <= 0.001f && drag.isPlaying) drag.Stop();
             // the thrash loop: on while Thrash() keeps it alive, then fades
-            float tw = Time.unscaledTime <= thrashUntil ? thrashWant : 0f;
+            float tw = (Time.unscaledTime <= thrashUntil ? thrashWant : 0f) * AudioMix.Effects;
             thrash.volume = Mathf.MoveTowards(thrash.volume, tw, Time.unscaledDeltaTime / ThrashFade);
             if (thrash.volume <= 0.001f && thrash.isPlaying) thrash.Stop();
         }
@@ -99,24 +110,55 @@ namespace FishingKing
         /// The line under high tension twanging: level 0..1 (0 = silent; the caller maps the tension to it). A rubbery twang
         /// every TingSlow .. TingFast seconds, louder and higher as it climbs (pitch x1.05 .. x1.9, a string being tightened,
         /// slowly at first and steeply near the break: <see cref="StrainPitchCurve"/>).
-        /// Call it every frame; the tings stop when the calls do.
+        /// Call it every frame; the tings stop when the calls do. The gap is measured from the last ting (not reset when
+        /// the level drops to 0), so a tension dithering around the threshold twangs at most every TingSlow s, never once
+        /// per upward crossing; after a quiet spell the first ting comes at once.
         /// </summary>
         public static void LineStrain(float level)
         {
-            if (I == null || LineTing == null) return;
+            if (I == null || LineTing == null || level <= 0f) return;
             float now = Time.unscaledTime;
-            if (level <= 0f)
-            {
-                nextTing = -1f;
-                return;
-            }
             level = Mathf.Clamp01(level);
-            if (nextTing < 0f || now - nextTing > 1f) nextTing = now;   // (the first ting comes at once)
-            if (now < nextTing) return;
+            if (now - lastTing < Mathf.Lerp(TingSlow, TingFast, level)) return;
             // the pitch climbs slowly at first and steeply towards the break (level ^ StrainPitchCurve)
             float rise = Mathf.Pow(level, StrainPitchCurve);
             Play(LineTing, 0.12f + 0.33f * level, 1.05f + 0.85f * rise + UnityEngine.Random.Range(-0.015f, 0.015f));
-            nextTing = now + Mathf.Lerp(TingSlow, TingFast, level);
+            lastTing = now;
+            TingCount++;
+        }
+
+        /// <summary>Tings played since boot (for the tests: the rate while the tension dithers at the threshold).</summary>
+        internal static int TingCount;
+
+        AudioClip afterClip;
+        float afterVol, afterWait;
+        /// <summary>A sound held back under a music sting waits at most this long.</summary>
+        const float AfterStingMax = 3f;
+
+        /// <summary>
+        /// A fanfare-like one-shot (the level-up arpeggio) that would clash with a music sting sounding now: held until the
+        /// sting is nearly out (<see cref="FishingKing.Music.StingLeft"/> under 0.3 s, at most <see cref="AfterStingMax"/> s), else played at once.
+        /// </summary>
+        public static void PlayAfterSting(AudioClip c, float vol = 1f)
+        {
+            if (I == null || c == null) return;
+            if (FishingKing.Music.StingNow == null)
+            {
+                Play(c, vol);
+                return;
+            }
+            I.afterClip = c;
+            I.afterVol = vol;
+            I.afterWait = 0f;
+        }
+
+        void TickAfterSting()
+        {
+            if (afterClip == null) return;
+            afterWait += Time.unscaledDeltaTime;
+            if (FishingKing.Music.StingNow != null && FishingKing.Music.StingLeft > 0.3f && afterWait < AfterStingMax) return;
+            Play(afterClip, afterVol);
+            afterClip = null;
         }
 
         /// <summary>
@@ -183,7 +225,7 @@ namespace FishingKing
             if (I == null) return;
             // a recorded loop for the stage wins over the synthesized one
             var b = Resources.Load<AudioClip>("Audio/Ambience/amb_" + stageId);
-            float gain = b != null ? RecordedAmbGain : 1f;
+            float gain = b != null ? RecordedAmbGain : SynthAmbGain(stageId);
             if (b == null) b = StageLoop(stageId);
             if (b == null)
             {
@@ -191,7 +233,7 @@ namespace FishingKing
                 return;
             }
             I.ambGain = gain;
-            I.ambience.volume = AmbBase * I.ambMult * I.ambGain;
+            I.ApplyAmbience();
             SetLoop(I.ambience, b);
             SetLoop(I.dawnSrc, DawnLoop(stageId));
             SetLoop(I.nightSrc, NightLoop(stageId));
@@ -201,9 +243,43 @@ namespace FishingKing
         public static void AmbienceLayers(float dawn, float night)
         {
             if (I == null || I.dawnSrc == null) return;
-            I.dawnSrc.volume = AmbLayer * Mathf.Clamp01(dawn) * I.ambMult;
-            I.nightSrc.volume = AmbLayer * Mathf.Clamp01(night) * I.ambMult;
+            I.dawnW = Mathf.Clamp01(dawn);
+            I.nightW = Mathf.Clamp01(night);
+            I.ApplyAmbience();
         }
+
+        /// <summary>The ambience and its layers at their levels: AmbBase x night dimming x a recorded loop's gain, AmbLayer x the layer's weight, all x the 환경음 slider.</summary>
+        void ApplyAmbience()
+        {
+            if (ambience != null) ambience.volume = AmbBase * ambMult * ambGain * AudioMix.Amb;
+            if (dawnSrc != null) dawnSrc.volume = AmbLayer * dawnW * ambMult * AudioMix.Amb;
+            if (nightSrc != null) nightSrc.volume = AmbLayer * nightW * ambMult * AudioMix.Amb;
+        }
+
+        /// <summary>
+        /// For the tests (Docs/music.md 1.2): the RMS (dBFS) of a stage's synthesized base loop, dawn and night layers as
+        /// they play at their designed levels (x AmbBase / x AmbLayer), before the sliders; NaN where it has none.
+        /// </summary>
+        internal static (float bed, float dawn, float night) AmbienceRmsDb(string stageId)
+        {
+            static float Db(AudioClip c, float gain)
+            {
+                if (c == null) return float.NaN;
+                var d = new float[c.samples * c.channels];
+                c.GetData(d, 0);
+                double s = 0;
+                foreach (var v in d) s += v * v;
+                return 20f * Mathf.Log10(Mathf.Max(1e-9f, Mathf.Sqrt((float)(s / Mathf.Max(1, d.Length))) * gain));
+            }
+            return (Db(StageLoop(stageId), AmbBase * SynthAmbGain(stageId)), Db(DawnLoop(stageId), AmbLayer), Db(NightLoop(stageId), AmbLayer));
+        }
+
+        /// <summary>The base ambience's AudioSource.volume now (for the tests).</summary>
+        internal static float AmbienceVolumeNow => I != null && I.ambience != null ? I.ambience.volume : 0f;
+
+        /// <summary>The drag loop's / the rasp's AudioSource.volume now (for the tests).</summary>
+        internal static float DragVolumeNow => I != null && I.drag != null ? I.drag.volume : 0f;
+        internal static float RaspVolumeNow => I != null && I.rasp != null && I.rasp.isPlaying ? I.rasp.volume : 0f;
 
         static void SetLoop(AudioSource s, AudioClip c)
         {
@@ -212,6 +288,19 @@ namespace FishingKing
             if (c != null) s.Play();
             else s.Stop();
         }
+
+        /// <summary>
+        /// A synthesized base loop's trim, so every stage's ambience sits about 4-6 dB under its stage bed (about -29 dBFS
+        /// RMS, Docs/music.md 1.2). Measured at AmbBase (-fkauto music, [MIX] ambience): the stream's rushing water -21.2 dBFS
+        /// (x 0.25: -33.2), the sea's waves -31.4 (x 0.74: -34.0); lake -34.1, swamp -39.6, ice -38.7, ocean -40.9, cave -41.1
+        /// stay as they are (quiet textures under the bed's rests).
+        /// </summary>
+        static float SynthAmbGain(string id) => id switch
+        {
+            "stream" => 0.25f,
+            "sea" => 0.74f,
+            _ => 1f,
+        };
 
         static AudioClip Cached(string key, Func<AudioClip> make)
         {
@@ -301,10 +390,6 @@ namespace FishingKing
         }
 
         /// <summary>
-        /// The drag slipping: a ratchet's clicks at 45 Hz over a thin whine of the spool, exactly one second, so it loops
-        /// without a seam (490 samples a click, 1200 whole cycles of the whine).
-        /// </summary>
-        /// <summary>
         /// One twang of the taut line, modelled on a recorded rubber band (measured: f0 ~113 Hz, a full harmonic series (here to the
         /// 24th) with the 3rd weaker than the 4th, the overtones dying 2-3x faster than the fundamental, ~0.3 s). Its pitch
         /// starts a little flat, rises ~6 % in the first 60 ms as the band snaps taut, then sags back; a low thump and a tiny
@@ -340,6 +425,10 @@ namespace FishingKing
             return Make("line_ting", d);
         }
 
+        /// <summary>
+        /// The drag slipping: a ratchet's clicks at 45 Hz over a thin whine of the spool, exactly one second, so it loops
+        /// without a seam (490 samples a click, 1200 whole cycles of the whine).
+        /// </summary>
         static AudioClip BuildDragLoop()
         {
             var d = Buf(1f);
@@ -356,6 +445,24 @@ namespace FishingKing
                 for (int i = 0; i < click.Length; i++) d[s + i] += click[i];
             for (int i = 0; i < d.Length; i++) d[i] += 0.12f * Mathf.Sin(2f * Mathf.PI * 1200f * i / Rate);
             return Make("drag", d, true);
+        }
+
+        /// <summary>
+        /// A fish splashing at the surface (the stand-in for a recorded fish_thrash): irregular bursts of bright water noise
+        /// with a low plop each over a light churn, about 1.5 s, looping.
+        /// </summary>
+        static AudioClip BuildThrashLoop()
+        {
+            var d = Buf(1.75f);
+            Bed(d, 0.08f, 0.25f, 191);
+            var rnd = new System.Random(192);
+            for (int k = 0; k < 9; k++)
+            {
+                float t = (float)rnd.NextDouble() * 1.55f;
+                Noise(d, t, 0.12f + 0.12f * (float)rnd.NextDouble(), 0.5f + 0.5f * (float)rnd.NextDouble(), 0.7f, 0.12f, 1.8f, 193 + k);
+                Tone(d, t, 0.06f, 260f, 110f, 0.2f, Sine);
+            }
+            return Make("thrash", Crossfade(d), true);
         }
 
         // ------------------------------------------------------------------ ambience loops

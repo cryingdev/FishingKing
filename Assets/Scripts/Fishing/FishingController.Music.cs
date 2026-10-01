@@ -9,9 +9,10 @@ namespace FishingKing
     /// asked for last, so every way out of a fight, an encounter or a legend fight lands back on the stage cue.
     /// <list type="bullet">
     /// <item>between fish: stage_&lt;id&gt;, its day stem at dawn and by day, its night stem in the evening and at night,
-    /// crossfaded over <see cref="PeriodFade"/> s when the period changes;</item>
+    /// following the picture's own blend between the periods (cos / sin of the evening + night weight), a jump of the
+    /// clock crossfaded over <see cref="PeriodFade"/> s;</item>
     /// <item>a bite ducks it for the bite (<see cref="BiteDuck"/>); the legend's build-up dims it while the line trembles
-    /// (its meter from 0.7 until it falls under 0.6: <see cref="BuildDuck"/>);</item>
+    /// (its meter from 0.7 until it falls under 0.6: <see cref="BuildDuck"/>), for <see cref="BuildMax"/> s at most;</item>
     /// <item>fighting: the fight stem comes up and follows the line's smoothed tension (<see cref="FightMin"/>..1), down
     /// over <see cref="FightDown"/> s after;</item>
     /// <item>landed: sting_catch / sting_rare / sting_legend by its rarity; shaken off or the line broken (a forced snag
@@ -40,6 +41,14 @@ namespace FishingKing
         const float TensionLo = 0.2f, TensionHi = 0.9f;   // the smoothed tension that gives the fight stem FightMin / 1
         const float BuildOn = 0.7f, BuildOff = 0.6f;      // the legend's meter: the build-up dims the stage from BuildOn until under BuildOff ...
         const float BuildDim = 2.5f;       // s: ... going down this slowly
+        /// <summary>s: the build-up dims the stage this long at most (weak gear holds the meter at 0.7 while the legend cannot come), then eases back.</summary>
+        internal const float BuildMax = 6f;
+        /// <summary>The day / night stems follow the picture's blend in steps this big over BlendFollow s; a bigger jump (the clock set) takes PeriodFade s.</summary>
+        const float BlendStep = 0.02f, BlendFollow = 0.5f, BlendJump = 0.25f;
+        /// <summary>s: the window's deck stopped at the strike; the duck let go on the way back to the stage / at a legend fight without the strike (fast), as the encounter's stems come in, at the omen and as the scene closes.</summary>
+        const float WindowStop = 0.3f, UnduckFast = 0.3f, UnduckEnc = 0.4f, UnduckOmen = 0.5f, LeaveUnduck = 0.5f;
+        /// <summary>The encounter's drone at the omen under sting_omen (0.6 without it).</summary>
+        const float OmenDroneUnderSting = 0.25f;
         const float BiteDown = 0.15f, BiteBack = 0.6f;    // s: a bite's duck down, and back up after it
         const float DuckBack = 1.5f;       // s: any other duck back up (the build-up eased off)
         const float EyesFade = 2.5f, ApproachFade = 2f, TeaseFade = 1.5f;   // s: the encounter's stems in by phase
@@ -50,7 +59,8 @@ namespace FishingKing
 
         enum Mus { Stage, Encounter, Legend }
         Mus musMode;
-        string musStem;               // the stage's base stem asked for: day / night
+        float musNight;               // the stage's night stem asked for (the day stem: its equal-power partner)
+        float musBuildT;              // s the build-up has dimmed the stage
         float musFight;               // the fight stem's level asked for
         float musTension;             // the line's tension, smoothed
         float musDuck = 1f;           // the duck asked for
@@ -61,14 +71,28 @@ namespace FishingKing
 
         string StageCue => "stage_" + Stage.Def.id;
 
-        static string PeriodStem => GameClock.Now == Period.Evening || GameClock.Now == Period.Night ? "night" : "day";
+        /// <summary>How much of the night stem the picture asks for now: the evening + night weight of GameClock.Look (0 by day, 1 at night, eased across the 30 game minutes of each boundary).</summary>
+        static float NightWeight
+        {
+            get
+            {
+                var b = GameClock.Look;
+                return Mathf.Clamp01(b.Weight(Period.Evening) + b.Weight(Period.Night));
+            }
+        }
 
-        static string OtherStem(string stem) => stem == "day" ? "night" : "day";
+        static float DayLevel(float night) => Mathf.Cos(night * Mathf.PI * 0.5f);
+
+        static float NightLevel(float night) => Mathf.Sin(night * Mathf.PI * 0.5f);
+
+        /// <summary>A fish's size as the level of its splashing: a 20 cm fish half as loud as one of 150 cm and over.</summary>
+        static float ThrashSize(float cm) => Mathf.Lerp(0.5f, 1f, Mathf.InverseLerp(20f, 150f, cm));
 
         void InitMusic()
         {
             musMode = Mus.Stage;
-            musStem = PeriodStem;
+            musNight = NightWeight;
+            musBuildT = 0f;
             musFight = 0f;
             musDuck = 1f;
             Music.Duck(1f, 0f);
@@ -76,9 +100,9 @@ namespace FishingKing
         }
 
         /// <summary>The scene closes: nothing of it stays ducked (the next scene plays its own cue).</summary>
-        void LeaveMusic() => Music.Duck(1f, 0.5f);
+        void LeaveMusic() => Music.Duck(1f, LeaveUnduck);
 
-        void PlayStage(float fade) => Music.Play(StageCue, fade, (musStem, 1f), (OtherStem(musStem), 0f), ("fight", musFight));
+        void PlayStage(float fade) => Music.Play(StageCue, fade, ("day", DayLevel(musNight)), ("night", NightLevel(musNight)), ("fight", musFight));
 
         void SetDuck(float level, float seconds)
         {
@@ -103,16 +127,19 @@ namespace FishingKing
                 // its own played the stage's fight stem, which now goes down as after any fight)
                 musMode = Mus.Stage;
                 musFight = 0f;
-                musStem = PeriodStem;
-                SetDuck(1f, 0.3f);
+                musNight = NightWeight;
+                SetDuck(1f, UnduckFast);
                 PlayStage(Music.Current == StageCue ? FightDown : StageBack);
             }
-            string stem = PeriodStem;
-            if (stem != musStem)
+            // day / night after the picture's blend: small steps follow it, a jump (the clock set) crossfades over PeriodFade s
+            float night = NightWeight;
+            float jump = Mathf.Abs(night - musNight);
+            if (jump >= BlendStep || (jump > 0f && (night == 0f || night == 1f)))
             {
-                musStem = stem;
-                Music.Stem(stem, 1f, PeriodFade);
-                Music.Stem(OtherStem(stem), 0f, PeriodFade);
+                float blendSecs = jump >= BlendJump ? PeriodFade : BlendFollow;
+                musNight = night;
+                Music.Stem("day", DayLevel(night), blendSecs);
+                Music.Stem("night", NightLevel(night), blendSecs);
             }
             // the fight layer: up at the hook set, then after the line's tension; down over FightDown s after the fight
             float want = 0f, secs = FightDown;
@@ -131,8 +158,9 @@ namespace FishingKing
             // a bite: down for the moment of the strike; the legend's build-up: dimmed until it eases off (or comes)
             float meter = Watch != null ? Watch.Meter : 0f;
             musBuild = meter >= BuildOn || (musBuild && meter >= BuildOff);
+            musBuildT = musBuild ? musBuildT + dt : 0f;
             if (State == S.Biting) SetDuck(BiteDuck, BiteDown);
-            else if (musBuild && State != S.Fighting) SetDuck(BuildDuck, BuildDim);
+            else if (musBuild && musBuildT <= BuildMax && State != S.Fighting) SetDuck(BuildDuck, BuildDim);
             else SetDuck(1f, musDuck <= BiteDuck ? BiteBack : DuckBack);
         }
 
@@ -148,8 +176,9 @@ namespace FishingKing
                 musMode = Mus.Encounter;
                 musLegendOn = false;
                 musBuild = false;
+                musBuildT = 0f;
                 musFight = 0f;
-                SetDuck(1f, 0.5f);
+                SetDuck(1f, UnduckOmen);
                 if (Music.Has("encounter")) Music.Play("encounter", OmenFade, ("lurk", 0f));
                 else Music.Stop(OmenFade);
                 Music.Sting("sting_omen", 1f);
@@ -177,7 +206,7 @@ namespace FishingKing
                     case LegendEncounter.Phase.Hooked:
                         // the strike: the window's music gone (silent as it was), sting_hook, the legend's cue after it
                         // (its clips loading under the sting, so it starts the moment it is asked for)
-                        Music.Stop(0.3f);
+                        Music.Stop(WindowStop);
                         SetDuck(1f, 0f);
                         Music.Sting("sting_hook", 0f);
                         Music.Preload("legend_" + e.Sp.id);
@@ -190,7 +219,7 @@ namespace FishingKing
                         Music.Sting("sting_fail", 0f);
                         musMode = Mus.Stage;
                         musFight = 0f;
-                        musStem = PeriodStem;
+                        musNight = NightWeight;
                         PlayStage(StageBack);
                         SetDuck(1f, 0f);
                         break;
@@ -204,7 +233,7 @@ namespace FishingKing
             Music.Stem("lurk", lurk, seconds);
             Music.Stem("approach", approach, seconds);
             Music.Stem("tease", tease, seconds);
-            SetDuck(1f, 0.4f);
+            SetDuck(1f, UnduckEnc);
         }
 
         /// <summary>A legend on the line: its own cue once sting_hook has (nearly) played out.</summary>
@@ -215,7 +244,7 @@ namespace FishingKing
                 // (on the line without the encounter's strike, e.g. a test hook: its cue at once)
                 musMode = Mus.Legend;
                 musLegendOn = false;
-                SetDuck(1f, 0.3f);
+                SetDuck(1f, UnduckFast);
             }
             if (musLegendOn || Music.StingLeft > HookHandoff) return;
             musLegendOn = true;
@@ -224,7 +253,7 @@ namespace FishingKing
             else
             {
                 musFight = 1f;
-                musStem = PeriodStem;
+                musNight = NightWeight;
                 PlayStage(LegendStage);
             }
         }
@@ -234,8 +263,13 @@ namespace FishingKing
         {
             bool legend = sp.encounter != null || sp.rarity == Rarity.Legendary;
             bool rare = sp.rarity == Rarity.Rare || sp.rarity == Rarity.Epic;
-            Music.Sting(legend ? "sting_legend" : rare ? "sting_rare" : "sting_catch", legend ? 0f : rare ? RareDuck : CatchDuck);
+            Music.Sting(CatchSting(sp), legend ? 0f : rare ? RareDuck : CatchDuck);
         }
+
+        /// <summary>The catch sting by rarity: sting_legend (a legend), sting_rare (rare / epic), sting_catch.</summary>
+        static string CatchSting(FishSpecies sp) =>
+            sp.encounter != null || sp.rarity == Rarity.Legendary ? "sting_legend"
+            : sp.rarity == Rarity.Rare || sp.rarity == Rarity.Epic ? "sting_rare" : "sting_catch";
 
         /// <summary>The fish is off (shaken off, the line broken): sting_escape (after a legend fight the stage comes back under it).</summary>
         void FishOffMusic() => Music.Sting("sting_escape", musMode == Mus.Legend ? 0f : EscapeDuck);

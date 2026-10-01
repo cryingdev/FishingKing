@@ -6,6 +6,9 @@ namespace FishingKing
     /// <summary>
     /// Procedurally synthesized sound effects, ambience and a small chiptune loop
     /// (no audio files needed). Lives on the persistent [Game] object. More sounds and the per-stage ambience: Sfx.Foley.cs.
+    /// Every source honours the volume sliders live (<see cref="AudioMix"/>, <see cref="ApplyMix"/>): the one-shot pool's
+    /// sources and the rasp / drag / thrash loops x <see cref="AudioMix.Effects"/>, the ambience and its layers x
+    /// <see cref="AudioMix.Amb"/>, the chiptune x <see cref="AudioMix.Bgm"/>.
     /// </summary>
     public partial class Sfx : MonoBehaviour
     {
@@ -20,26 +23,36 @@ namespace FishingKing
             // rubbing (a loop, see Rasp), a pad or weed pulled loose
             Tock, Knock, Thunk, Ting, Rustle, RaspLoop, Tear;
 
+        /// <summary>One-shot voices. A busy voice taken again is re-pitched mid-sound, so an idle one is taken first.</summary>
+        const int Voices = 16;
         AudioSource[] pool;
         int next;
+        float[] poolStart;
+        float raspWant, chipMult;
+        /// <summary>The level the last one-shot was asked to play at, x the effects slider (for the tests).</summary>
+        internal static float LastOneShotVol;
+        // set by AudioSettings.OnAudioConfigurationChanged (a new output device stops every source), handled in Update
+        volatile bool audioReset;
         AudioSource ambience, music, rasp;
         static AudioClip ambWater, ambWind, ambCave, musicLoop;
 
         void Awake()
         {
             I = this;
-            pool = new AudioSource[10];
+            pool = new AudioSource[Voices];
+            poolStart = new float[Voices];
             for (int i = 0; i < pool.Length; i++)
             {
                 pool[i] = gameObject.AddComponent<AudioSource>();
                 pool[i].playOnAwake = false;
             }
+            AudioSettings.OnAudioConfigurationChanged += OnAudioConfiguration;
             ambience = gameObject.AddComponent<AudioSource>();
             ambience.loop = true;
             ambience.volume = 0.35f;
             music = gameObject.AddComponent<AudioSource>();
             music.loop = true;
-            music.volume = 0.22f;
+            music.volume = ChipBase;
             rasp = gameObject.AddComponent<AudioSource>();
             rasp.loop = true;
             rasp.playOnAwake = false;
@@ -47,14 +60,48 @@ namespace FishingKing
             Build();
             rasp.clip = RaspLoop;
             InitFoley();
+            ApplyMix();
+        }
+
+        void OnDestroy() => AudioSettings.OnAudioConfigurationChanged -= OnAudioConfiguration;
+
+        void OnAudioConfiguration(bool deviceWasChanged) => audioReset = true;
+
+        /// <summary>
+        /// The volume sliders changed (<see cref="AudioMix.Apply"/>): every source of ours at its level now. The one-shot
+        /// voices carry the effects gain as their volume (PlayOneShot's level is x it), so sounds still playing follow too.
+        /// </summary>
+        public static void ApplyMix()
+        {
+            if (I == null || I.pool == null) return;
+            foreach (var s in I.pool) s.volume = AudioMix.Effects;
+            if (I.rasp != null && I.raspWant > 0f) I.rasp.volume = I.raspWant * AudioMix.Effects;
+            if (I.music != null) I.music.volume = ChipBase * I.chipMult * AudioMix.Bgm;
+            I.ApplyAmbience();
         }
 
         public static void Play(AudioClip c, float vol = 1f, float pitch = 1f)
         {
             if (I == null || c == null) return;
-            var s = I.pool[I.next];
-            I.next = (I.next + 1) % I.pool.Length;
+            // an idle voice (from the round-robin point on), else the one that started longest ago
+            int n = I.pool.Length, pick = -1;
+            for (int k = 0; k < n && pick < 0; k++)
+            {
+                int i = (I.next + k) % n;
+                if (!I.pool[i].isPlaying) pick = i;
+            }
+            if (pick < 0)
+            {
+                pick = 0;
+                for (int i = 1; i < n; i++)
+                    if (I.poolStart[i] < I.poolStart[pick]) pick = i;
+            }
+            I.next = (pick + 1) % n;
+            var s = I.pool[pick];
+            I.poolStart[pick] = Time.unscaledTime;
             s.pitch = pitch;
+            s.volume = AudioMix.Effects;
+            LastOneShotVol = vol * s.volume;
             s.PlayOneShot(c, vol);
         }
 
@@ -68,7 +115,7 @@ namespace FishingKing
             SetLoop(I.dawnSrc, null);
             SetLoop(I.nightSrc, null);
             I.ambGain = 1f;
-            I.ambience.volume = AmbBase * I.ambMult;
+            I.ApplyAmbience();
             SetLoop(I.ambience, c);
         }
 
@@ -77,7 +124,7 @@ namespace FishingKing
         {
             if (I == null || I.ambience == null) return;
             I.ambMult = Mathf.Clamp01(mult);
-            I.ambience.volume = AmbBase * I.ambMult * I.ambGain;
+            I.ApplyAmbience();
         }
 
         /// <summary>The line rubbing on structure: the rasp loop at this volume (0 stops it).</summary>
@@ -86,10 +133,12 @@ namespace FishingKing
             if (I == null || I.rasp == null) return;
             if (vol <= 0.001f)
             {
+                I.raspWant = 0f;
                 if (I.rasp.isPlaying) I.rasp.Stop();
                 return;
             }
-            I.rasp.volume = Mathf.Clamp01(vol);
+            I.raspWant = Mathf.Clamp01(vol);
+            I.rasp.volume = I.raspWant * AudioMix.Effects;
             if (!I.rasp.isPlaying) I.rasp.Play();
         }
 
@@ -97,8 +146,15 @@ namespace FishingKing
         public static void MusicVolume(float mult)
         {
             if (I == null || I.music == null) return;
-            I.music.volume = 0.22f * Mathf.Clamp01(mult);
+            I.chipMult = Mathf.Clamp01(mult);
+            I.music.volume = ChipBase * I.chipMult * AudioMix.Bgm;
         }
+
+        /// <summary>The chiptune loop's designed level (Docs/music.md 1.2).</summary>
+        const float ChipBase = 0.22f;
+
+        /// <summary>The chiptune's AudioSource.volume now (for the tests).</summary>
+        internal static float ChipVolume => I != null && I.music != null ? I.music.volume : 0f;
 
         public static void Music(bool on)
         {

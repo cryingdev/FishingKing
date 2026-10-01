@@ -90,7 +90,7 @@ namespace FishingKing
                 canvas.GetComponent<GraphicRaycaster>().enabled = false;
                 Game.I.LeveledUp += lv =>
                 {
-                    Sfx.Play(Sfx.LevelUp, 0.8f);
+                    Sfx.PlayAfterSting(Sfx.LevelUp, 0.8f);   // (after a catch sting, not over it)
                     Show($"레벨 업!  Lv.{lv}   보상 +{UIKit.Num(lv * 100)} 코인", UIKit.Gold, 2.6f);
                 };
                 return canvas;

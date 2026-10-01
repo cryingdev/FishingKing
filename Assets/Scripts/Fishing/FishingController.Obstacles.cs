@@ -756,6 +756,12 @@ namespace FishingKing
             ShowLoss(loss);
         }
 
+        /// <summary>Test hook (-fkauto music): the rig's line breaks at a snag now, forced (cut = false) or with 끊기 (cut = true).</summary>
+        internal void DebugSnagBreak(bool cut)
+        {
+            if (State == S.Waiting || State == S.Snagged) SnagBreak(cut);
+        }
+
         /// <summary>The 끊기 button (the 회수 button while snagged).</summary>
         void CutLine()
         {
