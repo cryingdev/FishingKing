@@ -752,8 +752,11 @@ values in `PROFILE` for the preview mock, and list their lure billboards:
   vertical light column fading down. It runs from the projected hole point (set (0, 4.3, 0)), directly above the lure,
   along the light (−`keyDir`: straight down) to the projected floor under it. It is not a top-right god-ray. It is
   drawn as a sheared mesh, not a sprite: in the level rest view it stays vertical; when the camera pitches (the lunge's
-  close-up looking down at the bite) it leans the way the 3D column projects. Each row keeps its 64 texels 1:1 (point
-  filtering), shifted by whole pixels, and the rows are spread along it by their 3D height.
+  close-up looking down at the bite) it leans the way the 3D column projects. Each row keeps its 64 texels as whole
+  blocks (point filtering), shifted by whole pixels, and the rows are spread along it by their 3D height. Across, it is
+  drawn at the close-ups' whole-number scale, the lure's: 1 px per texel (64 px) in the rest view, 2 px per texel
+  (128 px) once the lunge's close-up (or a nose-in's push-in) is more than half way in. True perspective would make it
+  about 3.4× wider there (the shot line logs `colx=` and `persp x`); 2× keeps the column and the worm in proportion.
 - **bg:** from `#1a2438` (just under the ice) through `#0e1628` and `#080e1c` to `#04080f`; far bottom-slope
   silhouettes; the haze band.
 - **mid:** boulders, sunken dead branches and weed, `#101a2c` … `#24344e`.
@@ -843,7 +846,9 @@ line:
 **One capture set per legend**, `enc_<fish_id>_<n>_<beat>.png`: `1_eyes`, `2_approach`, `3_pass`, `4_excited`,
 `5_bite_full`, `6_wipe`, `7_fight`, plus `enc_<fish_id>_verb_zoom.png` (the first tease shot's verb icon, blown up). The
 checks are as in the spec, with `fight species=<fish_id>`, plus: a topwater legend's tease is seen from above whenever
-the key has top frames, and the prompt's verb icon is the mood's verb's (RunPause: `verb_runpause`).
+the key has top frames, and the prompt's verb icon is the mood's verb's (RunPause: `verb_runpause`). The ice adds
+`5a_col_1x` / `5a_col_now`: two frames in a row of the bite's close-up (the hook window, the camera still), the light
+column at its art's 1x as it was drawn before and at the close-up scale now (4.4).
 
 ---
 

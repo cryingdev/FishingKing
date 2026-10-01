@@ -27,7 +27,8 @@ namespace FishingKing
     /// Logs "[ENC] phase=.. t=.. gauge=.. mood=.." on every phase / mood change and checks: encounter triggered, reached
     /// NoseIn, hook perfect=..., fight species=&lt;the legend&gt;, and for bad "failed -> Waiting, lure kept". A hooked
     /// legend is fought out and sold. One capture set into -fkshots: enc_&lt;id&gt;_1_eyes, _2_approach, _3_pass (nearest the
-    /// camera while curious), _4_excited, _5_bite_full, _5b_hookset, _6_wipe, _7_fight, _8_fail; a tease watched from
+    /// camera while curious), _4_excited, _5_bite_full, _5a_col_1x / _5a_col_now (a light column, the ice's, in the bite's
+    /// close-up: two frames in a row at its art's 1x and at the close-up scale), _5b_hookset, _6_wipe, _7_fight, _8_fail; a tease watched from
     /// above adds _2b_rise (through the waterline), _3a_top_wary (the lure swimming), _4c_nosein, and its _3_pass is the
     /// curious "퐁" (the spray up); its caption check also keeps captions off the top view's lure. The caption check
     /// (<see cref="EncCaptionCheck"/>) logs every captioned frame against the legend's face (with -fkcapshots also one
@@ -396,6 +397,18 @@ namespace FishingKing
                 {
                     wasEnc = true;
                     var ph = e.Ph;
+                    // the hole's light column in the bite's close-up (the camera still): two frames in a row, the first
+                    // with the column at its art's 1x as before, the second as now (the close-ups' whole-number scale)
+                    if (ph == LegendEncounter.Phase.HookWindow && e.PhaseT >= 0.05f && v != null && v.ColumnEnds(out _, out _) && v.ColumnScale > 1
+                        && encShots.Add("5a_col"))
+                    {
+                        EncounterView.DebugColumnX = 1;
+                        yield return EncShot(ctl, $"enc_{encId}_5a_col_1x");
+                        EncounterView.DebugColumnX = 0;
+                        yield return null;
+                        yield return EncShot(ctl, $"enc_{encId}_5a_col_now");
+                        continue;
+                    }
                     string shot = null;
                     bool topFlow = v != null && v.TopFlow;
                     if (ph == LegendEncounter.Phase.Eyes && e.PhaseT >= Mathf.Min(1.5f, e.PhaseLen - 0.15f)) shot = "1_eyes";
@@ -666,8 +679,12 @@ namespace FishingKing
                 VerbZoom(tex, hud, $"enc_{encId}_verb_zoom");
             }
             Destroy(tex);
-            // (a light column: its ends, the hole's first; the lean is their x difference)
-            string col = v != null && v.ColumnEnds(out var ct, out var cb) ? $" column=({ct.x:0},{ct.y:0})->({cb.x:0},{cb.y:0}) lean={ct.x - cb.x:0}px" : "";
+            // (a light column: its ends, the hole's first; the lean is their x difference; its width factor and what true
+            // perspective would make it)
+            string col = v != null && v.ColumnEnds(out var ct, out var cb)
+                ? string.Format(System.Globalization.CultureInfo.InvariantCulture, " column=({0:0},{1:0})->({2:0},{3:0}) lean={4:0}px colx={5} (persp x{6:0.0})",
+                    ct.x, ct.y, cb.x, cb.y, ct.x - cb.x, v.ColumnScale, v.ColumnPersp)
+                : "";
             Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "shot {0} phase={1} gauge={2:0} mood={3} fishDist={4:0.00} crop={5}{6}",
                 p, e != null ? e.Ph.ToString() : "-", e != null ? e.Gauge : 0f, e != null ? LegendEncounter.MoodName(e.Mood) : "-",
                 v != null ? v.FishCamDist : -1f, v != null ? v.Crop.ToString() : "-", col));

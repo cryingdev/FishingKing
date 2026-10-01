@@ -78,6 +78,9 @@ namespace FishingKing
         Rect rayColUv;
         int rayColW;
         Vector2 rayColTop, rayColBot;
+        // its width factor now (the close-ups' whole-number scale) and what true perspective would make it (for the tests)
+        int rayColScale = 1;
+        float rayColPersp = 1f;
         LineRenderer line;
         Sprite[] lureFrames, silt;
         Sprite bubbleS, bubbleM;
@@ -181,6 +184,8 @@ namespace FishingKing
         /// frog and the face crowd the HUD's bands and the gauge has to move; 0 = off (the window as laid out).
         /// </summary>
         public static float DebugWinH;
+        /// <summary>Test hook (-fkauto encounter's column compare): the light column's width factor forced (0 = off: <see cref="CloseUpScale"/>).</summary>
+        public static int DebugColumnX;
 
         public static EncounterView Create(FishingController ctl, LegendEncounter enc, BaitDef bait, float cm)
         {
@@ -2344,7 +2349,7 @@ namespace FishingKing
             int fr = (int)(lureAnimT * (moving ? 5f : 1.5f)) % 2;
             if (set.lureAt == LureAt.Surface) fr = popT < 0.2f ? 1 : ctl.LureIn.Winding ? fr : 0;
             lureSr.sprite = lureFrames[fr];
-            int scale = lungeK > 0.5f || push > 0.5f ? 2 : 1;
+            int scale = CloseUpScale;
             lureSr.transform.localScale = new Vector3(scale, scale, 1f);
             lureSr.transform.rotation = Quaternion.Euler(0f, 0f, Mathf.Round(lureTilt / 5f) * 5f);
             Place(lureSr, lpx);
@@ -2365,6 +2370,12 @@ namespace FishingKing
             else uwShake = shakeT >= 0f && shakeT < 0.8f ? new Vector2(Mathf.Round(Mathf.Sin(shakeT * 60f)), 0f) : Vector2.zero;
         }
 
+        /// <summary>
+        /// The close-ups' whole-number scale of the pixel-art props drawn into the underwater view (the lure, the hole's
+        /// light column): 2 once the lunge's close-up or the nose-in's push-in is more than half way in, else 1.
+        /// </summary>
+        int CloseUpScale => lungeK > 0.5f || push > 0.5f ? 2 : 1;
+
         const int ColumnStrips = 16;
         readonly Vector3[] colVerts = new Vector3[(ColumnStrips + 1) * 2];
         readonly Vector2[] colUvs = new Vector2[(ColumnStrips + 1) * 2];
@@ -2375,11 +2386,18 @@ namespace FishingKing
         /// (-keyDir; straight down under the ice) to the floor, clipped at the camera's near plane. A vertical column
         /// only looks vertical while the camera looks level (the rest view); pitched (the lunge's close-up looking down
         /// at the bite) it leans towards the vertical vanishing point, so the art is sheared along the projected line:
-        /// every row keeps its texels 1:1 across, shifted by whole pixels (the ends are whole pixels), and the rows are
-        /// spread along it by the 3D height (perspective-correct in 16 strips: the far end packs tighter).
+        /// every row keeps its texels as whole blocks across (1 px each, <see cref="CloseUpScale"/> px in the close-ups,
+        /// like the lure: point-sampled, so each texel stays a crisp block), shifted by whole pixels (the ends are whole
+        /// pixels), and the rows are spread along it by the 3D height (perspective-correct in 16 strips: the far end packs
+        /// tighter).
         /// </summary>
         void PlaceColumn()
         {
+            // the width factor; and what true perspective would make it at the worm's height, against the rest view
+            rayColScale = DebugColumnX > 0 ? DebugColumnX : CloseUpScale;
+            float restDist = set.camDist * def.camScale;
+            float depthNow = Proj(new Vector3(0f, LureRest, 0f)).z;
+            rayColPersp = depthNow > 0.05f && restDist > 0.05f ? (f / depthNow) / (f0 / restDist) : 1f;
             var hole = new Vector3(0f, set.surfaceY, 0f);
             var down = -set.keyDir.normalized;
             if (down.y > -0.2f) down = Vector3.down;
@@ -2405,7 +2423,8 @@ namespace FishingKing
             }
             rayColTop = new Vector2(xA, yA);
             rayColBot = new Vector2(xB, yB);
-            float half = rayColW * 0.5f, odd = rayColW % 2 == 1 ? 0.5f : 0f;
+            int wPx = rayColW * rayColScale;
+            float half = wPx * 0.5f, odd = wPx % 2 == 1 ? 0.5f : 0f;
             for (int i = 0; i <= ColumnStrips; i++)
             {
                 float t = Mathf.Lerp(tA, tB, i / (float)ColumnStrips);
@@ -2452,6 +2471,12 @@ namespace FishingKing
             bottom = rayColBot;
             return rayCol != null && rayCol.enabled;
         }
+
+        /// <summary>For the autopilot: the light column's width factor now (1 at rest, 2 in the close-ups).</summary>
+        public int ColumnScale => rayColScale;
+
+        /// <summary>For the autopilot: the width true perspective would give the column now, x its art's (the rest view = 1).</summary>
+        public float ColumnPersp => rayColPersp;
 
         /// <summary>Puts a sprite's centre at a render-target pixel (odd-sized sprites on pixel centres).</summary>
         void Place(SpriteRenderer sr, Vector2 px, bool topScene = false)
