@@ -955,6 +955,7 @@ ENC_ICONS = {
     "verb_wind": ("#6ab8ff", "#1f3f73", 16),      # 감기: a clockwise circle arrow (winding in)
     "verb_flick": ("#6ad06a", "#35883a", 16),     # 톡: a short downward pull (down arrow) that flicks the rod tip up
     "verb_hold": ("#ffd24a", "#c89020", 16),      # 멈춤: two bars (pause)
+    "verb_runpause": ("#6ab8ff", "#1f3f73", 16),  # 감다 멈춤: a short wind (verb_wind's arrow) then verb_hold's bars
     "icon_eye": ("#6ad8e0", "#1a2230", 16),       # 목격: an eye (legend seen / its key lures)
 }
 
@@ -1018,6 +1019,19 @@ def build_enc_icon(name):
     elif name == "verb_hold":
         objs.append(extruded("BarL", [(-4.6, -6.0), (-1.4, -6.0), (-1.4, 6.0), (-4.6, 6.0)], mat, 2.0, 0.35))
         objs.append(extruded("BarR", [(1.4, -6.0), (4.6, -6.0), (4.6, 6.0), (1.4, 6.0)], mat, 2.0, 0.35))
+    elif name == "verb_runpause":
+        # a short wind run, then a pause (RunPause): verb_wind's clockwise circle arrow with verb_hold's yellow pause
+        # bars in place of its hub (side by side, the two do not survive 16 px)
+        ring = [(5.0 * math.cos(math.radians(a)), 0, 5.0 * math.sin(math.radians(a))) for a in range(120, -181, -20)]
+        objs.append(C.tube_along("Ring", ring, 1.1, mat, 10))
+        end = Vector((ring[-1][0], ring[-1][2]))
+        tangent = Vector((0.0, 1.0))
+        objs.append(arrow_head("Head", mat, tuple(end + tangent * 2.8), tuple(tangent), 4.2, 3.2, bevel=0.3))
+        bars = M("EncHold", ENC_ICONS["verb_hold"][0], shine=0.8)
+        # (the ring's centre lands on a pixel corner at 16 px: 2 px bars either side of a 2 px gap, a thin bevel so the
+        # shaded right side does not eat half of each)
+        objs.append(extruded("BarL", [(-2.95, -2.75), (-1.05, -2.75), (-1.05, 2.75), (-2.95, 2.75)], bars, 2.0, 0.1))
+        objs.append(extruded("BarR", [(1.05, -2.75), (2.95, -2.75), (2.95, 2.75), (1.05, 2.75)], bars, 2.0, 0.1))
     elif name == "icon_eye":
         objs.append(extruded("Eye", lens(7.0, 3.6), M("White", "#eef6f2", shine=0.4), 2.0, 0.3))
         objs.append(extruded("Iris", disc(0, 0, 2.9, 16), mat, 1.0, 0.2))

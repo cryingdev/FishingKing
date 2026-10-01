@@ -740,7 +740,7 @@ These outputs are written straight into `Assets/Resources/Sprites/`, as the scri
 - **`UI_ICONS`** additions, output to `Sprites/UI/<name>.png`:
   - action chips, 12×12: `act_steady`, `act_twitch`, `act_top`, `act_bottom`, `act_vertical`;
   - mood icons, 12×12: `mood_wary`, `mood_curious`, `mood_excited`;
-  - verb icons, 16×16: `verb_wind`, `verb_flick` (톡: a down arrow — the finger's pull — beside a rod tip flicking up), `verb_hold`;
+  - verb icons, 16×16: `verb_wind`, `verb_flick` (톡: a down arrow — the finger's pull — beside a rod tip flicking up), `verb_hold`, `verb_runpause` (RunPause, e.g. the arapaima's 경계: `verb_wind`'s circle arrow round `verb_hold`'s yellow bars);
   - `icon_eye`, 16×16 (seen / legend key marker).
 
 ### 3.2 `Tools/Blender/variants/hybrid/hyb_encounter.py` (new)

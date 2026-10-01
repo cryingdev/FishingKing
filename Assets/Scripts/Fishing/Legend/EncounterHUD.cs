@@ -28,8 +28,8 @@ namespace FishingKing
     {
         static readonly Color[] MoodCol = { new Color32(0x7a, 0x8a, 0xa8, 0xff), new Color32(0x6a, 0xff, 0xea, 0xff), new Color32(0xff, 0xc8, 0x30, 0xff) };
         static readonly string[] MoodIcon = { "mood_wary", "mood_curious", "mood_excited" };
-        // by Verb: Wind, FlickPause, Hold, RunPause (a wind run, then a pause: the wind icon)
-        static readonly string[] VerbIcon = { "verb_wind", "verb_flick", "verb_hold", "verb_wind" };
+        // by Verb: Wind, FlickPause, Hold, RunPause (a wind run, then a pause: the wind's ring round the hold's bars)
+        static readonly string[] VerbIcon = { "verb_wind", "verb_flick", "verb_hold", "verb_runpause" };
         const float Px = UIKit.Px;               // canvas units per pixel-view pixel
         const float BarW = 180f * Px, BarH = 7f * Px;
         // around the face this much stays clear (canvas units); a spot the overlay is not on must be clear by Hyst more
@@ -748,6 +748,20 @@ namespace FishingKing
         public Rect CaptionRect => Drawn(caption);
         public bool PromptShown => promptGroup.alpha > 0.01f;
         public Rect PromptRect => Drawn(prompt);
+        /// <summary>The verb icon a mood's prompt shows (Resources/Sprites/UI).</summary>
+        public static string VerbIconOf(Verb v) => VerbIcon[(int)v];
+        /// <summary>The prompt's verb icon as shown now (its sprite's name; null = none).</summary>
+        public string VerbIconShown => verbIcon.enabled && verbIcon.sprite != null ? verbIcon.sprite.name : null;
+        /// <summary>The verb icon's screen rectangle (pixels, the overlay canvas: for a zoomed capture).</summary>
+        public Rect VerbIconScreen
+        {
+            get
+            {
+                var c = new Vector3[4];
+                verbIcon.rectTransform.GetWorldCorners(c);
+                return Rect.MinMaxRect(c[0].x, c[0].y, c[2].x, c[2].y);
+            }
+        }
         public bool GaugeShown => gaugeGroup.alpha > 0.01f;
         public Rect GaugeRect => Drawn(gaugePlate);
         /// <summary>Where the gauge is drawn (<see cref="GaugeSpots"/>).</summary>
