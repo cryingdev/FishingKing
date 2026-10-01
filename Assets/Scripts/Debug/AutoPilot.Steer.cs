@@ -785,6 +785,8 @@ namespace FishingKing
             public float t, runTime, drain, tension, mult, tmult, stam0, stam1, clrMin = 999f, tensionAll, tiltT, tiltMax;
             // the side multipliers the fight model got from the controller in runs (the lean keys applied): extremes
             public float multMax = 1f, multMin = 1f, tmultMax = 1f, tmultMin = 1f;
+            // the fish's sweep across the rod the model got in runs (FightModel.SideAcross01): time-weighted sum, max
+            public float across, acrossMax;
             // the shortest time a turned run ran on after its turn
             public float runOnMin = 999f;
             public string clrAt = "";
@@ -795,6 +797,7 @@ namespace FishingKing
             public float TensionRun => runTime > 0f ? tension / runTime : 0f;
             public float MultRun => runTime > 0f ? mult / runTime : 0f;
             public float TMultRun => runTime > 0f ? tmult / runTime : 0f;
+            public float AcrossRun => runTime > 0f ? across / runTime : 0f;
             public float MeanRun => durs.Count > 0 ? durs.Average() : 0f;
             public float MeanTurn => turns.Count > 0 ? turns.Average() : -1f;
         }
@@ -874,6 +877,8 @@ namespace FishingKing
                         s.multMin = Mathf.Min(s.multMin, f.SideDrainMult);
                         s.tmultMax = Mathf.Max(s.tmultMax, f.SideTensionMult);
                         s.tmultMin = Mathf.Min(s.tmultMin, f.SideTensionMult);
+                        s.across += f.SideAcross01 * dt;
+                        s.acrossMax = Mathf.Max(s.acrossMax, f.SideAcross01);
                     }
                     s.tensionAll += f.TensionRatio * dt;
                     prevRun = ctl.FishRun != 0;
@@ -915,7 +920,8 @@ namespace FishingKing
                 Log(string.Format(CI,
                     "[SIDE] {0}: {1:0.0}s fought, stamina {2:0.000} -> {3:0.000}; runs {4} (turned {5}), running {6:0.0}s: drain {7:0.0000}/s of run (model x{8:0.00}), tension {9:0.000} of the line during runs ({10:0.000} overall); mean run {11:0.00}s, mean turn {12:0.00}s; rod-hat clear min {13:0.0}px",
                     s.name, s.t, s.stam0, s.stam1, s.runs, s.turned, s.runTime, s.DrainRate, s.MultRun, s.TensionRun, s.t > 0 ? s.tensionAll / s.t : 0f, s.MeanRun, s.MeanTurn, s.clrMin)
-                    + " at " + s.clrAt + string.Format(CI, "; kept off the hat {0:0.0}s (tilt max {1:0.0} deg)", s.tiltT, s.tiltMax));
+                    + " at " + s.clrAt + string.Format(CI, "; kept off the hat {0:0.0}s (tilt max {1:0.0} deg); load in runs x{2:0.000} (x{3:0.000}..x{4:0.000}), sweep across the rod {5:0.00} (max {6:0.00})",
+                        s.tiltT, s.tiltMax, s.TMultRun, s.tmultMin, s.tmultMax, s.AcrossRun, s.acrossMax));
                 ctl.DebugRelease();
                 for (float w = 0f; w < 3f && ctl.State != FishingController.S.Ready; w += Time.deltaTime) yield return null;
                 yield return new WaitForSeconds(0.6f);
@@ -952,9 +958,13 @@ namespace FishingKing
                 opp.turned > 0 && opp.runOnMin >= 0.05f && bench.runTurned > bench.turnAt + 0.05f && bench.runTurned < bench.runNone - 0.1f);
             SCheck($"with the run it runs longer: same fish, same run, {N(bench.runBad)} s leant with it vs {N(bench.runNone)} s (x{N(bench.runBad / Mathf.Max(1e-3f, bench.runNone))}; live mean runs {N(same.MeanRun)} / {N(none.MeanRun)} s, statistical)",
                 bench.runBad > bench.runNone * 1.3f);
-            SCheck($"either lean loads the line ~10 % more: same fish, same run, tension x{N(bench.tensionGood, "0.000")} (against) / x{N(bench.tensionBad, "0.000")} (with) of none's; in the live fights the model's load at full lean x{N(opp.tmultMax, "0.000")} / x{N(same.tmultMax, "0.000")} / x{N(none.tmultMax, "0.000")} (none; live tension in runs x{N(same.TensionRun / Mathf.Max(1e-6f, none.TensionRun))} / x{N(opp.TensionRun / Mathf.Max(1e-6f, none.TensionRun))}, statistical)",
-                bench.tensionGood > 1.05f && bench.tensionGood < 1.15f && bench.tensionBad > 1.05f && bench.tensionBad < 1.15f
-                && opp.tmultMax > 1f + FightModel.SideTension - 0.005f && same.tmultMax > 1f + FightModel.SideTension - 0.005f && none.tmultMax == 1f);
+            SCheck($"against the run loads the line more than with it: same fish, same run, tension x{N(bench.tensionGood, "0.000")} (rod opened against) / x{N(bench.tensionBad, "0.000")} (pointed along) of none's (model x{N(1f + FightModel.SideAgainstLoad)} / x{N(1f - FightModel.SideWithEase)}); in the live fights the model's load in runs x{N(opp.TMultRun, "0.000")} / x{N(same.TMultRun, "0.000")} / x{N(none.TMultRun, "0.000")} (against / with / none; at full lean x{N(opp.tmultMax, "0.000")} max / x{N(same.tmultMin, "0.000")} min, none's max x{N(none.tmultMax, "0.000")}; live tension in runs x{N(opp.TensionRun / Mathf.Max(1e-6f, none.TensionRun))} / x{N(same.TensionRun / Mathf.Max(1e-6f, none.TensionRun))}, statistical)",
+                bench.tensionGood > bench.tensionBad + 0.05f && bench.tensionGood > 1.03f && bench.tensionGood < 1.16f && bench.tensionBad > 0.93f && bench.tensionBad < 1f
+                && opp.TMultRun > same.TMultRun + 0.05f && opp.tmultMax > 1f + FightModel.SideAgainstLoad - 0.01f && same.tmultMin < 1f - 0.5f * FightModel.SideWithEase
+                && none.tmultMax < 1f + FightModel.SideSweepLoad + 0.02f);
+            SCheck($"a sideways run across the rod loads more than one along it: same fish, same run sweeping round at {N(FightModel.SideSweepFull)} rad/s, tension x{N(bench.tensionAcross, "0.000")} with the rod opened across its path / x{N(bench.tensionAlong, "0.000")} pointing ahead along it; the sweep alone x{N(bench.tensionSweep, "0.000")} (rod on the line) and x{N(bench.tensionAcross / Mathf.Max(1e-6f, bench.tensionBack), "0.000")} of the same rod with the fish swinging back towards it; live sweep across the rod in none's runs {N(none.AcrossRun)} (max {N(none.acrossMax)}: the fish's actual swing reaches the model)",
+                bench.tensionAcross > bench.tensionAlong + 0.1f && bench.tensionSweep > 1.01f && bench.tensionSweep < 1.04f
+                && bench.tensionAcross > bench.tensionBack * 1.02f && none.acrossMax > 0.2f);
             float clr = Mathf.Min(none.clrMin, Mathf.Min(opp.clrMin, same.clrMin));
             SCheck($"the rod stays off the hat through the fights (min {N(clr, "0.0")} px: none {N(none.clrMin, "0.0")} / against {N(opp.clrMin, "0.0")} / with {N(same.clrMin, "0.0")}; kept off by tilting {N(none.tiltT + opp.tiltT + same.tiltT, "0.0")} s, max {N(Mathf.Max(none.tiltMax, Mathf.Max(opp.tiltMax, same.tiltMax)), "0.0")} deg)",
                 clr > 0f);
@@ -966,6 +976,9 @@ namespace FishingKing
         struct SideBenchResult
         {
             public float drainGood, drainBad, tensionGood, tensionBad, runNone, runBad, runTurned, turnAt, window;
+            // the fish's sweep (no lean): the rod opened across its path / pointing ahead along it / on the line / opened
+            // the same way with the fish swinging back towards it
+            public float tensionAcross, tensionAlong, tensionSweep, tensionBack;
         }
 
         /// <summary>
@@ -980,7 +993,10 @@ namespace FishingKing
             const float dt = 1f / 60f;
             const float turnAt = 0.7f;
             float powerMult = ctl.Stage.Def.powerMult;
-            // mode 0 none, 1 against (good), 2 with (bad), 3 none but turned at turnAt
+            // mode 0 none, 1 against (good), 2 with (bad), 3 none but turned at turnAt; no lean, the fish sweeping round at
+            // full speed: 4 the rod opened across its path, 5 the rod pointing ahead along it, 6 the rod on the line, 7 the rod
+            // as in 4 with the fish swinging back towards it. The run is to his right (+1); the rod's angle to the line goes
+            // with the lean (a full lean, a full angle)
             (float drain, float tension, float span, float runLen, float runAt) Run(int mode, float window)
             {
                 var f = new FightModel(sp, cm, Game.I.Rod, Game.I.Reel, Game.I.Line, powerMult, 16f, 3f, 4242);
@@ -998,6 +1014,9 @@ namespace FishingKing
                     bool target = run && runs == 1;
                     f.SideGood = target && mode == 1 ? 1f : 0f;
                     f.SideBad = target && mode == 2 ? 1f : 0f;
+                    f.SideRun = target ? 1 : 0;
+                    f.RodOffset = !target ? 0f : mode == 1 || mode == 4 || mode == 7 ? FightModel.SideFullAngle : mode == 2 || mode == 5 ? -FightModel.SideFullAngle : 0f;
+                    f.SweepRate = !target ? 0f : mode == 4 || mode == 5 || mode == 6 ? FightModel.SideSweepFull : mode == 7 ? -FightModel.SideSweepFull : 0f;
                     if (target && mode == 3 && !turned && runT >= turnAt)
                     {
                         turned = true;
@@ -1026,6 +1045,10 @@ namespace FishingKing
             var good = Run(1, w);
             var bad = Run(2, w);
             var turnedRun = Run(3, w);
+            var across = Run(4, w);
+            var along = Run(5, w);
+            var sweep = Run(6, w);
+            var back = Run(7, w);
             var r = new SideBenchResult
             {
                 drainGood = good.drain / Mathf.Max(1e-6f, none.drain),
@@ -1037,10 +1060,16 @@ namespace FishingKing
                 runTurned = turnedRun.runLen,
                 turnAt = turnAt,
                 window = w,
+                tensionAcross = across.tension / Mathf.Max(1e-6f, none.tension),
+                tensionAlong = along.tension / Mathf.Max(1e-6f, none.tension),
+                tensionSweep = sweep.tension / Mathf.Max(1e-6f, none.tension),
+                tensionBack = back.tension / Mathf.Max(1e-6f, none.tension),
             };
             Log(string.Format(CI, "[SIDE] BENCH {0} {1:0}cm (fight model, seed 4242, dt 1/60, holding the rod): first rolled run at {2:0.00}s lasts {3:0.00}s; over it drain none {4:0.0000}/s against x{5:0.000} with x{6:0.000}; tension none {7:0.000} against x{8:0.000} with x{9:0.000}; leant with it the run lasts {10:0.00}s; turned after {11:0.00}s it lasts {12:0.00}s",
                 sp.id, cm, none.runAt, none.runLen, none.drain / Mathf.Max(1e-6f, none.span), r.drainGood, r.drainBad, none.tension / Mathf.Max(1e-6f, none.span),
-                r.tensionGood, r.tensionBad, bad.runLen, turnAt, turnedRun.runLen));
+                r.tensionGood, r.tensionBad, bad.runLen, turnAt, turnedRun.runLen)
+                + string.Format(CI, "; the fish sweeping round at {0:0.00} rad/s (no lean): tension x{1:0.000} rod across its path, x{2:0.000} rod along it, x{3:0.000} rod on the line, x{4:0.000} rod across with the fish swinging back",
+                    FightModel.SideSweepFull, r.tensionAcross, r.tensionAlong, r.tensionSweep, r.tensionBack));
             return r;
         }
 

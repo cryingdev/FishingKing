@@ -141,6 +141,11 @@ namespace FishingKing
         /// </summary>
         public float SweepReq => sweepS;
         /// <summary>
+        /// The rod's yaw as held (degrees, + = right): where he faces plus the sweep asked for, before the rod's yaw limits
+        /// (the fight's load reads the rod's angle to the line from it, so it counts beyond the limits as side pressure does).
+        /// </summary>
+        public float RodYawHeld => faceS + sweepS;
+        /// <summary>
         /// How far the rod tip is off the line to the rig, towards the side it is swept to (degrees, the sweep's sign, at most
         /// the sweep): what bends a wound-in rig's path. A rod pinned at a yaw limit by a rig far out that way and swept back
         /// inwards counts in full; swept on outwards it cannot go, so that counts nothing.

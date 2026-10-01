@@ -95,14 +95,55 @@ namespace FishingKing
         public float SideGood, SideBad;
         /// <summary>Stamina drain x this at full side pressure against the run, x <see cref="SideDrainBad"/> with it.</summary>
         public const float SideDrainGood = 1.4f, SideDrainBad = 0.8f;
-        /// <summary>Either way the rod held to the side puts this much more (fraction) on the line.</summary>
-        public const float SideTension = 0.1f;
         /// <summary>Leant with the run, the run lasts longer: its clock runs this much (fraction) slower at full lean.</summary>
         public const float SideRunLonger = 0.35f;
         /// <summary>The stamina drain multiplier from side pressure this step (1 = none).</summary>
         public float SideDrainMult => 1f + (SideDrainGood - 1f) * Mathf.Clamp01(SideGood) - (1f - SideDrainBad) * Mathf.Clamp01(SideBad);
-        /// <summary>The line's load multiplier from side pressure this step (1 = none).</summary>
-        public float SideTensionMult => 1f + SideTension * Mathf.Clamp01(SideGood + SideBad);
+
+        // ---- the line's load from the rod's angle to the line and the fish's sweep across it (the controller sets these
+        // every step: FishingController.TrackRodLine / SidePressure; Docs/controls.md, 사이드 프레셔)
+        /// <summary>The run's side (+1 right, -1 left) this step while side pressure counts (a run, not in a jump, not on the ice), else 0: no extra load.</summary>
+        public int SideRun;
+        /// <summary>Radians, smoothed: where the fish is from where the rod points (+ = to its right), the rod's angle to the line.</summary>
+        public float RodOffset;
+        /// <summary>Radians/s, smoothed: how fast the fish actually swings round the angler (+ = to his right).</summary>
+        public float SweepRate;
+        /// <summary>A rod angle to the line this big (radians: a full lean, Angler.SweepMax) counts in full.</summary>
+        public const float SideFullAngle = Angler.SweepMax * Mathf.Deg2Rad;
+        /// <summary>The rod opened against the run (the fish pulls across the rod's bend) loads the line this much more (fraction) at a full angle.</summary>
+        public const float SideAgainstLoad = 0.10f;
+        /// <summary>The rod pointed along the run (it gives with the fish) eases the load this much (fraction) at a full angle.</summary>
+        public const float SideWithEase = 0.03f;
+        /// <summary>
+        /// The fish sweeping round at <see cref="SideSweepFull"/> rad/s (a run's top yaw speed) away from where the rod points
+        /// loads the line this much more (fraction); half that with the rod on the line, none with the rod already pointing
+        /// ahead along its path. Above the drag setting the drag gives line for it.
+        /// </summary>
+        public const float SideSweepLoad = 0.05f, SideSweepFull = 0.45f;
+        /// <summary>-1..1: the rod's angle to the line against the run (+) / along it (-), of a full angle.</summary>
+        public float SideAngle01 => SideRun == 0 ? 0f : Mathf.Clamp(RodOffset * SideRun / SideFullAngle, -1f, 1f);
+        /// <summary>
+        /// 0..1: how hard the fish sweeps across the rod: its sideways speed (of <see cref="SideSweepFull"/>) x how far the
+        /// rod points away from its path (1 opened against its motion, 0.5 on the line, 0 pointing ahead along it).
+        /// </summary>
+        public float SideAcross01
+        {
+            get
+            {
+                if (SideRun == 0 || SweepRate == 0f) return 0f;
+                float across = 0.5f + 0.5f * Mathf.Clamp(RodOffset * Mathf.Sign(SweepRate) / SideFullAngle, -1f, 1f);
+                return Mathf.Clamp01(Mathf.Abs(SweepRate) / SideSweepFull) * across;
+            }
+        }
+        /// <summary>The line's load multiplier from the rod's angle and the fish's sweep this step (1 = none).</summary>
+        public float SideTensionMult
+        {
+            get
+            {
+                float a = SideAngle01;
+                return 1f + SideAgainstLoad * Mathf.Max(a, 0f) - SideWithEase * Mathf.Max(-a, 0f) + SideSweepLoad * SideAcross01;
+            }
+        }
         /// <summary>Runs turned by side pressure so far.</summary>
         public int Turns { get; private set; }
 
@@ -378,7 +419,7 @@ namespace FishingKing
                 targetT = F * 0.15f;
                 dL = -v + Mathf.Max(0, u) * 0.5f;
             }
-            // the rod held to the side (side pressure, either way) loads the line a little more
+            // the rod's angle to the line and the fish sweeping across it load the line more (or a little less: SideTensionMult)
             float plainT = targetT;
             // the fish holding in the flow and the current across the line load it (half of it while giving line); the
             // current's own load is not the fish's work (plainT: the stamina drain)
