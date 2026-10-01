@@ -19,10 +19,11 @@ Form (one chord per bar):
                                             chant in two choir voices (peak A5, bar 22) answered by kalimba; the
                                             violins rest, then it builds (violas double the chant, high tremolo,
                                             pumping cellos, the marimba back in sixteenths, a snare roll)
-  B'  24-31 Dm Am/C G#o7/B E | F Dm E7 E7   the motif turned upside down in a rising sequence, violas in harmony,
-                                            the climax F6 (bar 29), then the turnaround on an E pedal (E Phrygian
-                                            dominant): rising/falling string runs, marimba sweeps, timpani + snare
-                                            rolls, a reverse cymbal and a tom fill into bar 0
+  B'  24-31 Dm Am/C G#o7/B E | F Dm E7 E7   the motif turned upside down in a rising sequence (the marimba engine
+                                            mirrored with it), violas in harmony, the climax F6 (bar 29), then the
+                                            turnaround on an E pedal (E Phrygian dominant): rising/falling string
+                                            runs, marimba sweeps, timpani + snare rolls, a reverse cymbal and a tom
+                                            fill into bar 0
 """
 
 import itertools
@@ -188,6 +189,7 @@ def sweep(tr, bar, beat, beats, ch, lo, hi, v0, v1, down=False):
 # --- the marimba engine: sixteenths 3+3+2 | 3+3+2 over the chord tones of G3..D#5 (index into them)
 RUN = [0, 2, 3, 1, 2, 3, 2, 1, 0, 2, 4, 1, 2, 3, 2, 3]
 RUN_ACC = {0: 14, 3: 8, 6: 8, 8: 12, 11: 8, 14: 8}
+MIRROR = [4 - k for k in RUN]                           # B': the engine upside down, like the theme
 EIGHTS = [0, 2, 3, 2, 1, 3, 4, 3]                       # B: the same chord tones in eighths
 UP = [0, 1, 2, 3, 1, 2, 3, 4, 2, 3, 4, 5, 3, 4, 5, 6]   # the turnaround: climbing four-note cells
 DOWN = [6, 5, 4, 3, 5, 4, 3, 2, 4, 3, 2, 1, 3, 2, 1, 0]
@@ -244,8 +246,8 @@ def songs():
             phrase(vln, b, items, v, harmony=vla, hvel=v - 14)
         else:
             phrase(vln, b, items, v)
-        if b < 8:
-            phrase(kal, b, items, 72, legato=1.0)
+        if b < 8:   # (softer on the loop downbeat, where crash, kick and timpani already pile up)
+            phrase(kal, b, items, 64 if b == 0 else 72, legato=1.0)
         if 8 <= b < 16:
             phrase(vla, b, items, v - 6, octave=-1)
     vln.cc(0, 0, 11, 100).swell(2, 0, 6, 100, 112).swell(4, 0, 12, 104, 114)
@@ -306,8 +308,10 @@ def songs():
             marimba_bar(mar, b, EIGHTS, 56, step=.5)
         elif b < 22:
             marimba_bar(mar, b, EIGHTS, 62, step=.5)
+        elif b < 24:
+            marimba_bar(mar, b, RUN, 60 + (b - 22))
         elif b < 30:
-            marimba_bar(mar, b, RUN, 60 + (b - 22) if b < 24 else 66)
+            marimba_bar(mar, b, MIRROR, 66)
         elif b == 30:
             marimba_bar(mar, b, UP, 64, ramp=1.0)
         else:
@@ -370,12 +374,14 @@ def songs():
 
     def tp(b, beat, v, d=.9):
         timp.note(b, beat, troot(b), d, v)
+    # (bars 3, 7, 23 and 31 end in rolls: their plain hits stay clear of the roll)
     for b in range(BARS):
         if b < 8:
-            tp(b, 0, 100 if b % 2 == 0 else 94)
-            tp(b, 2.5, 82)
+            tp(b, 0, 90 if b == 0 else (100 if b % 2 == 0 else 94))   # bar 0 already has the crash
+            if b != 7:
+                tp(b, 2.5, 82, .45 if b == 3 else .9)
         elif b < 15:
-            tp(b, 0, 110)
+            tp(b, 0, 110, .7)          # clear of the ghost note on 0.75
             tp(b, .75, 74, .4)
             tp(b, 2.5, 92)
             tp(b, 3.5, 80, .5)
@@ -386,8 +392,10 @@ def songs():
         elif b < 23:
             tp(b, 0, 82)
             tp(b, 2.5, 72)
+        elif b == 23:
+            tp(b, 0, 86)
         elif b < 30:
-            tp(b, 0, 112)
+            tp(b, 0, 112, .7)
             tp(b, .75, 76, .4)
             tp(b, 2.5, 94)
             tp(b, 3.5, 84, .5)
@@ -395,7 +403,6 @@ def songs():
     roll(timp, 3, 3, 1, e2, 62, 88)
     roll(timp, 7, 2, 2, e2, 60, 100)
     roll(timp, 15, 2, 2, n("A2"), 84, 50)          # dying away into B
-    tp(23, 0, 86)
     roll(timp, 23, 1, 3, e2, 50, 98)
     for i in range(8):
         tp(30, i * .5, 76 + 2 * i, .45)
@@ -417,7 +424,8 @@ def songs():
 
     for b in range(BARS):
         if b < 8:
-            kit(b, [("kick", "X.....x...x.....", 82), ("low_tom", "....x.......x...", 78),
+            kick = ("x" if b == 0 else "X") + ".....x...x....."   # (no accent on the loop downbeat: peak)
+            kit(b, [("kick", kick, 82), ("low_tom", "....x.......x...", 78),
                     ("shaker", "x.x.x.x.x.x.x.x.", 34)])
             if b % 4 == 1:
                 kit(b, [("tom2", "..............x.", 62)])
@@ -454,7 +462,7 @@ def songs():
     fill(7, 2, ["high_tom", "high_tom", "tom3", "tom3", "mid_tom", "mid_tom", "low_tom", "low_tom"], 58, dv=4)
     fill(22, 3, ["mid_tom", "low_tom", "mid_tom", "low_tom"], 62, dv=3)
     # cymbals and the finger cymbal (triangle) of the chant
-    drums.note(0, 0, DR["crash"], 1, 84).note(0, 0, DR["china"], 1, 52)
+    drums.note(0, 0, DR["crash"], 1, 80).note(0, 0, DR["china"], 1, 40)   # (kept moderate: the loop's peak)
     drums.note(8, 0, DR["crash"], 1, 90)
     drums.note(12, 0, DR["crash2"], 1, 84)
     drums.note(16, 0, DR["splash"], 1, 50)

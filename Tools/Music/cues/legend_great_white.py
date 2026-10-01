@@ -7,8 +7,9 @@ third - fifth on the group heads (the shark going round), the contrabass and the
 on the root; the kit adds a half-time snare in A and a full backbeat later. No semitone figure anywhere in the low
 voices (no E-F, no X-Y-X neighbour): the low figure is built from roots, fifths, octaves and thirds only.
 The shark's own motif is in the low brass (trombones): a dotted lunge up two stacked fourths into a held minor
-seventh (F Bb Eb—), answered by a pentatonic dive (Db Bb Ab F—); it climbs in sequence through Ab Db Gb and,
-at the climaxes, up to Db5. Dissonant "bite" clusters (C Db G Ab in the brass section, off the beat) snap at the
+seventh (F Bb Eb—), answered by a pentatonic dive (Db Bb Ab F—) that falls in dotted eighths on the circle's
+group heads, so call and answer differ in rhythm; it climbs in sequence through Ab Db Gb and, at the climaxes,
+up to Db5. Dissonant "bite" clusters (C Db G Ab in the brass section, off the beat) snap at the
 phrase ends; a high C7(b9) string cluster swells at the end of B.
 
 Form (one chord per bar; Gb is the Neapolitan, E dim7 the leading-tone seventh):
@@ -18,13 +19,19 @@ Form (one chord per bar; Gb is the Neapolitan, E dim7 the leading-tone seventh):
   A'  8-15  Fm Eb/G Ab Db | Bbm Gb Edim7 C     horns join in unison, the second trombone harmonises, tuba and low
                                                piano weight the bass (F G Ab Db Bb Gb E C), violin stabs, brass
                                                off-beat stabs; the climb peaks on Db5 (13), a dim7 descent (14), bites
-  B   16-23 Db Eb Cm Fm | Db Eb Gb C           the open ocean: half time, cellos in eighths, a broad violin tune
-                                               (peak Bb5 at 21) over horn guide tones and a high shimmer; trombones
-                                               return softly at 20; a C7(b9) cluster swell + snare roll into B'
+  B   16-23 Db Eb Cm Fm | Db Eb Gb C           the circle widened (the open ocean, the shark still going round):
+                                               the 3+3+3+3+2+2 grouping in eighths over two bars in the cellos,
+                                               taiko and (from 20) contrabass, the kick anchoring the bar lines; a
+                                               broad violin tune in the same widened rhythm, its long notes tied over
+                                               the bar lines into suspensions, each phrase opening with the lunge's
+                                               fourth (peak Db6 over Gb at 22), over horn guide tones and a high
+                                               shimmer; trombones return softly at 20; a C7(b9) cluster swell + snare
+                                               roll into B'
   B'  24-31 Fm Db Gb/Bb C | Fm Db Bbm C        the motif returns over everything (violins circling high), then
                                                higher: C F Bb— (28), Db5 doubled an octave up by the violins (29);
                                                turnaround: a held C chord crescendo, a violin run, snare + taiko roll
-                                               and a last bite into the crash at bar 0
+                                               and a last bite into the crash at bar 0, where the run lands on a short
+                                               high F5 + C6 strike over the low piano octave
 """
 
 import itertools
@@ -101,8 +108,6 @@ CIRCLE = [(i * .25, .25, r, a) for i, (r, a) in enumerate(
      ("R", 3), ("5", 12), ("R", 0), ("R", 3), ("3", 14), ("R", 0), ("5", 12), ("R", 2)])]
 HEADS_ONLY = [(b, .75 if b < 3 else .5, r, a) for b, r, a in zip(HEADS, ["R", "5", "8", "5", "3", "5"],
                                                                 [14, 6, 10, 6, 10, 4])]
-EIGHTHS = [(0, .5, "R", 12), (.5, .5, "R", 0), (1, .5, "5", 4), (1.5, .5, "R", 2),
-           (2, .5, "8", 8), (2.5, .5, "R", 0), (3, .5, "5", 4), (3.5, .5, "3", 2)]
 
 
 def ostinato(tr, bar, pattern, vel, gate=.85, base=None, ramp=0.0):
@@ -111,20 +116,22 @@ def ostinato(tr, bar, pattern, vel, gate=.85, base=None, ramp=0.0):
         tr.note(bar, beat, rl[role], d * gate, vel + acc + ramp * i)
 
 
-# --- the shark motif (trombones): (note | None, beats) per bar
+# --- the shark motif (trombones): (note | None, beats) per bar. The call (even bars) snaps: dotted eighth +
+# sixteenth into a held note; the answer (odd bars) falls in dotted eighths, i.e. on the circle's 3+3+3 group
+# heads, so call and response differ in rhythm and the dive locks onto the engine
 THEME = {
     # A: the lunge up two fourths into a held seventh, the pentatonic dive; in sequence on the Neapolitan
     0: [("F3", .75), ("Bb3", .25), ("Eb4", 3)],
-    1: [("Db4", .75), ("Bb3", .25), ("Ab3", 1), ("F3", 2)],
+    1: [("Db4", .75), ("Bb3", .75), ("Ab3", .75), ("F3", 1.75)],
     2: [("Bb3", .75), ("Db4", .25), ("Gb4", 3)],
-    3: [("G4", .75), ("E4", .25), ("C4", 1), ("G3", 2)],
+    3: [("G4", .75), ("E4", .75), ("C4", .75), ("G3", 1.75)],
     4: [("F3", .75), ("Bb3", .25), ("Eb4", 1), ("Ab4", 2)],                  # three fourths: F Bb Eb Ab
-    5: [("F4", .75), ("Eb4", .25), ("Db4", 1), ("Ab3", 2)],
+    5: [("F4", .75), ("Eb4", .75), ("Db4", .75), ("Ab3", 1.75)],
     6: [("Db4", .75), ("F4", .25), ("Bb4", 2), ("Ab4", .5), ("F4", .5)],
-    7: [("G4", .75), ("E4", .25), ("C4", 2), (None, 1)],
+    7: [("G4", .75), ("E4", .75), ("C4", 1.5), (None, 1)],
     # A': the lunge climbs Fm - Ab - Bbm, the peak on Db5 over the Neapolitan, a dim7 descent, the low C
     8: [("F3", .75), ("Bb3", .25), ("Eb4", 3)],
-    9: [("Db4", .75), ("Bb3", .25), ("G3", 1), ("Eb3", 2)],
+    9: [("Db4", .75), ("Bb3", .75), ("G3", .75), ("Eb3", 1.75)],
     10: [("Ab3", .75), ("Db4", .25), ("Gb4", 3)],
     11: [("F4", .75), ("Eb4", .25), ("Db4", 1.5), ("Bb3", .5), ("Ab3", 1)],
     12: [("Bb3", .75), ("Eb4", .25), ("Ab4", 2), ("Bb4", 1)],
@@ -133,7 +140,7 @@ THEME = {
     15: [("C4", 1.5), ("G3", .5), ("C3", 1), (None, 1)],
     # B': the motif returns, then higher (C F Bb—, a 4-3 suspension), the peak again, the held dominant
     24: [("F3", .75), ("Bb3", .25), ("Eb4", 3)],
-    25: [("Db4", .75), ("Bb3", .25), ("Ab3", 1), ("F3", 2)],
+    25: [("Db4", .75), ("Bb3", .75), ("Ab3", .75), ("F3", 1.75)],
     26: [("Bb3", .75), ("Db4", .25), ("Gb4", 3)],
     27: [("G4", .75), ("E4", .25), ("C4", 1), ("E4", 1), ("G4", 1)],
     28: [("C4", .75), ("F4", .25), ("Bb4", 2), ("Ab4", 1)],
@@ -141,20 +148,25 @@ THEME = {
     30: [("Bb4", 1.5), ("Ab4", .5), ("F4", 1), ("Db4", 1)],
     31: [("C4", 3), (None, 1)],
 }
-THEME_VEL = {**{b: 86 for b in range(0, 8)}, **{b: 94 for b in range(8, 12)}, **{b: 100 for b in range(12, 16)},
-             **{b: 98 for b in range(24, 28)}, **{b: 104 for b in range(28, 32)}}
+THEME_VEL = {**{b: 86 for b in range(0, 8)}, **{b: 92 for b in range(8, 12)}, **{b: 96 for b in range(12, 16)},
+             **{b: 94 for b in range(24, 28)}, **{b: 98 for b in range(28, 32)}}
 
-# the B tune (violins): broad, the open ocean; peak Bb5 at bar 21
-TUNE = {
-    16: [("Ab4", 1.5), ("Bb4", .5), ("Db5", 1), ("F5", 1)],
-    17: [("Eb5", 2), ("G5", 1), ("F5", .5), ("Eb5", .5)],
-    18: [("G5", 1.5), ("F5", .5), ("Eb5", 1), ("C5", 1)],
-    19: [("Ab4", 1.5), ("Bb4", .5), ("C5", 2)],
-    20: [("Db5", 1.5), ("Eb5", .5), ("F5", 1), ("Ab5", 1)],
-    21: [("Bb5", 2), ("G5", 1), ("Eb5", .5), ("F5", .5)],
-    22: [("Gb5", 2), ("Db5", 1), ("Bb4", 1)],
-    23: [("C5", 1.5), (None, 2.5)],
-}
+# the B tune (violins): the circle widened. Its rhythm is the engine's 3+3+3+3+2+2 grouping in eighths, one turn
+# per two bars, so the long notes tie over the bar lines (F5 suspended over Eb at 17, C5 over Fm at 19, Bb5
+# anticipating Eb at 21); each phrase opens with the lunge's fourth; peak Db6 over the Neapolitan (22)
+TUNE_BAR = 16
+TUNE = [  # (note | None, beats) from bar 16
+    ("Ab4", 1.5), ("Db5", 1.5), ("F5", 1.5), ("Eb5", 1.5), ("G5", 1), ("F5", 1),       # 16-17 Db Eb
+    ("G5", 1.5), ("Eb5", 1.5), ("C5", 1.5), ("Ab4", 1.5), ("F4", 1), ("C5", 1),        # 18-19 Cm Fm
+    ("Db5", 1.5), ("F5", 1.5), ("Bb5", 1.5), ("G5", 1.5), ("Bb5", 1), ("C6", 1),       # 20-21 Db Eb
+    ("Db6", 1.5), ("Bb5", 1.5), ("Gb5", .5), ("Db5", .5), ("C5", 1.5), (None, 2.5),    # 22-23 Gb C
+]
+assert abs(sum(d for _, d in TUNE) - 32) < 1e-6
+
+# the circle widened for the B accompaniment: (role, accent) per eighth over two bars, heads on 3+3+3+3+2+2
+WIDE = [("R", 14), ("R", 0), ("R", 0), ("5", 10), ("R", 0), ("R", 0), ("8", 12), ("R", 0),
+        ("R", 4), ("5", 10), ("R", 0), ("R", 0), ("3", 12), ("R", 0), ("5", 10), ("R", 2)]
+WIDE_HEADS = [[0, 1.5, 3], [.5, 2, 3]]   # the group heads (beats) in the first / second bar of a turn
 
 # horn guide tones in B (two voices, whole notes)
 GUIDE = {16: ("Ab3", "Db4"), 17: ("Bb3", "Eb4"), 18: ("G3", "C4"), 19: ("Ab3", "C4"),
@@ -189,8 +201,9 @@ def songs():
     s = Song("legend_great_white", bpm=128, bars=BARS, key=KEY, stems=["main"], loudness=-17.0,
              desc="Great white fight: menace. A circling 3+3+3+3+2+2 sixteenth engine (cellos, contrabass, taiko) "
                   "under the shark's low-brass motif (a lunge up two fourths into a held seventh, a pentatonic "
-                  "dive), Neapolitan and dim7 colour, off-beat brass 'bite' clusters; a broad open-ocean B section "
-                  "with a violin tune, a C7(b9) cluster swell, and a crescendo turnaround with taiko and snare rolls")
+                  "dive on the circle's group heads), Neapolitan and dim7 colour, off-beat brass 'bite' clusters; "
+                  "a B section where the circle widens to eighths over two bars under a broad violin tune of tied "
+                  "suspensions, a C7(b9) cluster swell, and a crescendo turnaround with taiko and snare rolls")
 
     drums = s.track("drums", DRUMS, vol=98, pan=0, reverb=36)
     taiko = s.track("taiko", GM["taiko"], vol=88, pan=-6, reverb=48)
@@ -206,7 +219,7 @@ def songs():
     hn = s.track("horns", GM["french_horn"], vol=98, pan=18, reverb=58)
     brass = s.track("brass", GM["brass"], vol=86, pan=-14, reverb=44)
 
-    # --- cellos: group heads (0-3), the full circle (4-15, 24-31), eighths in B, a crescendo of roots at 23 and 31
+    # --- cellos: group heads (0-3), the full circle (4-15, 24-31), the widened circle in B, a crescendo at 23 and 31
     for b in range(BARS):
         if b < 4:
             ostinato(vc, b, HEADS_ONLY, 86, gate=.9)
@@ -215,7 +228,11 @@ def songs():
         elif b < 16:
             ostinato(vc, b, CIRCLE, 84)
         elif b < 23:
-            ostinato(vc, b, EIGHTHS, 74 + (4 if b >= 20 else 0), gate=.85)
+            rl = roles(b)
+            half = (b - 16) % 2
+            for i in range(8):
+                role, acc = WIDE[8 * half + i]
+                vc.note(b, i * .5, rl[role], .42, 70 + (4 if b >= 20 else 0) + acc)
         elif b == 23:
             r = roles(b)
             for i in range(16):
@@ -227,11 +244,14 @@ def songs():
     vc.cc(0, 0, 11, 98).cc(4, 0, 11, 102).cc(8, 0, 11, 108).cc(16, 0, 11, 92)
     vc.swell(20, 0, 16, 92, 112).cc(24, 0, 11, 116).swell(31, 0, 3.5, 112, 122)
 
-    # --- contrabass: the root on the group heads (A, A', B'), long notes in B
+    # --- contrabass: the root on the group heads (A, A', B'), long notes in B, the widened heads from 20
     for b in range(BARS):
         r = BASS[b]
-        if 16 <= b < 23:
-            cb.note(b, 0, r, 3.9, 74 + (4 if b >= 20 else 0))
+        if 16 <= b < 20:
+            cb.note(b, 0, r, 3.9, 74)
+        elif 20 <= b < 23:
+            for beat, acc in zip(WIDE_HEADS[(b - 16) % 2], [10, 0, 4]):
+                cb.note(b, beat, r, 1.1 if beat < 3 else .9, 76 + acc)
         elif b == 23:
             cb.note(b, 0, r, 3.9, 84)
         else:
@@ -254,7 +274,7 @@ def songs():
     # the held dominant at 31: tbn C4 + tbn2 G3 (its harmony) + horns C4 E4 + tuba C2, a breath on beat 3
     hn.note(31, 0, n("E4"), 2.76, 92)
     for tr, base in ((tbn, 106), (tbn2, 106), (hn, 104)):
-        tr.cc(0, 0, 11, base).cc(8, 0, 11, base + 6).cc(24, 0, 11, base + 10).swell(31, 0, 2.75, base - 14, 120)
+        tr.cc(0, 0, 11, base).cc(8, 0, 11, base + 6).cc(24, 0, 11, base + 8).swell(31, 0, 2.75, base - 14, 114)
 
     # --- B: trombones rest, then return softly as root + fifth (20-22) and swell on C (23); tuba under them
     for b in range(20, 24):
@@ -302,16 +322,23 @@ def songs():
         hits = [(0, 14), (1.5, 6), (3, 10)] if b != 15 else [(0, 14)]
         for beat, acc in hits:
             vln.chord(b, beat, v_, .35, 66 + acc + (4 if b >= 12 else 0))
-    for b, items in TUNE.items():
-        phrase(vln, b, items, 90 if b < 20 else 96, legato=.97)
+    pos = TUNE_BAR * 4.0
+    for p, d in TUNE:
+        b, beat = int(pos // 4), pos % 4
+        if p is not None:
+            vln.note(b, beat, n(p), d * .97, (100 if b < 20 else 104) + (6 if beat == 0 else 0))
+        pos += d
     for b in range(24, 28):
         ostinato(vln, b, CIRCLE, 56, gate=.7, base=root_in(PROG[b], n("F4")))
     # the run into bar 0: G4 .. C6 over C7, chord tones on the beats, the b9 (Ab) passing (bar 30 ended on Db5,
     # so the run starts away from it: no semitone turn back)
     for i, p in enumerate(["G4", "Bb4", "C5", "E5", "G5", "Ab5", "Bb5", "C6"]):
         vln.note(31, 2 + i * .25, n(p), .24, 70 + 5 * i)
-    vln.cc(0, 0, 11, 100).cc(16, 0, 11, 92).swell(16, 0, 14, 92, 110).swell(20, 0, 6, 104, 120)
-    vln.swell(22, 0, 6, 120, 100).cc(24, 0, 11, 104).swell(28, 0, 8, 104, 122).cc(31, 0, 11, 110)
+    # ... and lands on bar 0: a short high F5 + C6 strike with the low piano octave and the crash, then A thins out
+    vln.chord(0, 0, [n("F5"), n("C6")], .9, 96)
+    piano.chord(0, 0, [n("F1"), n("F2")], 1.4, 84)
+    vln.cc(0, 0, 11, 100).swell(16, 0, 16, 102, 110).swell(20, 0, 8, 110, 122)
+    vln.swell(22, 0, 6, 122, 100).cc(24, 0, 11, 104).swell(28, 0, 8, 104, 122).cc(31, 0, 11, 110)
 
     # --- tremolo: a high sustain in A' 12-15, the open-ocean shimmer in B, the C7(b9) cluster swell at 23, B'
     prev = None
@@ -341,7 +368,7 @@ def songs():
         if b != 31:
             piano.chord(b, 3, [r, r + 12], .45, 62)
 
-    # --- taiko: the group heads on the root (C2..B2); half time in B; rolls into B' and into bar 0
+    # --- taiko: the group heads on the root (C2..B2); the widened heads in B; rolls into B' and into bar 0
     def tk(b, beat, v, d=.5):
         taiko.note(b, beat, root_in(PROG[b], n("C2")), d, v)
 
@@ -352,18 +379,20 @@ def songs():
         elif b < 16:
             for beat, v in zip(HEADS, [108, 78, 88, 78, 98, 84]):
                 tk(b, beat, v)
-        elif b < 20:
-            tk(b, 0, 104, 1)
-            tk(b, 2.5, 76)
         elif b < 23:
-            for beat, v in [(0, 106), (1.5, 78), (2.5, 84), (3, 80)]:
-                tk(b, beat, v)
+            # B: the widened heads (the first bar of a turn also keeps its downbeat), 16th pickups from 20
+            half = (b - 16) % 2
+            vs = [100, 74, 84] if half == 0 else [80, 86, 74]
+            for beat, v in zip(WIDE_HEADS[half], vs):
+                tk(b, beat, v + (4 if b >= 20 else 0), 1 if beat == 0 else .5)
+            if b >= 20:
+                tk(b, 3.75 if half == 0 else 3.5, 72, .24)
         elif b == 23:
             tk(b, 0, 100)
             for i in range(8):
                 tk(b, 2 + i * .25, 66 + 6 * i, .24)
         elif b < 31:
-            for beat, v in zip(HEADS, [108, 80, 90, 80, 92, 84]):
+            for beat, v in zip(HEADS, [106, 76, 88, 78, 90, 82]):
                 tk(b, beat, v)
             if b == 30:
                 tk(b, 3.75, 90, .24)
@@ -395,11 +424,18 @@ def songs():
                 parts.append(("low_tom", "..........x.....", 62))
             kit(b, parts)
         elif b < 20:
-            kit(b, [("kick", "X...............", 82), ("low_tom", "........x.......", 58),
-                    ("ride", "x...x...x...x...", 36)])
+            # B: the kick anchors the bar lines under the widened circle, a soft pedal hat, no backbeat
+            half = (b - 16) % 2
+            parts = [("kick", "X..............." if half == 0 else "x...............", 82 if half == 0 else 70),
+                     ("pedal_hat", "x...x...x...x...", 34)]
+            if half == 1:
+                parts.append(("low_tom", "............x...", 58))
+            kit(b, parts)
         elif b < 23:
-            kit(b, [("kick", "X.........x.....", 82), ("snare", "........x.......", 70),
-                    ("ride", "x.x.x.x.x.x.x.x.", 32), ("low_tom", "..............x.", 60)])
+            half = (b - 16) % 2
+            kit(b, [("kick", "X...........x..." if half == 0 else "X.x.............", 82),
+                    ("snare", "........x.......", 70), ("hat", "x.x.x.x.x.x.x.x.", 30),
+                    ("low_tom", "..............x." if half == 0 else "............x...", 60)])
         elif b == 23:
             kit(b, [("kick", "X...............", 84)])
             roll(drums, b, 1, 3, DR["snare"], 40, 100, step=.125)
@@ -408,7 +444,8 @@ def songs():
             if b >= 28:
                 parts.append(("tom2", "..x..x....x..x..", 62))
             kit(b, parts)
-            drums.hits(b, "xxxxxxxxxxxxxxxx", "hat", vel=26, accent=3)
+            for i in range(16):   # 16th hats accented on the circle's group heads
+                drums.note(b, i * .25, DR["hat"], .22, 34 if i * .25 in HEADS else 24)
         else:
             kit(b, [("kick", "X.....x.....x...", 84)])
             roll(drums, b, 0, 3, DR["snare"], 44, 96, step=.125)

@@ -9,7 +9,7 @@ Form (8 + 8 + 8 + 8 bars). Every stem reads the same chord map (PROG), so day / 
 day    steel guitar strummed like a ukulele (island strum), marimba bass; the tune moves from steel drums (A) to
        whistle (A') to accordion (B) and back to steel drums (A''); accordion pad + steel-drum off-beat pings in A'
 night  nylon guitar bossa (thumb bass on 1 and 3, chords on the 3-2 clave), vibraphone playing the tune's long notes
-fight  congas, bongos, kick, shaker (claves in B, timbale fills), finger bass in driving eighths (slap bass in B)
+fight  congas, bongos, kick, shaker (bossa clave in B, timbale fills), finger bass in driving eighths (slap bass in B)
        an octave under the base bass, muted-guitar ostinato
 The tune rests in bars 3, 7, 11, 19, 23, 25, 27, 30, 31 (the vibraphone in more) so the waves can be heard.
 The chords avoid internal semitones (6ths and 7ths, no maj7) and only chord tones sit on the beats in every
@@ -119,18 +119,20 @@ def clip(bar, beat, dur):
     return max(0.1, min(dur, end - beat - 0.04))
 
 
-def in_key_below(p):
-    p -= 1
-    while not KEY.in_key(p):
-        p -= 1
-    return p
-
-
-def in_key_above(p):
-    p += 1
-    while not KEY.in_key(p):
-        p += 1
-    return p
+def approach(chord, target, rising):
+    """A bass note a step or two from `target` (the next root) that fits the current chord: a chord tone if one
+    is that close, else a key tone that does not rub a semitone against the chord (so no F under D7 or A under
+    Bbm6), else the chord's fifth. From below when the line rises, from above when it falls."""
+    tones = CH[chord]
+    order = (-1, -2, 1, 2) if rising else (1, 2, -1, -2)
+    for d in order:
+        if (target + d) % 12 in tones:
+            return target + d
+    for d in order:
+        p = target + d
+        if KEY.in_key(p) and all((p - t) % 12 not in (1, 11) for t in tones):
+            return p
+    return place(tones[0], target - 12) + 7
 
 
 # ------------------------------------------------------------------------------------------------- the tune
@@ -158,11 +160,12 @@ TUNE = {
     20: [("D5", .5), ("G5", .5), ("Bb5", 1.5), ("A5", .5), ("G5", 1)],
     21: [("C6", 1), ("A5", .5), ("C6", .5), ("D6", 1.5), ("C6", .5)],
     22: [("Bb5", 1.5), ("A5", .5), ("G5", 1), ("F5", 1)],
-    # A'' (steel drums): the arch once more, then single phrases with space; Db (Bbm6) colours the last one
+    # A'' (steel drums): the arch once more, then single phrases with space; the last one stays under the B
+    # climax (C6 at most) and falls through Bbm6 to Db, which the loop resolves to C5 at bar 0
     24: [("C5", .5), ("F5", .5), ("A5", 1.5), ("G5", .5), ("C6", 1)],
     26: [("F5", 1), ("D5", .5), ("F5", .5), ("G5", 2)],
     28: [("A5", 1), ("F5", .5), ("G5", .5), ("A5", 1), ("C6", 1)],
-    29: [("D6", .5), ("C6", .5), ("Bb5", 1), ("F5", 1), ("Db5", 1)],
+    29: [("Bb5", 1.5), ("G5", .5), ("F5", 1), ("Db5", 1)],
 }
 
 # night: the vibraphone plays a thinner copy of the tune in fewer bars (none in bars 11-12 and 15)
@@ -206,19 +209,19 @@ UKE = {
 
 # marimba bass: (beat offset in the chord, voice, beats, vel); B = bass, A = alternate bass, U = the third above
 MAR_FULL = {
-    "A": [(0, "B", 1.45, 72), (1.5, "A", .45, 60), (2, "B", .95, 66), (3, "U", .9, 50)],
-    "A2": [(0, "B", 1.45, 72), (1.5, "A", .45, 60), (2, "B", .95, 66), (3, "U", .45, 50), (3.5, "A", .45, 52)],
-    "B": [(0, "B", .95, 74), (1, "U", .45, 50), (1.5, "A", .45, 62), (2, "B", .95, 68), (3, "U", .45, 52),
+    "A": [(0, "B", 1.45, 68), (1.5, "A", .45, 60), (2, "B", .95, 64), (3, "U", .9, 50)],
+    "A2": [(0, "B", 1.45, 68), (1.5, "A", .45, 60), (2, "B", .95, 64), (3, "U", .45, 50), (3.5, "A", .45, 52)],
+    "B": [(0, "B", .95, 70), (1, "U", .45, 50), (1.5, "A", .45, 62), (2, "B", .95, 68), (3, "U", .45, 52),
           (3.5, "A", .45, 56)],
     "A3": [(0, "B", 1.9, 68), (2, "A", .95, 58), (3, "U", .9, 46)],
 }
-MAR_HALF = [(0, "B", .95, 70), (1, "U", .45, 48), (1.5, "A", .45, 58)]
+MAR_HALF = [(0, "B", .95, 66), (1, "U", .45, 48), (1.5, "A", .45, 58)]
 
 
 def day(s):
     uke = s.track("uke", GM["steel_guitar"], stem="day", vol=92, pan=-26, reverb=40)
     mar = s.track("marimba", GM["marimba"], stem="day", vol=112, pan=6, reverb=42)
-    pan_ = s.track("steel_drums", GM["steel_drums"], stem="day", vol=106, pan=18, reverb=58)
+    pan_ = s.track("steel_drums", GM["steel_drums"], stem="day", vol=98, pan=18, reverb=58)    # its attack sets the day peak
     wh = s.track("whistle", GM["whistle"], stem="day", vol=76, pan=12, reverb=64)
     acc = s.track("accordion", GM["accordion"], stem="day", vol=101, pan=-12, reverb=54)
 
@@ -272,7 +275,7 @@ CLAVE_VEL = {"A": 44, "A2": 46, "B": 49, "A3": 42}
 
 
 def night(s):
-    gtr = s.track("nylon", GM["nylon_guitar"], stem="night", vol=94, pan=-14, reverb=54)
+    gtr = s.track("nylon", GM["nylon_guitar"], stem="night", vol=88, pan=-14, reverb=54)
     vib = s.track("vibes", GM["vibraphone"], stem="night", vol=105, pan=16, reverb=72, chorus=20)
 
     for bar in range(BARS):
@@ -296,17 +299,19 @@ def night(s):
         kept = [(b, p, d) for (b, p, d) in tune_notes(bar) if b % 1 == 0 or d >= 1]
         for i, (b, p, d) in enumerate(kept):
             end = kept[i + 1][0] if i + 1 < len(kept) else b + d
-            vib.note(bar, b, p, clip(bar, b, end - b), tune_vel(bar, p, 24))
+            vib.note(bar, b, p, clip(bar, b, end - b), tune_vel(bar, p, 16))
 
 
 # ----------------------------------------------------------------------------------------------- fight stem
 # bass in eighths: R = root, O = octave, F = fifth, x = a step leading to the next bar's root
 FB = {
-    "A": [("R", 88), ("R", 60), ("R", 76), ("O", 84), ("R", 88), ("R", 62), ("F", 80), ("x", 70)],
-    "A2": [("R", 90), ("R", 62), ("R", 78), ("O", 86), ("R", 90), ("O", 70), ("F", 82), ("x", 72)],
-    "B": [("R", 92), ("O", 70), ("R", 84), ("R", 66), ("O", 92), ("R", 70), ("F", 86), ("x", 74)],
+    "A": [("R", 82), ("R", 60), ("R", 76), ("O", 84), ("R", 80), ("R", 62), ("F", 80), ("x", 70)],
+    "A2": [("R", 84), ("R", 62), ("R", 78), ("O", 86), ("R", 82), ("O", 70), ("F", 82), ("x", 72)],
+    # slap bass: a little softer than the finger bass, so its pops stay under the congas and keep the mix peak down
+    "B": [("R", 86), ("O", 66), ("R", 78), ("R", 62), ("O", 84), ("R", 66), ("F", 80), ("x", 70)],
 }
 FB["A3"] = FB["A2"]
+BASS_LO = {"A": n("F1"), "B": n("A1")}   # lowest root: finger bass F1..E2, slap bass A1..G#2
 # muted-guitar ostinato: (beat, voice, vel) on a three-note voicing F3..C4
 MG = {
     "A": [(0, 0, 72), (.5, 2, 52), (1, 1, 64), (1.5, 2, 54), (2, 0, 70), (2.5, 2, 52), (3, 1, 64), (3.5, 2, 56)],
@@ -344,17 +349,18 @@ def fight(s):
         if fill:
             kick, opens, bongo = kick[:12] + "....", "................", bongo[:8] + "........"
             shaker = shaker[:12] + "...."
-        dr.hits(bar, kick, "kick", vel=70)
-        dr.hits(bar, slap, "mute_conga", vel=96)
+        dr.hits(bar, kick, "kick", vel=66)
+        dr.hits(bar, slap, "mute_conga", vel=88)
         dr.hits(bar, ghost, "mute_conga", vel=44)
-        dr.hits(bar, opens, "hi_conga" if sec != "B" else "lo_conga", vel=90)
+        dr.hits(bar, opens, "hi_conga" if sec != "B" else "lo_conga", vel=90 if sec != "B" else 80)
         dr.hits(bar, shaker, "shaker", vel=34 if sec == "B" else 40, accent=4)
         if sec != "A":
             dr.hits(bar, bongo, "hi_bongo", vel=54, accent=4)
             if not fill:
                 dr.hits(bar, "..........x.....", "lo_bongo", vel=66)
         if sec == "B":
-            dr.hits(bar, "x.....x.....x..." if bar % 2 == 0 else "....x...x.......", "claves", vel=50)
+            # the bossa clave (3 side on even bars), the same as the night guitar's, so night + fight agree
+            dr.hits(bar, "x.....x.....x..." if bar % 2 == 0 else "....x.....x.....", "claves", vel=50)
             if not fill:
                 dr.hits(bar, "......x.........", "hi_conga", vel=76)
 
@@ -374,15 +380,21 @@ def fight(s):
                 dr.note(bar, 2 + 0.25 * i, DR[k], 0.22, 58 + 4 * i)
 
         # --- bass: eighth-note drive on the chord roots, an octave under the base bass (slap bass in B)
-        tr, lo = (sb, n("A1")) if sec == "B" else (fb, n("F1"))
-        nxt = fight_root(segs(bar + 1)[0][2], lo)
+        tr, lo = (sb, BASS_LO["B"]) if sec == "B" else (fb, BASS_LO["A"])
+        # the next root in the octave the next bar's bass plays it (so bar 23 leads to F1, not F2); the step
+        # into a new section is a pickup by the next section's bass (finger <-> slap hand over on the last eighth)
+        nsec = "B" if section((bar + 1) % BARS) == "B" else "A"
+        ntr = sb if nsec == "B" else fb
+        nxt = fight_root(segs(bar + 1)[0][2], BASS_LO[nsec])
         for i, (which, v) in enumerate(FB[sec]):
             bt = 0.5 * i
-            root = fight_root(seg_at(bar, bt)[2], lo)
+            ch = seg_at(bar, bt)[2]
+            root = fight_root(ch, lo)
             if which == "x":
-                p = in_key_below(nxt) if nxt >= root else in_key_above(nxt)
-            else:
-                p = root + {"R": 0, "O": 12, "F": 7}[which]
+                p = approach(ch, nxt, nxt >= root)
+                ntr.note(bar, bt, p, 0.42, v)
+                continue
+            p = root + {"R": 0, "O": 12, "F": 7}[which]
             tr.note(bar, bt, p, 0.42, v)
 
         # --- muted-guitar ostinato on the chord tones

@@ -14,7 +14,8 @@ fight  timpani on the roots (rolls into each section), low string ostinato in si
        octave under the base bass (3-3-2 in B), tubular bells tolling the roots, shaker / jingle / triangle
 The celesta rests in bars 3, 7, 11, 15, 19, 23 (25 %), the music box in nine bars, so the wind over the ice breathes.
 No chord holds a semitone (add9 instead of maj7), every track puts only chord tones on the beats and passing tones
-are off-beat eighths, so the stems never rub.
+are off-beat eighths, so the stems never rub. Inside a bar the pads hold common tones (the sus4 resolves B -> A# as
+an inner voice) instead of re-striking the chord.
 """
 
 from fk_music import Song, Key, GM, DRUMS, DR, n
@@ -126,6 +127,36 @@ def write_line(track, mel, vel_of, legato=0.95):
             pos += d
 
 
+def lead(prev, pcs):
+    """Voice-lead `prev` into a chord: tones that belong to it stay, the others step to the nearest free chord tone
+    (downwards on a tie), so F#sus4 -> F# resolves B -> A# inside the pad."""
+    out = [p for p in prev if p % 12 in pcs]
+    for p in prev:
+        if p % 12 in pcs:
+            continue
+        cands = [q for d in range(1, 7) for q in (p - d, p + d) if q % 12 in pcs and q not in out]
+        fresh = [q for q in cands if q % 12 not in {x % 12 for x in out}]
+        out.append((fresh or cands)[0])
+    return sorted(out)
+
+
+def pad_bar(track, bar, first, pcs_of, vel, gap=0.08):
+    """One bar of a pad: the bar's first chord voiced by `first(chord)`, a chord change inside the bar voice-led
+    from it; a tone common to both is held through instead of being struck again."""
+    sg = segs(bar)
+    vcs = [first(sg[0][2])]
+    for sgm in sg[1:]:
+        vcs.append(lead(vcs[-1], pcs_of[sgm[2]]))
+    for i, sgm in enumerate(sg):
+        for p in vcs[i]:
+            if i > 0 and p in vcs[i - 1]:
+                continue
+            j = i
+            while j + 1 < len(sg) and p in vcs[j + 1]:
+                j += 1
+            track.note(bar, sgm[0], p, sg[j][1] - sgm[0] - gap, vel)
+
+
 # ------------------------------------------------------------------------------------------ melody (celesta)
 # (pitch | None, beats) per bar; bars not listed are rests. Bars 0 / 4 / 8 / 20 share one rhythm with new pitches.
 MELODY = {
@@ -143,13 +174,14 @@ MELODY = {
     12: [(None, .5), ("B4", .5), ("E5", .5), ("G5", .5), ("B5", 1), ("D6", 1)],
     13: [("D6", 1.5), ("E6", .5), ("D6", 1), ("B5", 1)],
     14: [("C#6", 1.5), ("B5", .5), ("A#5", 2)],
-    # B: a stately rise in quarters to the climax F#6 over D, then the answer falls back to A's B4 cadence
+    # B: a stately rise in quarters, a dip to A5 to wind up, the climax F#6 over D; the answer falls back to B4,
+    # landing on beat 2 (D5-E5 escape tone, B4 held) like every other phrase end
     16: [("D5", 1), ("G5", 1), ("A5", 1), ("B5", 1)],
-    17: [("C#6", 1.5), ("B5", .5), ("C#6", 1), ("E6", 1)],
+    17: [("C#6", 1), ("A5", .5), ("B5", .5), ("C#6", 1), ("E6", 1)],
     18: [("F#6", 1.5), ("E6", .5), ("D6", 2)],
     20: [(None, 1), ("G5", .5), ("B5", .5), ("E6", 1.5), ("D6", .5)],
     21: [("C#6", 1.5), ("B5", .5), ("A5", 1), ("E5", 1)],
-    22: [("D5", 1.5), ("E5", .5), ("D5", 1), ("B4", 1)],
+    22: [("D5", 1.5), ("E5", .5), ("B4", 2)],
 }
 
 # night: the music box keeps the long notes only and leaves out the first half of A'
@@ -229,10 +261,9 @@ def day(s):
             harp.note(bar, 3.5, n("A#2"), 0.45, 58)       # leading tone back to B2 at bar 0
 
         # pads: choir on the triad throughout, halo on the upper chord tones (with the colour) from A'
-        for (st, en, ch, bass, alt) in segs(bar):
-            choir.chord(bar, st, voicing(TRI[ch], n("F#3"), 3), en - st - 0.08, {"A": 44, "A2": 48, "B": 54}[sec])
-            if sec != "A":
-                halo.chord(bar, st, voicing(FULL[ch], n("F#4"), 2), en - st - 0.08, {"A2": 42, "B": 48}[sec])
+        pad_bar(choir, bar, lambda ch: voicing(TRI[ch], n("F#3"), 3), TRI, {"A": 44, "A2": 48, "B": 54}[sec])
+        if sec != "A":
+            pad_bar(halo, bar, lambda ch: voicing(FULL[ch], n("F#4"), 2), FULL, {"A2": 42, "B": 48}[sec])
 
     write_line(cel, MELODY, mel_vel())
 
@@ -262,21 +293,30 @@ def night(s):
     box = s.track("musicbox", GM["music_box"], stem="night", vol=116, pan=18, reverb=84)
     box2 = s.track("musicbox_low", GM["music_box"], stem="night", vol=112, pan=-22, reverb=84)
 
-    for bar in range(BARS):
-        sec = section(bar)
-        for (st, en, ch, bass, alt) in segs(bar):
-            low.note(bar, st, bass, en - st - 0.06, 54)
-            # bowed pad: the triad from E3 (darker than the day's choir), the colour tone on top in B
+    def bowed_voicing(sec):
+        # the triad from E3 (darker than the day's choir), the colour tone on top in B
+        def f(ch):
             vc = voicing(TRI[ch], n("E3"), 3)
             colour = [pc for pc in FULL[ch] if pc not in TRI[ch]]
-            if sec == "B" and colour:
-                vc = vc + voicing(colour, vc[-1] + 1, 1)
-            pad.chord(bar, st, vc, en - st - 0.08, {"A": 46, "A2": 48, "B": 52}[sec])
+            return vc + voicing(colour, vc[-1] + 1, 1) if sec == "B" and colour else vc
+        return f
+
+    for bar in range(BARS):
+        sec = section(bar)
+        # low strings: one bow per bass pitch (F#sus4 -> F# is held, not re-bowed). No A#2 pickup in bar 23: the
+        # patch's slow release would smear it into the B2 at the loop point; the pad and music box carry the A#.
+        runs = []
+        for (st, en, ch, bass, alt) in segs(bar):
+            if runs and runs[-1][2] == bass:
+                runs[-1][1] = en
+            else:
+                runs.append([st, en, bass])
+        for (st, en, bass) in runs:
+            low.note(bar, st, bass, en - st - 0.06, 54)
+        pad_bar(pad, bar, bowed_voicing(sec), FULL if sec == "B" else TRI, {"A": 46, "A2": 48, "B": 52}[sec])
         for (bt, k) in NIGHT_BOX[sec]:
             ch = seg_at(bar, bt)[2]
             box2.note(bar, bt, voicing(TRI[ch], n("D4"), 3)[k], clip(bar, bt, 1.5), 40 if bt % 1 else 44)
-        if bar == 23:
-            low.note(bar, 3.5, n("A#2"), 0.45, 46)
 
     write_line(box, NIGHT_MELODY, mel_vel(-6), legato=0.98)
 

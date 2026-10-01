@@ -10,8 +10,14 @@ Form (the same in every stem, so day / night / fight line up bar for bar):
 Harmony trick: each chord has a pentatonic "safe set" (chord tones + colours):
   Em / G -> E G A B D,  C / Am7 -> C D E G A,  D / Bm7 -> D E F# A B.
 Every note that sounds on a beat is taken from the bar's set, so no stem rubs against another (and the fight
-layer fits under both bases). E, A and D are in every set: the taiko and the toms are tuned to them.
-Off-beat passing tones stay short.
+layer fits under both bases). E, A and D are in every set. Off-beat passing tones stay short.
+
+Registers: day melody E5-E6 over koto / guitar (<= D5 / F#4); at night the low flute (E4-B4) keeps the top, so the
+night strings are voiced at or under D4 and the night koto ducks under D4 in the flute's bars.
+
+Pitched drums: in FluidR3 the GM taiko and melodic tom follow the key at half scale (about 50 cents a key; measured:
+taiko A2 sounds ~A1, D3 ~B1, E3 ~C2; melodic tom A4 ~A3, E4 ~G3-46c, D4 ~F#3-40c). So the keys below are picked by the
+pitch they actually sound, and on-beat strokes stay on E / A / D keys so the lint (which reads MIDI keys) stays clean.
 """
 
 from fk_music import DRUMS, GM, Key, Song, n
@@ -76,7 +82,7 @@ MELODY = {
     5:  [(3, 1.5), (2, .5), (0, 2)],                  # A . G E—
     6:  [(-2, 1), (0, 1), (2, 2)],                    # C E G—     open ending (half cadence via D)
     8:  [(0, 1), (2, .5), (3, .5), (4, 2)],           # A': same contour, quicker rise
-    9:  [(5, 1.5), (4, .5), (2, 2)],                  # C . B G—   (neighbour round B)
+    9:  [(5, 1.5), (3, .5), (2, 2)],                  # C . A G—   (A, not B: no maj7 rub on the guitar's C chick)
     10: [(3, 1.5), (4, .5), (3, 1), (0, 1)],
     12: [(0, 1.5), (-1, .5), (0, 1), (2, 1)],
     13: [(3, 2), (2, 1), (0, 1)],
@@ -94,7 +100,9 @@ MELODY = {
     28: [(0, 1), (2, 1), (3, 2)],                     # pan flute's last answer
     29: [(4, 1.5), (3, .5), (2, 2)],
 }
-# melody rests (by day) in bars 3 7 11 16 23 27 30 31 = 8/32; the koto answers there
+# melody rests (by day) in bars 3 7 11 16 23 27 30 31 = 8/32; the koto answers there, except in the two BREATH
+# bars where only a soft open dyad rings (real air for the stream / wind ambience)
+BREATH = {11, 27}
 LEAD = {b: ("pan_flute" if 8 <= b <= 15 or b >= 28 else "shakuhachi") for b in MELODY}
 NIGHT_BARS = {0, 1, 2, 4, 5, 6, 12, 13, 14, 15, 17, 18, 19, 20, 21, 22, 24, 25, 26}   # 13/32 rest at night
 
@@ -219,10 +227,13 @@ def day(s, chords):
                 gtr.note(bar, 3.5, n("F#2"), 0.45, 54)
 
         # koto: answers in the melody's rests, otherwise a gayageum-like figure on the bar's pentatonic set
+        k = c.ladder(n("C4"))
+        if bar in BREATH:     # a breath: root + fifth-ish dyad left to ring, one soft pluck after it
+            koto.chord(bar, 0, [k[0], k[3]], 3.0, 50, strum=0.06).note(bar, 2.5, k[1], 1.4, 42)
+            continue
         if bar in FILLS:
             koto.seq(bar, 0, [(n(p), d) for p, d in FILLS[bar]], vel=72, legato=1.0)
             continue
-        k = c.ladder(n("C4"))
         if sec == 1:          # A': a rippling up-and-down line in eighths
             for i, j in enumerate([0, 2, 3, 4, 5, 4, 3, 2]):
                 koto.note(bar, 0.5 * i, k[j], 0.6, 56 + (6 if i % 2 == 0 else 0))
@@ -249,7 +260,8 @@ def night(s, chords):
         if bar in NIGHT_BARS:
             play_line(flute, bar, night_line(items), 4, 70, legato=0.95, ornaments=False)
 
-    held(strings, chords, lambda c: c.voice, 50)
+    # darker, lower voicing than the guitar's: anything above D4 drops an octave (E3..D4), under the flute
+    held(strings, chords, lambda c: sorted(p - 12 if p > n("D4") else p for p in c.voice), 50)
     held(low, chords, lambda c: [c.bass], 60)
     # the strings breathe a little louder through B
     strings.cc(0, 0, 11, 96)
@@ -261,6 +273,8 @@ def night(s, chords):
             koto.seq(bar, 0, [(n(p) - 12, d) for p, d in FILLS[bar]], vel=60, legato=1.0)
             continue
         k = c.ladder(n("A3"))
+        if bar in NIGHT_BARS:   # under the flute: notes above D4 drop an octave (they stay in the safe set)
+            k = [p - 12 if p > n("D4") else p for p in k]
         if bar % 2 == 0:
             for (bt, j, d) in [(0, 0, 2), (1.5, 2, 1.5), (3, 4, 1)]:
                 koto.note(bar, bt, k[j], d, 58 if bt % 1 == 0 else 52)
@@ -270,17 +284,20 @@ def night(s, chords):
 
 # ------------------------------------------------------------------------------------------------- fight
 
-TAIKO = {  # 16 sixteenths: X = deep (A2), x = higher (E3)
+TAIKO = {  # 16 sixteenths: X = deep (key A2, sounds ~A1), x = higher (key D3, sounds ~B1: the fifth of E, no rub on Em / G / Bm7)
     "A": "X..x..x.X...x...",
     "B": "X..x..x.X..x..x.",
 }
-BASS = {   # 8 eighths: l = low root, h = octave, f = fifth
+BASS = {   # 8 eighths: l = low bass note (the base's bass pitch class), h = octave, f = the chord's fifth above it
     "A": "llhlllhl",
     "A2": "llhllhlh",
     "B": "llhlflhl",
 }
 KOTO16 = [[0, 3, 2, 3], [1, 3, 2, 3], [0, 3, 2, 3], [1, 4, 3, 2]]
 FILL_BARS = {7: 3, 15: 3, 23: 3, 31: 2}   # bar -> beat where the tom fill starts
+# melodic tom keys by sounding pitch (see the docstring): A4 ~A3, B3 ~E3, G3 ~D3, C3 ~B2. The fill falls through the
+# E minor pentatonic A3 E3 D3 B2; every on-beat stroke is the A4 key (A is safe on every chord)
+TOM_A, TOM_RUN = n("A4"), [n(x) for x in ("A4", "B3", "G3", "C3")]
 
 
 def fight(s, chords):
@@ -291,7 +308,7 @@ def fight(s, chords):
     koto = s.track("koto_fight", GM["koto"], stem="fight", vol=98, pan=34, reverb=35)
     stabs = s.track("stabs", GM["strings"], stem="fight", vol=93, pan=-26, reverb=45)
 
-    deep, high = n("A2"), n("E3")
+    deep, high = n("A2"), n("D3")
     for bar, c in enumerate(chords):
         sec = bar // 8
         fill_at = FILL_BARS.get(bar, BPB)
@@ -302,14 +319,13 @@ def fight(s, chords):
             if ch != "." and i * 0.25 < fill_at:
                 taiko.note(bar, i * 0.25, deep if ch == "X" else high, 0.24, 92 if ch == "X" else 76)
 
-        # toms: backbeat in B, fills at the ends of the 8-bar sections (E A D are safe on every chord)
+        # toms: backbeat in B (sounds A3), falling pentatonic fills at the ends of the 8-bar sections
         if sec == 2 and bar not in FILL_BARS:
-            toms.note(bar, 1, n("D4"), 0.24, 76).note(bar, 3, n("D4"), 0.24, 80)
+            toms.note(bar, 1, TOM_A, 0.24, 76).note(bar, 3, TOM_A, 0.24, 80)
         if bar in FILL_BARS:
-            run = [n(x) for x in ("A4", "E4", "D4", "A3", "E4", "D4", "A3", "E3")]
             steps = int((BPB - fill_at) * 4)
-            for i, p in enumerate(run[-steps:]):
-                toms.note(bar, fill_at + 0.25 * i, p, 0.24, 64 + 3 * i)
+            for i in range(steps):
+                toms.note(bar, fill_at + 0.25 * i, TOM_RUN[i % 4], 0.24, 64 + 3 * i)
 
         # kit: side stick on 2 and 4 (A, A', A''), shaker drive from A', kick under the taiko in B / A''
         if sec != 2:
@@ -321,11 +337,13 @@ def fight(s, chords):
         if bar in (0, 16):
             kit.hits(bar, "x", "china", vel=60)
 
-        # bass: eighth-note drive on the root, an octave below the bases' bass line
-        lo = min(q for q in range(n("E1"), n("E2")) if q % 12 == c.root)
+        # bass: eighth-note drive on the bases' bass note (D/F# keeps its F#: G-F#-E steps down in B), an octave
+        # (or two) under the day guitar / night low strings
+        lo = min(q for q in range(n("E1"), n("E2")) if q % 12 == c.bass % 12)
+        fifth = next(q for q in range(lo, lo + 12) if q % 12 == (c.root + 7) % 12)
         pat = BASS["B" if sec == 2 else ("A2" if sec == 1 else "A")]
         for i, ch in enumerate(pat):
-            p = {"l": lo, "h": lo + 12, "f": lo + 7}[ch]
+            p = {"l": lo, "h": lo + 12, "f": fifth}[ch]
             bass.note(bar, 0.5 * i, p, 0.42, 80 if i % 2 == 0 else 70)
 
         # koto ostinato on the bar's safe set: eighths in A and B, sixteenths in A' and A''

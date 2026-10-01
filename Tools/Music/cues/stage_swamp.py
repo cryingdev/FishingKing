@@ -6,14 +6,14 @@ Form (8 + 8 + 8 bars). Every stem reads the same chord map (PROG), so day / nigh
   A' (8-15)   the same, ending Em7 | Am7               v slips down a step into B
   B  (16-23)  G  Am7  F  C/E | Dm6  G/D  F  C          bass G-A-F-E-D, i-IV over a D pedal (the dorian colour),
                                                        climax C6 in bar 18, bVII -> i back to bar 0
-day    clarinet melody, low marimba "drips" (answers in the melody's rests), fretless bass with a few glides,
-       bowed pad
+day    clarinet melody, low marimba "drips" (answers in the melody's rests), fretless bass with a few slides,
+       bowed pad (3-voice upper structures keep the third: Dm7 = A-C-F over the D bass)
 night  bassoon (the melody an octave down, thinner), vibraphone glints in its rests, soft tremolo strings
        (bass + a low bed)
-fight  low toms + shaker + side stick, a taiko tuned to D / A, upright bass in driving eighths, pizzicato ostinato
+fight  low toms + shaker + side stick, a taiko on D / A, upright bass in driving eighths, pizzicato ostinato
 The clarinet rests in bars 3, 7, 11, 14, 15, 19, 23 (29 %), the bassoon in ten bars, so the swamp ambience breathes.
 No chord holds a semitone (no maj7 / 9th; the dorian colour comes from G major and Dm6), every track puts only chord
-tones on the beats, and passing tones are short off-beat eighths, so no stem rubs against another.
+tones on the beats, and passing tones / bass approach notes are short off-beat eighths, so no stem rubs on a beat.
 """
 
 from fk_music import Song, Key, GM, DRUMS, DR, n
@@ -48,11 +48,19 @@ def bass(bar):
     return n(PROG[bar % BARS][1])
 
 
-def voicing(ch, lo, count):
-    """The first `count` chord tones at or above `lo` (closed position)."""
+# three-voice upper structures: the seventh chords leave their root to the bass, so a 3-voice pad / ostinato always
+# carries the third (a closed Dm7 from A3 would be A-C-D, a tonic without its F); Dm6 keeps plain D-F-A up there
+UPPER3 = {c: [n(x + "0") % 12 for x in tones] for c, tones in {
+    "Dm7": ["F", "A", "C"], "Em7": ["G", "B", "D"], "Dm6": ["D", "F", "A"],
+}.items()}
+
+
+def voicing(ch, lo, count, upper3=False):
+    """The first `count` chord tones at or above `lo` (closed position); upper3: from UPPER3 (above a bass)."""
+    tones = UPPER3.get(ch, CH[ch]) if upper3 else CH[ch]
     out, p = [], lo
     while len(out) < count:
-        if p % 12 in CH[ch]:
+        if p % 12 in tones:
             out.append(p)
         p += 1
     return out
@@ -131,7 +139,7 @@ MELODY = {
     2: [("F4", 1), ("A4", 1), ("C5", 2)],
     4: [("G4", .5), ("C5", .5), ("E5", 2.5), ("D5", .5)],
     5: [("B4", 1), ("D5", 1), ("G5", 2)],
-    6: [("E5", 2), ("C5", 1.5), ("B4", .5)],
+    6: [("E5", 2), ("C5", 1.5), ("B4", 2)],      # B4 anticipates Em7 and is held over the bar line (the cadence)
     # A': the opening figure a step higher, then a rising arpeggio that settles on G4
     8: [(None, 1), ("C5", .5), ("D5", .5), ("F5", 1.5), ("E5", .5)],
     9: [("D5", 1), ("E5", 1), ("G5", 1.5), ("E5", .5)],
@@ -195,11 +203,11 @@ FRETLESS = {
     "turn": [(0, "R", 2.9), (3, "U", 0.45), (3.5, "S", 0.45)],
 }
 TURN_BARS = {3, 7, 11, 15}
-GLIDE_BARS = {4, 12, 17, 20, 22}      # the fretless scoops up into these roots
+GLIDE_BARS = {4, 12, 17, 20, 22}      # the fretless slides into these roots from the note before
 
 
 def glide(track, bar, semis=-1, beats=0.2, steps=6):
-    """Pitch-bend scoop into the note at the bar line (bend range 2 semitones)."""
+    """Pitch-bend slide into the note at the bar line, from `semis` away (bend range 2 semitones)."""
     v0 = int(8192 * semis / 2)
     track.bend(bar, -0.03, v0)
     for i in range(1, steps + 1):
@@ -217,16 +225,18 @@ def day(s):
         # fretless bass
         pat = FRETLESS["turn"] if bar in TURN_BARS or bar == 23 else FRETLESS[sec]
         step = step_to(root, bass(bar + 1))
+        prev = fb.notes[-1][2] if fb.notes else root
         for (bt, what, d) in pat:
             if what == "R":
                 p, v = root, 66
             elif what == "U":
-                p, v = (upper(ch, root) if pat is FRETLESS["A2"] else upper_near(ch, root, step)), 58
+                # A2 has no step note: its upper tone itself leans into the next root (D-F-E, E-G-F, B-D-E ...)
+                p, v = upper_near(ch, root, bass(bar + 1) if pat is FRETLESS["A2"] else step), 58
             else:
                 p, v = step, 54
             fb.note(bar, bt, p, d, v)
-        if bar in GLIDE_BARS:
-            glide(fb, bar)
+        if bar in GLIDE_BARS:                     # B2-C3, C2-D2, E2-F2 up; B2-A2 down (bend range 2)
+            glide(fb, bar, max(-2, min(2, prev - root)))
         # marimba
         if bar in MARIMBA_FILL:
             for (bt, nm, d, v) in MARIMBA_FILL[bar]:
@@ -237,8 +247,8 @@ def day(s):
                 mar.note(bar, bt, vc[0] + 12 if k == 3 else vc[k], d, v)
 
     # bowed pad: three voices from A3 (four in B), common tones tied over
-    voices = [voicing(chord(b), n("A3") if section(b) == "A" else n("G3"), 4 if section(b) == "B" else 3)
-              for b in range(BARS)]
+    voices = [voicing(chord(b), n("A3") if section(b) == "A" else n("G3"), 4 if section(b) == "B" else 3,
+                      upper3=section(b) != "B") for b in range(BARS)]
     held(pad, voices, [{"A": 42, "A2": 45, "B": 47}[section(b)] for b in range(BARS)])
     for bar in range(0, BARS, 4):                 # slow fog waves
         pad.swell(bar, 0, 8, 84, 104)
@@ -252,7 +262,7 @@ def day(s):
 
 
 # ------------------------------------------------------------------------------------------------- night stem
-# vibraphone: (beat, pitches, beats, vel): soft dyads under the bassoon, short figures in its rests
+# vibraphone: (beat, pitches, beats, vel): soft dyads above the bassoon, short figures in its rests
 VIBES = {
     0: [(0, ["A4", "D5"], 3.6, 36)],
     2: [(0, ["A4", "C5"], 3.6, 34)],
@@ -387,7 +397,7 @@ def fight(s):
 
         # --- pizzicato ostinato on the chord tones
         step, fig, lo = PIZZ[sec]
-        vc = voicing(ch, n(lo), 3)
+        vc = voicing(ch, n(lo), 3, upper3=True)          # Dm7 = A3 C4 F4, so the layer alone spells D minor
         for i, k in enumerate(fig):
             bt = step * i
             p = vc[k] if k < 3 else vc[k - 3] + 12

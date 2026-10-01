@@ -49,9 +49,9 @@ def pcs(ch):
     return {p % 12 for p in triad(n(r + "0"), q)}
 
 
-def low_root(ch, lo):
-    """The chord's root as the lowest pitch >= lo."""
-    p = n(CHORDS[ch][0] + "0")
+def low_pc(p, lo):
+    """Pitch p's pitch class as the lowest pitch >= lo."""
+    p %= 12
     while p < lo:
         p += 12
     return p
@@ -200,7 +200,7 @@ def songs():
     tbn2 = s.track("trombone2", GM["trombone"], vol=104, pan=8, reverb=52)
     hn = s.track("horn", GM["french_horn"], vol=96, pan=18, reverb=58)
     choir = s.track("choir", GM["choir"], vol=98, pan=0, reverb=80)
-    bells = s.track("bells", GM["tubular_bells"], vol=96, pan=22, reverb=78)
+    bells = s.track("bells", GM["tubular_bells"], vol=104, pan=22, reverb=78)
 
     # --- cellos: the ostinato; contrabass: the accents (A), long notes (B), driving eighths (end of B')
     CB_A = [(0, 1.4, 14), (1.5, 1.4, 4), (3, .9, 8)]
@@ -211,17 +211,17 @@ def songs():
         elif b < 16:
             ostinato(vc, b, OST3, 88)
         elif b < 20:
-            ostinato(vc, b, BROAD, 74, gate=.96)
+            ostinato(vc, b, BROAD, 60, gate=.96)                 # soft: the choir tune leads in B
         elif b < 24:
             ostinato(vc, b, OST3, 70 + 3 * (b - 20))
         elif b < 31:
-            ostinato(vc, b, DRIVE, 82 if b < 28 else 86, gate=.82)
+            ostinato(vc, b, DRIVE, 92 if b < 28 else 95, gate=.82)
         else:
-            ostinato(vc, b, DRIVE, 80, gate=.82, ramp=1.6)   # crescendo into bar 0
+            ostinato(vc, b, DRIVE, 90, gate=.82, ramp=1.1)   # crescendo into bar 0
 
         r = BASS[b]
         if 16 <= b < 24:
-            cb.note(b, 0, r, 3.9, 78 + (4 if b >= 20 else 0))
+            cb.note(b, 0, r, 3.9, 72 + (6 if b >= 20 else 0))
         elif b >= 28:
             for (beat, d, acc) in CB_8:
                 cb.note(b, beat, r, d, 74 + acc * 2 // 3 + (2 * int(beat * 2) if b == 31 else 0))
@@ -264,10 +264,10 @@ def songs():
         choir.chord(b, 0, v_, 3.9, 70 if b < 16 else 74)
         prev = v_
     for b, items in TUNE.items():
-        phrase(choir, b, items, 88 if b < 20 else 92, legato=.97, harmony=choir, hvel=(78 if b < 20 else 82))
+        phrase(choir, b, items, 94 if b < 20 else 96, legato=.97, harmony=choir, hvel=(82 if b < 20 else 84))
     choir.cc(0, 0, 11, 80)
     choir.cc(8, 0, 11, 76).swell(8, 0, 28, 76, 110)
-    choir.cc(16, 0, 11, 88).swell(16, 0, 20, 88, 116).swell(21, 0, 12, 116, 98)
+    choir.cc(16, 0, 11, 102).swell(16, 0, 20, 102, 120).swell(21, 0, 12, 120, 100)
     choir.cc(24, 0, 11, 92).swell(28, 0, 15.5, 92, 127)
 
     # --- violas: 3+3+2 chord-tone eighths in A' and B' (Eb3..Eb4, staccato)
@@ -281,19 +281,20 @@ def songs():
     prev = None
     for b in list(range(0, 8)) + list(range(16, 24)):
         v_ = voicing(PROG[b], prev, 72, 84)
-        trem.chord(b, 0, v_[1:], 3.9, 46 if b < 8 else 62 + 2 * (b - 16))
+        trem.chord(b, 0, v_[1:], 3.9, 64 if b < 8 else 62 + 2 * (b - 16))
         prev = v_
-    trem.cc(0, 0, 11, 72)
+    trem.cc(0, 0, 11, 92)
     trem.cc(16, 0, 11, 80).swell(16, 0, 16, 80, 110).swell(20, 0, 16, 110, 96)
 
     # --- tubular bells
     for b, hits in BELLS.items():
         for (beat, p) in hits:
-            bells.note(b, beat, p, 2.5 if beat == 0 else 1.8, 84 if b < 16 else (80 if b < 24 else 86))
+            bells.note(b, beat, p, 2.5 if beat == 0 else 1.8, 98 if b < 16 else (92 if b < 24 else 100))
 
     # --- timpani: roots (D2..C#3), 3+3+2 accents; rolls into A', B, B' and bar 0
     def tp(b, beat, v, d=.9):
-        timp.note(b, beat, low_root(PROG[b], n("D2")), d, v)
+        # the bass note's pitch class, so an inverted chord (Eb/G, Ab/C in B) is not re-rooted under the bass
+        timp.note(b, beat, low_pc(BASS[b], n("D2")), d, v)
     for b in range(BARS):
         if b < 8:
             tp(b, 0, 108 if b % 2 == 0 else 98)

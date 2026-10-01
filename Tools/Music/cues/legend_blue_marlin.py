@@ -38,6 +38,13 @@ BASS = ["D2", "C2", "G1", "D2", "D2", "C2", "E2", "A1",
         "B1", "G1", "C2", "D2", "B1", "G1", "A1", "C2",
         "Bb1", "C2", "D2", "C2", "Bb1", "C2", "A1", "A1"]
 
+# the cello gallop's note per bar: the bass an octave up where it moves stepwise (so the bVI-bVII-I climbs rise
+# Bb2 C3 D3 with the bass instead of dropping a seventh), a smooth B2-D3 inner line through B
+CELLO = ["D3", "C3", "G3", "D3", "D3", "C3", "E3", "A2",
+         "D3", "C3", "B2", "A2", "Bb2", "C3", "D3", "D3",
+         "B2", "B2", "C3", "D3", "D3", "D3", "C3", "C3",
+         "Bb2", "C3", "D3", "C3", "Bb2", "C3", "A2", "A2"]
+
 CHORDS = {"D": ("D", "maj"), "D7": ("D", "dom7"), "C": ("C", "maj"), "G": ("G", "maj"), "Em": ("E", "min"),
           "A": ("A", "maj"), "A7": ("A", "dom7"), "Bb": ("Bb", "maj"), "Bm": ("B", "min"), "Am": ("A", "min")}
 
@@ -152,14 +159,14 @@ def songs():
                   "theme over a galloping cello, driving snare and toms, a violin 16th ostinato and horns; a broad "
                   "violin and horn tune in B, and a Bb-C-A7 turnaround with a tom fill back into the theme")
 
-    drums = s.track("drums", DRUMS, vol=98, pan=0, reverb=30)
+    drums = s.track("drums", DRUMS, vol=110, pan=0, reverb=30)
     timp = s.track("timpani", GM["timpani"], vol=96, pan=-8, reverb=50)
     cb = s.track("contrabass", GM["contrabass"], vol=106, pan=6, reverb=30)
     vc = s.track("cello", GM["cello"], vol=127, pan=26, reverb=38)
     vn = s.track("violins", GM["strings"], vol=110, pan=-28, reverb=54)
     hn = s.track("horns", GM["french_horn"], vol=86, pan=-18, reverb=58)
     tbn = s.track("trombone", GM["trombone"], vol=80, pan=20, reverb=44)
-    tp = s.track("trumpet", GM["trumpet"], vol=112, pan=8, reverb=48)
+    tp = s.track("trumpet", GM["trumpet"], vol=106, pan=8, reverb=48)
     tp2 = s.track("trumpet2", GM["trumpet"], vol=100, pan=-10, reverb=52)
     gl = s.track("glock", GM["glockenspiel"], vol=100, pan=30, reverb=60)
 
@@ -180,15 +187,13 @@ def songs():
                 up = i in (3, 7)                       # the octave on the "and" of 2 and 4
                 cb.note(b, i * .5, r + (12 if up else 0), .4, v + (10 if i == 0 else 4 if i == 4 else 0) - (6 if up else 0))
 
-    # --- cello gallop (8th + two 16ths per beat) on the bass note's class in C3..B3; beat 4 leaps to a chord tone
-    prev = None
+    # --- cello gallop (8th + two 16ths per beat) on CELLO; beat 4 leaps to a chord tone
     for b in range(32):
-        r = near(n(BASS[b]) % 12, prev, n("C3"), n("B3"))
-        prev = r
+        r = n(CELLO[b])
         up = next(r + k for k in (7, 3, 4, 8, 9, 5) if (r + k) % 12 in pcs(PROG[b]))
         if b == 31:
             up = n("C#3")                              # the leading tone under the run, -> D3 at bar 0
-        v = (84 if b < 8 else 88 if b < 16 else 72 if b < 20 else 78 if b < 24 else 90 if b < 28 else 94)
+        v = (100 if b < 8 else 105 if b < 16 else 86 if b < 20 else 93 if b < 24 else 107 if b < 28 else 112)
         for beat in range(4):
             p = up if beat == 3 else r
             acc = 10 if beat == 0 else 5 if beat == 2 else 0
