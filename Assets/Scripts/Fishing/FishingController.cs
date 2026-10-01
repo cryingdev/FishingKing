@@ -72,9 +72,9 @@ namespace FishingKing
         SpriteRenderer targetRing, biteMark;
         float biteWindow;
         FishAgent biter;
-        /// <summary>Tension ratio (of the line's limit) where the line starts to sing (Sfx.LineStrain).</summary>
+        /// <summary>Tension ratio (of the line's limit, or of a snag's pull) where the line starts to twang (Sfx.LineStrain).</summary>
         const float StrainFrom = 0.6f;
-        float fightYaw, fightYawTarget, fishDepthTarget, splashT, warnT, tickAcc, jumpTime, lineRingT, dripT;
+        float fightYaw, fightYawTarget, fishDepthTarget, splashT, tickAcc, jumpTime, lineRingT, dripT;
         // the jump in progress (copied from the fight model when it starts)
         FightModel.JumpKind jumpKind;
         float jumpDur = 1f, trailT;
@@ -1751,15 +1751,8 @@ namespace FishingKing
             }
             else Angler.SetPose("fight");
 
-            // audio cues
-            warnT -= dt;
-            // the line singing as the tension climbs (from StrainFrom of the line's limit, full at the break)
+            // audio cues: the line twanging faster and higher as the tension climbs (from StrainFrom of its limit, full at the break)
             Sfx.LineStrain(Mathf.InverseLerp(StrainFrom, 1f, f.TensionRatio));
-            if (f.TensionRatio > 0.85f && warnT <= 0)
-            {
-                warnT = f.TensionRatio > 0.97f ? 0.1f : 0.2f;
-                Sfx.Play(Sfx.Warn, 0.45f, f.TensionRatio > 0.97f ? 1.3f : 1f);
-            }
             // the drag slipping: its loop, louder the further the pull is past the drag (fades out by itself once it stops)
             float dragMax = Game.I.Reel.dragMax;
             if (f.Tension >= dragMax * 0.97f) Sfx.Drag((f.Tension - dragMax * 0.97f) / (dragMax * 0.15f));

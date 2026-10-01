@@ -32,7 +32,7 @@ namespace FishingKing
         const float DragHold = 0.12f;
 
         AudioSource dawnSrc, nightSrc, drag, thrash;
-        /// <summary>The taut line pinging under load: one plucked "ting" (see <see cref="LineStrain"/>).</summary>
+        /// <summary>The taut line twanging under load: one rubbery pluck (see <see cref="LineStrain"/>).</summary>
         public static AudioClip LineTing;
         static float nextTing = -1f;
         /// <summary>Seconds between tings at the bottom / the top of the strain (they come faster as it climbs).</summary>
@@ -94,7 +94,7 @@ namespace FishingKing
         }
 
         /// <summary>
-        /// The line under high tension pinging: level 0..1 (0 = silent; the caller maps the tension to it). A plucked "ting"
+        /// The line under high tension twanging: level 0..1 (0 = silent; the caller maps the tension to it). A rubbery pluck
         /// every TingSlow .. TingFast seconds, louder and higher as it climbs (pitch x0.85 .. x1.5, a string being tightened).
         /// Call it every frame; the tings stop when the calls do.
         /// </summary>
@@ -300,19 +300,18 @@ namespace FishingKing
         /// without a seam (490 samples a click, 1200 whole cycles of the whine).
         /// </summary>
         /// <summary>
-        /// One ting of the taut line: a stiff plucked string at 1046 Hz (C6), its partials slightly stretched (f_n = n f
-        /// sqrt(1 + B n^2)) and the higher ones dying sooner, with a tiny pick click.
+        /// One twang of the taut line, rubbery: a round 392 Hz (G4) fundamental that bends down as it rings (a stretched band
+        /// settling), soft weak overtones, a short damped decay and a dull thump at the pluck.
         /// </summary>
         static AudioClip BuildLineTing()
         {
-            var d = Buf(0.7f);
-            const float f0 = 1046f, B = 0.0006f;
-            for (int k = 1; k <= 6; k++)
-            {
-                float f = f0 * k * Mathf.Sqrt(1f + B * k * k);
-                Tone(d, 0f, 0.7f / (0.6f + 0.4f * k), f, f, 0.5f / k, Sine, 0.0008f, 0.5f + 0.25f * k);
-            }
-            Noise(d, 0f, 0.006f, 0.25f, 0.9f, 0.6f, 2f, 99);
+            var d = Buf(0.42f);
+            const float f0 = 392f;
+            Tone(d, 0f, 0.4f, f0 * 1.08f, f0 * 0.94f, 0.9f, Sine, 0.003f, 0.9f);
+            Tone(d, 0f, 0.22f, f0 * 2.14f, f0 * 1.9f, 0.22f, Sine, 0.003f, 1.2f);
+            Tone(d, 0f, 0.12f, f0 * 3.2f, f0 * 2.85f, 0.08f, Tri, 0.002f, 1.5f);
+            Tone(d, 0f, 0.05f, 140f, 90f, 0.35f, Sine, 0.001f, 0.8f);
+            Noise(d, 0f, 0.015f, 0.12f, 0.3f, 0.15f, 2f, 99);
             return Make("line_ting", d);
         }
 
