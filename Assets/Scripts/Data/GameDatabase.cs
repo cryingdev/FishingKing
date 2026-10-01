@@ -738,9 +738,9 @@ namespace FishingKing
 
             Lines.Add(new LineDef { id = "line_nylon2", name = "나일론 2호", price = 0, strength = 3f, tough = 1.0f, color = new Color(0.92f, 0.96f, 0.96f, 0.9f), desc = "기본 나일론 줄. 3kg까지 버틴다." });
             Lines.Add(new LineDef { id = "line_nylon4", name = "나일론 4호", price = 600, strength = 6f, tough = 1.15f, color = new Color(0.72f, 0.9f, 0.63f, 0.9f), desc = "조금 더 굵은 나일론 줄. 6kg." });
-            Lines.Add(new LineDef { id = "line_fluoro6", name = "플로로카본 6호", price = 3000, strength = 11f, tough = 1.7f, stealth = 1.15f, color = new Color(0.95f, 0.8f, 0.86f, 0.7f), desc = "물속에서 잘 보이지 않아 입질이 늘어난다. 11kg." });
-            Lines.Add(new LineDef { id = "line_pe3", name = "PE 합사 3호", price = 12000, strength = 22f, tough = 0.6f, color = new Color(0.25f, 0.7f, 0.3f, 1f), desc = "가늘지만 매우 질긴 합사. 22kg." });
-            Lines.Add(new LineDef { id = "line_pe8", name = "PE 합사 8호", price = 40000, strength = 45f, tough = 0.8f, color = new Color(0.95f, 0.5f, 0.2f, 1f), desc = "대물 전용 굵은 합사. 45kg." });
+            Lines.Add(new LineDef { id = "line_fluoro6", name = "플로로카본 6호", price = 3000, strength = 11f, tough = 1.7f, stealth = 1.15f, color = new Color(0.95f, 0.8f, 0.86f, 0.7f), desc = "물속에서 잘 보이지 않고 쓸림에도 강하다. 11kg." });
+            Lines.Add(new LineDef { id = "line_pe3", name = "PE 합사 3호", price = 12000, strength = 22f, tough = 0.6f, color = new Color(0.25f, 0.7f, 0.3f, 1f), desc = "가늘고 강하지만 쓸림에는 약한 합사. 22kg." });
+            Lines.Add(new LineDef { id = "line_pe8", name = "PE 합사 8호", price = 40000, strength = 45f, tough = 0.8f, color = new Color(0.95f, 0.5f, 0.2f, 1f), desc = "대물 전용 굵은 합사. 쓸림에는 여전히 약하다. 45kg." });
             Lines.Add(new LineDef { id = "line_titan", name = "티타늄 와이어", price = 150000, strength = 100f, tough = 5.0f, color = new Color(0.8f, 0.82f, 0.86f, 1f), desc = "상어 이빨도 끊지 못하는 금속 줄. 100kg." });
 
             Baits.Add(new BaitDef { id = "bait_paste", name = "떡밥", price = 0, infinite = true, sinkSpeed = 1.0f, desc = "무한 제공되는 기본 미끼. 잉어과 물고기가 좋아한다." });

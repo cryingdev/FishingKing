@@ -1023,6 +1023,9 @@ namespace FishingKing
             ShopUI.Open(canvas, ItemKind.Reel);
             yield return new WaitForSeconds(0.6f);
             yield return Shot("shop_reel");
+            ShopUI.Open(canvas, ItemKind.Line);
+            yield return new WaitForSeconds(0.6f);
+            yield return Shot("shop_line");
             ShopUI.Open(canvas, ItemKind.Bait);
             yield return new WaitForSeconds(0.6f);
             yield return Shot("shop_bait");

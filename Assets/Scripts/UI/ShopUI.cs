@@ -380,7 +380,7 @@ namespace FishingKing
                 case ReelDef r:
                     return $"감기 {r.retrieve:0.0}m/회전 · 드랙 {r.dragMax:0.#}kg · 줄 {r.lineCap:0}m" + (r.autoReel > 0 ? " · 자동감기" : "");
                 case LineDef l:
-                    return $"강도 {l.strength:0}kg" + (l.stealth > 1 ? " · 입질 +15%" : "");
+                    return $"강도 {l.strength:0}kg · {Abrasion(l.tough)}" + (l.stealth > 1 ? $" · 입질 +{(l.stealth - 1f) * 100f:0}%" : "");
                 case BaitDef b:
                 {
                     var fans = GameDatabase.Fish.Where(f => f.Appeal(b) >= 0.8f && Game.I.Record(f.id) != null).Select(f => f.name).Take(4).ToList();
@@ -392,6 +392,16 @@ namespace FishingKing
                     return $"수조 {AquaTank.LimitText(t)}";
             }
             return "";
+        }
+
+        /// <summary>The line's abrasion resistance (LineDef.tough: wear rubbing on structure is divided by it) as a grade:
+        /// weak in red, strong in green, so a strong but abrasion-weak PE line reads as such.</summary>
+        static string Abrasion(float tough)
+        {
+            if (tough >= 3f) return "<color=#2e7d3a>쓸림 매우 강함</color>";
+            if (tough >= 1.4f) return "<color=#2e7d3a>쓸림 강함</color>";
+            if (tough >= 0.95f) return "쓸림 보통";
+            return "<color=#b0402e>쓸림 약함</color>";
         }
 
         static void Row(RectTransform content, ItemDef it, System.Action refresh)
