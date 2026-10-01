@@ -420,8 +420,9 @@ namespace FishingKing
         /// <summary>The side-pressure strip and its word: the fish's run, the rod's lean, right / wrong.</summary>
         void UpdateSide()
         {
-            int run = ctl.FishRun;
-            float lean = ctl.Lean, side = ctl.SideNow;
+            // (the run's side only while side pressure counts: the fish really sweeping that way, or a run for cover)
+            int run = ctl.SideActive ? ctl.FishRun : 0;
+            float lean = ctl.Lean, side = ctl.SideNow, dead = FishingController.SideDead;
             bool blink = Mathf.Repeat(Time.unscaledTime * 3f, 1f) < 0.6f;
             sideL.color = run < 0 ? (blink ? SideBadColor : Color.Lerp(SideBadColor, SideDim, 0.5f)) : SideDim;
             sideR.color = run > 0 ? (blink ? SideBadColor : Color.Lerp(SideBadColor, SideDim, 0.5f)) : SideDim;
@@ -432,18 +433,19 @@ namespace FishingKing
                 sideFish.rectTransform.localScale = new Vector3(run, 1f, 1f);   // (the icon faces right: facing its run)
             }
             float al = ctl.RunAlign;
-            sideChevron.enabled = run != 0 && Mathf.Abs(al) >= 0.3f;
+            int curRun = ctl.FishRun;   // (the current's chevron follows the run itself, sweeping or not)
+            sideChevron.enabled = curRun != 0 && Mathf.Abs(al) >= 0.3f;
             if (sideChevron.enabled)
             {
-                sideChevron.rectTransform.anchoredPosition = new Vector2(run * (SideW * 0.5f - 30f), -2f);
-                sideChevron.rectTransform.localScale = new Vector3(run, 1f, 1f);
+                sideChevron.rectTransform.anchoredPosition = new Vector2(curRun * (SideW * 0.5f - 30f), -2f);
+                sideChevron.rectTransform.localScale = new Vector3(curRun, 1f, 1f);
                 sideChevron.color = al > 0f ? Color.white : new Color(1f, 1f, 1f, 0.55f);
             }
             var rt = sideRod.rectTransform;
             rt.anchoredPosition = new Vector2(Mathf.Round(lean * SideRodSlide), 3);
             rt.localRotation = Quaternion.Euler(0, 0, -lean * SideRodTilt);
-            sideRod.color = side > 0.2f ? UIKit.Gold : side < -0.2f ? SideBadColor : UIKit.Cream;
-            sideBg.color = side > 0.2f ? new Color(1f, 0.95f, 0.7f, 1f) : Color.white;
+            sideRod.color = side > dead ? UIKit.Gold : side < -dead ? SideBadColor : UIKit.Cream;
+            sideBg.color = side > dead ? new Color(1f, 0.95f, 0.7f, 1f) : Color.white;
         }
 
         /// <summary>Held from the pointer going down on it until that pointer is released, wherever it goes meanwhile.</summary>
@@ -842,8 +844,8 @@ namespace FishingKing
             else ph = "쉬는 중 - 감아요!";
             // side pressure: the rod leant against the run / with it (the arrow: the way to lean instead)
             var phc = UIKit.Gold;
-            if (ctl.FishRun != 0 && ctl.SideNow > 0.2f) ph = "사이드 프레셔!";
-            else if (ctl.FishRun != 0 && ctl.SideNow < -0.2f)
+            if (ctl.SideActive && ctl.SideNow > FishingController.SideDead) ph = "사이드 프레셔!";
+            else if (ctl.SideActive && ctl.SideNow < -FishingController.SideDead)
             {
                 ph = ctl.FishRun > 0 ? "◀ 반대쪽으로!" : "반대쪽으로! ▶";
                 phc = SideBadColor;

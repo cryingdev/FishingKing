@@ -11,9 +11,9 @@ namespace FishingKing
     /// pulled under), or over the fish's mouth when it is up at the surface and the line runs straight to it. It points the way to lean the rod: against the fish's run
     /// (-<see cref="FishingController.FishRun"/>), and flips when a new run heads the other way (a quick fade out, then
     /// in, pointing the new way).
-    /// <para>Shown only while side pressure counts (<see cref="FishingController.SideActive"/>: a run to one side, not
-    /// resting, not jumping, not worn out, not on the ice; so never while the fish comes in straight or outside the
-    /// fight), fading in over <see cref="FadeIn"/> s and out over <see cref="FadeOut"/> s (a rest or a jump
+    /// <para>Shown only while side pressure counts (<see cref="FishingController.SideActive"/>: a run to one side while
+    /// the fish really sweeps sideways that way, or a run for cover; not resting, not jumping, not worn out, not on the
+    /// ice; so never while the fish runs straight out or comes in straight, or outside the fight), fading in over <see cref="FadeIn"/> s and out over <see cref="FadeOut"/> s (a rest or a jump
     /// starting). Its three states follow the
     /// fight strip's word (<see cref="FishingController.SideNow"/> past +-<see cref="Deadband"/>):</para>
     /// <list type="bullet">
@@ -41,7 +41,7 @@ namespace FishingKing
         const float GapPx = 4f;         // clear air between the anchor (the line's entry ring) and the arrow's bottom
         const float WidthPx = 26f;      // the sprite's width (for whole-pixel scaling)
         public const float MinScale = 0.7f, ScalePow = 0.35f;
-        public const float Deadband = 0.2f;   // |SideNow| over this = pushed (the HUD's word uses the same)
+        public const float Deadband = FishingController.SideDead;   // |SideNow| over this = pushed (the model, the HUD's word and strip use the same)
         const int FrameCount = 8;       // f0 plain + f1..f7 glint
         /// <summary>Prompt: seconds per glint frame (tail to tip), then the rest on the plain frame.</summary>
         public const float GlintStep = 0.07f, Hold = 0.34f;

@@ -534,7 +534,8 @@ namespace FishingKing
                     PointerInput.SimPos = c + new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * r;
                     // side pressure against the runs that go with the current (the downstream ones included)
                     bool withCur = run != 0 && (ctl.RunAlign >= 0.3f || ctl.DownstreamRun);
-                    int lean = withCur && withRunT >= 0.4f ? -run : 0;
+                    // (only while it really sweeps sideways: running straight out there is no side to push against)
+                    int lean = withCur && withRunT >= 0.4f && ctl.SideActive ? -run : 0;
                     PointerInput.SimLeft = lean < 0;
                     PointerInput.SimRight = lean > 0;
                     float line0 = f.Line;

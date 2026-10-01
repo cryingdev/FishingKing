@@ -814,6 +814,7 @@ namespace FishingKing
             Log($"[SIDE] fights: {fishId} {cm:0}cm, rod {Game.I.Rod.id} reel {Game.I.Reel.id} (drag {Game.I.Reel.dragMax}) line {Game.I.Line.id} ({Game.I.Line.strength} kg), angler x {N(homeX)}");
             var all = new List<FightStats>();
             bool shotGood = false, shotBad = false;
+            var watchAll = new SideWatch();
             foreach (string mode in new[] { "none", "opposite", "same" })
             {
                 yield return SteerCast(ctl, "bait_minnow", homeX);
@@ -847,6 +848,7 @@ namespace FishingKing
                 float r = Screen.height * 0.13f, ang = 0f, ws = CircleGesture.Reversed ? -1f : 1f, goodT = 0f, badT = 0f;
                 bool prevRun = false;
                 float prevStam = f.Stamina;
+                var watch = new SideWatch();
                 PointerInput.SimActive = true;
                 while (ctl.State == FishingController.S.Fighting && s.t < 14f && !f.Exhausted)
                 {
@@ -865,6 +867,7 @@ namespace FishingKing
                     PointerInput.SimRight = lean > 0;
                     yield return null;
                     if (ctl.Fight == null) break;
+                    watch.Frame(ctl, dt);
                     // what the frame's step did (the fight updated after the keys were read)
                     if (prevRun)
                     {
@@ -917,6 +920,8 @@ namespace FishingKing
                 PointerInput.SimDown = false;
                 if (ctl.Fight != null) s.stam1 = ctl.Fight.Stamina;
                 ctl.RunEnded -= onRun;
+                watchAll.Add(watch);
+                Log($"[SIDE] {mode} sweeping: " + watch.Report());
                 Log(string.Format(CI,
                     "[SIDE] {0}: {1:0.0}s fought, stamina {2:0.000} -> {3:0.000}; runs {4} (turned {5}), running {6:0.0}s: drain {7:0.0000}/s of run (model x{8:0.00}), tension {9:0.000} of the line during runs ({10:0.000} overall); mean run {11:0.00}s, mean turn {12:0.00}s; rod-hat clear min {13:0.0}px",
                     s.name, s.t, s.stam0, s.stam1, s.runs, s.turned, s.runTime, s.DrainRate, s.MultRun, s.TensionRun, s.t > 0 ? s.tensionAll / s.t : 0f, s.MeanRun, s.MeanTurn, s.clrMin)
@@ -968,6 +973,9 @@ namespace FishingKing
             float clr = Mathf.Min(none.clrMin, Mathf.Min(opp.clrMin, same.clrMin));
             SCheck($"the rod stays off the hat through the fights (min {N(clr, "0.0")} px: none {N(none.clrMin, "0.0")} / against {N(opp.clrMin, "0.0")} / with {N(same.clrMin, "0.0")}; kept off by tilting {N(none.tiltT + opp.tiltT + same.tiltT, "0.0")} s, max {N(Mathf.Max(none.tiltMax, Mathf.Max(opp.tiltMax, same.tiltMax)), "0.0")} deg)",
                 clr > 0f);
+            SCheck("side pressure only while the fish really sweeps sideways the way it runs (on over " + N(FishingController.SweepOn) + " rad/s, off under " + N(FishingController.SweepOff) + " for " + N(FishingController.SweepHold) + " s): " + watchAll.Report(), watchAll.Ok);
+            SCheck($"one lean dead zone: model {N(FishingController.SideDead)}, arrow / HUD {N(SideArrow.Deadband)} (and no frame where they disagree: {watchAll.deadMiss})",
+                SideArrow.Deadband == FishingController.SideDead && watchAll.deadMiss == 0);
             SCheck($"shots of right / wrong side pressure taken (good {shotGood}, bad {shotBad})", shotGood && shotBad);
             yield return SteerFightGrid(ctl, sp, cm);
         }

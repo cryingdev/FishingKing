@@ -105,10 +105,30 @@ namespace FishingKing
         /// <summary>Side pressure this frame: + leaning against the run (good), - with it (bad), 0 centred / no run.</summary>
         public float SideNow { get; private set; }
         /// <summary>
-        /// Side pressure counts this frame (a run off to one side, not resting / jumping / worn out, not on the ice): the
-        /// arrow over the line's entry (<see cref="SideArrow"/>) shows then.
+        /// Side pressure counts this frame: a run off to one side (not resting / jumping / worn out, not on the ice) while
+        /// the fish is really swinging round sideways that way (<see cref="Sweeping"/>), or a run for cover / dug in at it.
+        /// The arrow over the line's entry (<see cref="SideArrow"/>), the fight strip's run and word, the hint and every
+        /// side multiplier in the model follow it; a fish running straight out (taking line, no sideways motion) has no
+        /// side to counter.
         /// </summary>
         public bool SideActive { get; private set; }
+        /// <summary>
+        /// The running fish actually sweeps sideways the way it runs: the smoothed swing round him (<see cref="SweepRate"/>)
+        /// in the run's direction rose over <see cref="SweepOn"/> rad/s, and has not since stayed under
+        /// <see cref="SweepOff"/> for <see cref="SweepHold"/> s (while the rod is leant against a run not yet turned the
+        /// fish slowing is the side pressure working: it holds on until the turn).
+        /// </summary>
+        public bool Sweeping { get; private set; }
+        public const float SweepOn = 0.2f, SweepOff = 0.15f, SweepHold = 0.1f;
+        /// <summary>
+        /// A lean under this (of the full sweep) is centred: no side pressure, and the fight strip / arrow show "not pushed"
+        /// (they switch past the same value: <see cref="SideNow"/> is 0 or beyond it).
+        /// </summary>
+        public const float SideDead = 0.2f;
+        float sweepLowT, sweepT;
+        /// <summary>For the tests: the fight's heading out from him and where the current run (or rest) is taking it (radians).</summary>
+        internal float FightYawNow => fightYaw;
+        internal float FightYawGoal => fightYawTarget;
         /// <summary>How long the current run has lasted, and when (into it) side pressure turned the last turned run.</summary>
         public float RunT { get; private set; }
         public float LastTurnT { get; private set; } = -1f;
@@ -118,8 +138,8 @@ namespace FishingKing
         // full lean) and after TurnTime s of full lean (longer at a smaller one) the run is turned: its head comes round
         // towards the rod's side and it runs on that way, the rest of the run cut short (FightModel.TurnCut); with the run its
         // heading is pushed on outwards at PushRate. A lean under SideDead (of the full sweep) is centred.
-        const float TurnRate = 0.6f, TurnTime = 0.7f, PushRate = 0.25f, SideDead = 0.15f;
-        const float LongRun = 1.6f;          // s: a run this long without side pressure against it brings the one-time hint
+        const float TurnRate = 0.6f, TurnTime = 0.7f, PushRate = 0.25f;
+        const float LongRun = 0.8f;          // s: a sideways sweep this long without side pressure against it brings the one-time hint
         // the line's load from the geometry (FightModel.RodOffset / SweepRate, TrackRodLine): the fish's swing round him is
         // smoothed over SweepTau s (each frame's raw rate capped at SweepRawMax rad/s) and the rod's angle to the line over
         // RodOffTau s, so a frame's jitter in the fish's place never spikes the load
@@ -1380,6 +1400,8 @@ namespace FishingKing
             Slide.Reset();
             FishRun = 0;
             SideNow = 0f;
+            SideActive = Sweeping = false;
+            sweepLowT = sweepT = 0f;
             RunT = 0f;
             turnProg = 0f;
             runTurned = false;
@@ -1433,7 +1455,8 @@ namespace FishingKing
             RunEnded?.Invoke(FishRun, RunT, runTurned);
             FishRun = 0;
             SideNow = 0f;
-            SideActive = false;
+            SideActive = Sweeping = false;
+            sweepLowT = sweepT = 0f;
             turnProg = 0f;
             runTurned = false;
         }
@@ -1478,6 +1501,8 @@ namespace FishingKing
                         }
                         FishRun = fightYawTarget > fightYaw + 0.01f ? 1 : fightYawTarget < fightYaw - 0.01f ? -1 : 0;
                         RunT = 0f;
+                        Sweeping = false;
+                        sweepLowT = sweepT = 0f;
                         turnProg = 0f;
                         runTurned = false;
                     }
@@ -1525,12 +1550,13 @@ namespace FishingKing
         /// the run cut short: FightModel.Turn); meanwhile it tires x1.4 (FightModel.SideGood). Leant with the run it runs on
         /// further and longer and tires x0.8 (SideBad). The line's load follows the rod's angle to the line and the fish's
         /// sweep across it (FightModel.SideTensionMult: up to +10 % opened against the run, -3 % pointed along it, up to +5 %
-        /// more while the fish swings away from where the rod points). Not on the ice, not in a jump; legend fights too.
+        /// more while the fish swings away from where the rod points). All of it only while the fish really sweeps sideways the
+        /// way it runs (<see cref="Sweeping"/>) or runs for / holds in cover (<see cref="SideActive"/>): running straight
+        /// out there is no side to counter. Not on the ice, not in a jump; legend fights too.
         /// </summary>
         void SidePressure(float dt, FightModel f)
         {
             bool running = FishRun != 0 && (f.State == FightModel.Phase.Run || f.State == FightModel.Phase.Burst) && !f.Exhausted && jumpTime < 0f && !L.IsIce;
-            SideActive = running;
             f.SideGood = f.SideBad = 0f;
             f.SideRun = 0;
             f.RodOffset = rodOff;
@@ -1539,17 +1565,42 @@ namespace FishingKing
             {
                 if (FishRun != 0 && f.Exhausted) EndRun();
                 SideNow = 0f;
+                SideActive = Sweeping = false;
+                sweepLowT = 0f;
                 return;
             }
             RunT += dt;
             float lean = Lean;
-            if (Mathf.Abs(lean) < SideDead) lean = 0f;
+            if (Mathf.Abs(lean) <= SideDead) lean = 0f;
             float good = Mathf.Clamp01(-lean * FishRun), bad = Mathf.Clamp01(lean * FishRun);
+            // sweeping: the fish's smoothed swing round him the way it runs, on over SweepOn, off once under SweepOff for
+            // SweepHold s (held on while leant against a run not yet turned: its slowing is the side pressure at work)
+            float v = sweepRate * FishRun;
+            if (v >= SweepOn)
+            {
+                Sweeping = true;
+                sweepLowT = 0f;
+            }
+            else if (Sweeping)
+            {
+                if (v < SweepOff && !(good > 0f && !runTurned)) sweepLowT += dt;
+                else sweepLowT = 0f;
+                if (sweepLowT >= SweepHold) Sweeping = false;
+            }
+            bool cover = f.CoverRun || f.CoverHold;
+            // (a run for cover, or dug in at it, always has its side: away from the cover)
+            SideActive = Sweeping || cover;
+            if (!SideActive)
+            {
+                // running straight out (or done sweeping): no side to counter, no side effect
+                SideNow = 0f;
+                return;
+            }
+            sweepT += dt;
             SideNow = good - bad;
-            f.SideRun = FishRun;   // (the line's load from the rod's angle and the fish's sweep counts in runs only)
+            f.SideRun = FishRun;   // (the line's load from the rod's angle and the fish's sweep counts while it sweeps only)
             float maxYaw = MaxFightYaw();
             // (dug in at its cover it does not give ground until it is pulled out)
-            bool cover = f.CoverRun || f.CoverHold;
             if (good > 0f && !f.CoverHold) fightYawTarget = Mathf.MoveTowards(fightYawTarget, -FishRun * maxYaw, dt * TurnRate * good);
             else if (bad > 0f && !f.CoverHold) fightYawTarget = Mathf.MoveTowards(fightYawTarget, FishRun * maxYaw, dt * PushRate * bad);
             turnProg += good * dt;
@@ -1586,7 +1637,7 @@ namespace FishingKing
             f.SideGood = good;
             f.SideBad = bad;
             // the first long run fought without side pressure: once, how to turn it
-            if (good < 0.3f && !runTurned && RunT >= LongRun && !Game.Data.sideHint)
+            if (good < 0.3f && !runTurned && sweepT >= LongRun && !Game.Data.sideHint)
             {
                 Game.Data.sideHint = true;
                 Game.I.Save();
@@ -1689,11 +1740,11 @@ namespace FishingKing
             sideLogT = 0.25f;
             var p = Hooked.Pos;
             Debug.Log(string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                "[SIDELOG] {0} run {1:+0;-0;0} fightYaw {2:+0.0;-0.0} tgt {3:+0.0;-0.0} bearing {4:+0.0;-0.0} lean {5:+0.00;-0.00} req {6:+0.0;-0.0} eff {7:+0.0;-0.0} rodYaw {8:+0.0;-0.0} side {9:+0.00;-0.00} good {10:0.00} bad {11:0.00} T {12:0.00} Tmult {13:0.000} ratio {14:0.00} line {15:0.0} revs {16:0.00} rodOff {17:+0.0;-0.0;0.0} ang {18:+0.00;-0.00;0.00} sweep {19:+0.00;-0.00;0.00} across {20:0.00}",
+                "[SIDELOG] {0} run {1:+0;-0;0} fightYaw {2:+0.0;-0.0} tgt {3:+0.0;-0.0} bearing {4:+0.0;-0.0} lean {5:+0.00;-0.00} req {6:+0.0;-0.0} eff {7:+0.0;-0.0} rodYaw {8:+0.0;-0.0} side {9:+0.00;-0.00} good {10:0.00} bad {11:0.00} T {12:0.00} Tmult {13:0.000} ratio {14:0.00} line {15:0.0} revs {16:0.00} rodOff {17:+0.0;-0.0;0.0} ang {18:+0.00;-0.00;0.00} sweep {19:+0.00;-0.00;0.00} across {20:0.00} sweeping {21} active {22}",
                 f.State, FishRun, fightYaw * Mathf.Rad2Deg, fightYawTarget * Mathf.Rad2Deg,
                 Mathf.Atan2(p.x - Angler.Feet.x, Mathf.Max(0.5f, p.z - Angler.Feet.z)) * Mathf.Rad2Deg, Lean, Angler.SweepReq, Angler.SweepEff,
                 Angler.RodYaw, SideNow, f.SideGood, f.SideBad, f.Tension, f.SideTensionMult, f.TensionRatio, f.Line, Gesture.Speed,
-                rodOff * Mathf.Rad2Deg, f.SideAngle01, sweepRate, f.SideAcross01));
+                rodOff * Mathf.Rad2Deg, f.SideAngle01, sweepRate, f.SideAcross01, Sweeping ? 1 : 0, SideActive ? 1 : 0));
         }
 
         void UpdateFighting(float dt)

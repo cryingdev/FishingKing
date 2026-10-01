@@ -14,6 +14,82 @@ namespace FishingKing
     /// </summary>
     public partial class AutoPilot
     {
+        /// <summary>
+        /// Every fight frame: side pressure (the arrow, the strip, the model's side multipliers) only while the fish really
+        /// sweeps sideways (<see cref="FishingController.Sweeping"/>; a cover run excepted). Counts the run frames, those with
+        /// side pressure on / the arrow up, the frames the fish has sat at its run's target bearing for <see cref="Grace"/> s
+        /// (the sweep's smoothing, the off hold and the arrow's fade: the most it may take to notice) and the arrow up in
+        /// them, the arrow pointing the wrong way, flickers (off under 0.25 s mid-run, then on again), and the frames where the model's side pressure and the HUD / arrow's word
+        /// disagree about the lean's dead zone.
+        /// </summary>
+        class SideWatch
+        {
+            public const float Grace = 0.7f;
+            public int runFrames, activeFrames, arrowFrames, atTarget, settled, settledArrow, settledActive, wrongWay, deadMiss, flicker;
+            float settledT, activeT, offT = -1f, lastYaw = float.NaN;
+            bool wasActive;
+
+            public void Frame(FishingController ctl, float dt)
+            {
+                var f = ctl.Fight;
+                var ar = ctl.PushArrow;
+                if (f == null) return;
+                bool running = ctl.FishRun != 0 && (f.State == FightModel.Phase.Run || f.State == FightModel.Phase.Burst) && !f.Exhausted && !f.Jumping && !ctl.Stage.L.IsIce;
+                bool cover = f.CoverRun || f.CoverHold;
+                // at the target bearing and not moving (not a target pushed on outwards with the fish tracking it)
+                float yaw = ctl.FightYawNow, yawRate = float.IsNaN(lastYaw) || dt <= 0f ? 0f : Mathf.Abs(yaw - lastYaw) / dt;
+                lastYaw = yaw;
+                bool at = running && !cover && Mathf.Abs(yaw - ctl.FightYawGoal) < 0.005f && yawRate < 0.02f;
+                settledT = at ? settledT + dt : 0f;
+                activeT = ctl.SideActive ? activeT + dt : 0f;
+                bool vis = ar != null && ar.Visible;
+                // flicker: side pressure off for under 0.25 s in the middle of one run, then on again
+                if (!running) offT = -1f;
+                else if (ctl.SideActive)
+                {
+                    if (!wasActive && offT >= 0f && offT < 0.25f) flicker++;
+                    offT = -1f;
+                }
+                else if (wasActive) offT = 0f;
+                else if (offT >= 0f) offT += dt;
+                wasActive = running && ctl.SideActive;
+                if (running)
+                {
+                    runFrames++;
+                    if (ctl.SideActive) activeFrames++;
+                    if (vis) arrowFrames++;
+                    if (at) atTarget++;
+                }
+                if (settledT >= Grace)
+                {
+                    settled++;
+                    if (vis) settledArrow++;
+                    if (ctl.SideActive) settledActive++;
+                }
+                if (vis && ctl.SideActive && activeT > 0.3f && ar.Side != -ctl.FishRun) wrongWay++;
+                if (ctl.SideActive)
+                {
+                    bool model = f.SideGood > 0f || f.SideBad > 0f, word = Mathf.Abs(ctl.SideNow) > SideArrow.Deadband;
+                    if (model != word) deadMiss++;
+                }
+            }
+
+            public void Add(SideWatch o)
+            {
+                runFrames += o.runFrames; activeFrames += o.activeFrames; arrowFrames += o.arrowFrames; atTarget += o.atTarget;
+                settled += o.settled; settledArrow += o.settledArrow; settledActive += o.settledActive; wrongWay += o.wrongWay; deadMiss += o.deadMiss; flicker += o.flicker;
+            }
+
+            static float Pct(int a, int b) => b > 0 ? 100f * a / b : 0f;
+
+            public string Report() => string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "run frames {0}: at the target bearing {1} ({2:0}%); side pressure on {3} ({4:0}%, 100% before sweeping gated it), arrow up {5} ({6:0}%); sat at the target >= {7:0.0}s {8} frames: arrow up {9}, side on {10}; arrow the wrong way {11}; dead-zone mismatches {12}; flickers {13}",
+                runFrames, atTarget, Pct(atTarget, runFrames), activeFrames, Pct(activeFrames, runFrames), arrowFrames, Pct(arrowFrames, runFrames),
+                Grace, settled, settledArrow, settledActive, wrongWay, deadMiss, flicker);
+
+            public bool Ok => runFrames > 0 && activeFrames > 0 && settledArrow == 0 && settledActive == 0 && wrongWay == 0 && deadMiss == 0 && flicker == 0;
+        }
+
         IEnumerator SteerArrow(FishingController ctl)
         {
             bool ocean = ctl.Stage.Def.id == "ocean";
@@ -77,6 +153,7 @@ namespace FishingKing
             floatDone = 0;
             float gapMin = 999f, gapMax = -999f, scaleMin = 9f, scaleMax = 0f;
             bool shotPrompt = false, shotRight = false, shotWrong = false;
+            var watch = new SideWatch();
             PointerInput.SimActive = true;
             // (after the shots it fights on a while, not pushing, to see a jump through: up to 28 s in all)
             while (ctl.State == FishingController.S.Fighting && t < 45f && (phase < 4 || (jumpFrames == 0 || f.Jumping) && t < 28f))
@@ -101,6 +178,7 @@ namespace FishingKing
                 activeT = active ? activeT + Time.deltaTime : 0f;
                 idleT = active ? 0f : idleT + Time.deltaTime;
                 frames++;
+                watch.Frame(ctl, Time.deltaTime);
                 if (ar.Visible) visFrames++;
                 if (activeT > 0.3f && !ar.Visible) showMiss++;
                 if (idleT > SideArrow.FadeOut + 0.05f && ar.Visible) hideMiss++;
@@ -177,6 +255,8 @@ namespace FishingKing
             string sides = sidesSeen == 3 ? "both ways" : sidesSeen == 2 ? "right only" : sidesSeen == 1 ? "left only" : "none";
             Log(string.Format(CI, "[ARROW] {0} {1}: {2:0.0}s, {3} frames, arrow shown {4}; missing while active {5}, shown while idle {6}, wrong side {7}, wrong state {8}; jumps {9} frames (shown {10}); gap {11:0.0}..{12:0.0} px, scale {13:0.00}..{14:0.00}; anchor float {19} / entry {15} / mouth {16} frames; pointed {17}; runs ended {18}",
                 st, rig, t, frames, visFrames, showMiss, hideMiss, sideMiss, stateMiss, jumpFrames, jumpShown, gapMin, gapMax, scaleMin, scaleMax, entryFrames, mouthFrames, sides, runsEnded, floatFrames));
+            Log($"[ARROW] {st} {rig} sweeping: " + watch.Report());
+            SCheck($"arrow {rig} {st}: only while the fish really sweeps sideways (a run straight out: none) - " + watch.Report(), watch.Ok);
             SCheck($"arrow {rig} {st}: shots prompt {shotPrompt} / right {shotRight} / wrong {shotWrong}", shotPrompt && shotRight && shotWrong);
             SCheck($"arrow {rig} {st}: shown whenever side pressure counts (missed {showMiss} of {frames} frames) and hidden otherwise, rests and jumps included (shown {hideMiss}; in jumps {jumpShown} of {jumpFrames})",
                 showMiss == 0 && hideMiss == 0 && jumpShown == 0);
