@@ -348,11 +348,16 @@ namespace FishingKing
         public float entryAt = 1.5708f;
         /// <summary>흥분 / nose-in: x = the nose's depth under the lure (m), y = pitch (degrees, - = head up).</summary>
         public Vector2 hover = new Vector2(0.45f, -18f), noseIn = new Vector2(0.22f, -30f);
-        public string shadow = "#10180e";
-        public Vector2 shadowAlpha = new Vector2(0.85f, 0.25f); // at the surface / at shadowDeep
-        public Vector2 shadowSoft = new Vector2(0.6f, 3.0f);    // edge blur (px) at the surface / at shadowDeep
+        /// <summary>
+        /// The legend's shadow (darkened with the water by the time of day). Against the murky water (luma ~0.24) it
+        /// reads like the stage's fish shadows on dark water: at least 50% darker even at shadowDeep, ~70% through the
+        /// tease's passes (경계, 호기심, 흥분; the coelacanth's silhouette against its cave water: ~79%).
+        /// </summary>
+        public string shadow = "#060905";
+        public Vector2 shadowAlpha = new Vector2(1.0f, 0.6f);   // at the surface / at shadowDeep
+        public Vector2 shadowSoft = new Vector2(0.6f, 2.4f);    // edge blur (px) at the surface / at shadowDeep
         public float shadowDeep = 2.0f;
-        public float shadowDetail = 0.3f;                       // the fish's own colour showing through when shallow
+        public float shadowDetail = 0.15f;                      // the fish's own colour showing through when shallow
         public float riseT = 0.7f;                              // the rise through the waterline (the approach's last s)
         public float surfaceBoil = 1.8f;                        // the boil at the fight's start (x the usual)
         /// <summary>Captions in the top view: the nose-in's (instead of tellText) and the 흥분 credit's (null = the row's).</summary>

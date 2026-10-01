@@ -139,7 +139,8 @@ namespace FishingKing
             bubbleTop = TopS("fx_top_bubble");
             midT = TopS($"uw_{top.set}_mid");
             foreT = TopS($"uw_{top.set}_fore");
-            shadowTint = Art.Hex(top.shadow);
+            // (darkened with the water by the time of day, so it keeps its contrast at dawn, evening and night)
+            shadowTint = Art.Hex(top.shadow) * new Color(pTint.r, pTint.g, pTint.b, 1f);
             // the screen's up is away from the angler (against the lure's travel), its right on the water
             var dd = new Vector3(DragDir.x, 0f, DragDir.z).normalized;
             tUp = -dd;

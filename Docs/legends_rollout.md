@@ -350,8 +350,10 @@ Pacing ≈ 5 + 5.5 + 3.4 = **14 s**.
 - The tease and the nose-in are seen straight down over the frog (2.5 m up, 56 px/m on the surface). The frog stays
   put and the water slides past it (0.3 m per turn): winding kicks it with a V-wake, a 톡 pops it ("퐁" spray, a ring, a
   hop), a pause lets it float (a settle ring, calm).
-- The legend is its 3D model seen from above as a shadow (EncShadow.shader, `#10180e`): opacity 0.75 at the surface to
-  0.2 at 1.8 m and blur 0.6 to 3.2 px, run from the head to the tail.
+- The legend is its 3D model seen from above as a shadow (EncShadow.shader, `#060905` darkened with the water by the
+  time of day): opacity 1.0 at the surface to 0.6 at 2 m and blur 0.6 to 2.4 px, run from the head to the tail. Like
+  the stage's fish shadows on dark water it stays at least 50% darker than the water even deep (about 70% through the
+  경계, 호기심 and 흥분 passes).
   - 경계: a slow far pass on a flat ellipse 1.9 × 0.62 m, 1.1 m down (the breath roll gulps at the surface).
   - 호기심: 1.25 × 0.42 m, 0.6 m down, bubbles over its head.
   - 흥분: head-up (−35°) with the nose 0.45 m under the frog, the surface bulging over its head.
