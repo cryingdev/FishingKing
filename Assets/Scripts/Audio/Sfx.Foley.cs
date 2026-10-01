@@ -37,6 +37,8 @@ namespace FishingKing
         static float nextTing = -1f;
         /// <summary>Seconds between tings at the bottom / the top of the strain (they come faster as it climbs).</summary>
         const float TingSlow = 0.9f, TingFast = 0.16f;
+        /// <summary>The pitch's curve over the strain (1 = straight; 2.5: half the strain gives under a fifth of the rise).</summary>
+        const float StrainPitchCurve = 2.5f;
         /// <summary>The hooked fish splashing at the surface (Resources/Audio/Sfx/fish_thrash, a loop; null = silent).</summary>
         public static AudioClip FishThrash;
         float thrashWant, thrashUntil = -1f;
@@ -95,7 +97,8 @@ namespace FishingKing
 
         /// <summary>
         /// The line under high tension twanging: level 0..1 (0 = silent; the caller maps the tension to it). A rubbery twang
-        /// every TingSlow .. TingFast seconds, louder and higher as it climbs (pitch x0.85 .. x1.5, a string being tightened).
+        /// every TingSlow .. TingFast seconds, louder and higher as it climbs (pitch x0.85 .. x1.5, a string being tightened,
+        /// slowly at first and steeply near the break: <see cref="StrainPitchCurve"/>).
         /// Call it every frame; the tings stop when the calls do.
         /// </summary>
         public static void LineStrain(float level)
@@ -110,7 +113,9 @@ namespace FishingKing
             level = Mathf.Clamp01(level);
             if (nextTing < 0f || now - nextTing > 1f) nextTing = now;   // (the first ting comes at once)
             if (now < nextTing) return;
-            Play(LineTing, 0.12f + 0.33f * level, 0.85f + 0.65f * level + UnityEngine.Random.Range(-0.015f, 0.015f));
+            // the pitch climbs slowly at first and steeply towards the break (level ^ StrainPitchCurve)
+            float rise = Mathf.Pow(level, StrainPitchCurve);
+            Play(LineTing, 0.12f + 0.33f * level, 0.85f + 0.65f * rise + UnityEngine.Random.Range(-0.015f, 0.015f));
             nextTing = now + Mathf.Lerp(TingSlow, TingFast, level);
         }
 
