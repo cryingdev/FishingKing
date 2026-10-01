@@ -435,6 +435,8 @@ On the ice the spot is the hole. To keep a spot in reach, the lurk point itself 
 
 The blink period is 0.9 s and quickens to 0.3 s over the last 4 s of the window. This is the countdown. The zoom keeps the spot in frame while it blinks, as it does the cue.
 
+**The look.** As a spot comes up, the view zooms one whole-pixel step past the zoom mode's onto it in 0.6 s, holds there for 1.4 s while it blinks, then eases back to the usual framing within 1.2 s (`FishingController.SpotLook`, Docs/fishing_gameplay.md 9.4). It is cut at once by any change of state, such as a wind-up, which goes home in 0.15 s as usual. There is no look with the zoom set to 끔, since the spot is always in the home view, and none on the ice, where the spot is the hole. A spot that comes back within 12 s of one the player's own cast missed gets no look either. The stage's notice gets no look of its own: the first cue, 2–6 s later, brings the spot and its look.
+
 **Claim.** A new cast whose rig enters the water (`FishingController.OnLanded`, or `KnockOff` for a perched cast knocked in) claims the spot when all of these hold:
 - it is within `spotRadius` of the spot;
 - it lands inside `spotWindow`; a cast still in the air when the window runs out may still land in it;

@@ -68,13 +68,22 @@ namespace FishingKing
         public const float OneReturnSpeed = 320f, OneReturnAccel = 1400f;
         /// <summary>Seconds: while <see cref="HurryHome"/> (a wind-up: casting is from the home view) the 1x pan eases home in this long (the wind-up's own zoom-out, FishingController.ZoomAimOut).</summary>
         public const float HurryTime = 0.15f;
+        /// <summary>
+        /// Game px / s² and game px / s: a glided pan (<see cref="Glide"/>, the legend spot's look and its way back) speeds
+        /// up from rest and brakes at this acceleration, no faster than this, and settles over <see cref="GlideTau"/> s at
+        /// the end (an acceleration-limited follow, as the 1x pan's, instead of the focus's exponential one).
+        /// </summary>
+        public const float GlideAccel = 1600f, GlideMaxSpeed = 360f;
+        /// <summary>Seconds: the glide's last approach (it counts as arrived within <see cref="GlideArrive"/> game px).</summary>
+        public const float GlideTau = 0.1f;
+        public const float GlideArrive = 1f;
 
         /// <summary>
         /// Game px / s the camera may move at most with this much overscan (the hurry home's peak, the 1x follow pulled
         /// along by a point, a zoomed crop held on a running fish): what is drawn before the zoom moves it this frame
         /// reaches that much past the view (WaterFx).
         /// </summary>
-        public static float MaxCameraSpeed(int overscan) => Mathf.Max(400f, 2f * OneMaxSpeed, 1.5f * overscan / HurryTime);
+        public static float MaxCameraSpeed(int overscan) => Mathf.Max(400f, 2f * OneMaxSpeed, GlideMaxSpeed, 1.5f * overscan / HurryTime);
 
         /// <summary>Called every frame before the zoom moves (the fishing controller): calls <see cref="Want"/>, <see cref="Focus"/>, <see cref="Keep"/>.</summary>
         public System.Action<ViewZoom> Director;
@@ -96,6 +105,15 @@ namespace FishingKing
         /// <summary>The zoom asked for (set by the director every frame; <see cref="Aim"/> unless it says otherwise).</summary>
         public float StepAim = Aim;
 
+        /// <summary>Set by the director for this frame: whole steps beyond the one <see cref="StepAim"/> comes to (the legend spot's look: one).</summary>
+        public int StepExtra;
+
+        /// <summary>Set by the director for this frame: the focus is glided to (<see cref="GlideAccel"/>) instead of followed at its smoothing time.</summary>
+        public bool Glide;
+
+        /// <summary>Set by the director for this frame, before its <see cref="Keep"/> calls: every must-see point is a soft one (the way back from a look: the view glides to them, never snaps).</summary>
+        public bool SoftKeeps;
+
         PixelView pv;
         float level, from, to, easeT, easeLen = EaseTime, easeFull = EaseTime;
         Vector2 panF;                 // the crop's centre at the full step (render-target px)
@@ -115,6 +133,8 @@ namespace FishingKing
         bool hurrying;                // easing home for a wind-up: from hurryFrom, hurryT s in
         float hurryT, hurryFrom;
         Vector2Int heldCam;           // the camera's pan while a test holds the level
+        Vector2 panV;                 // the glided pan's speed (render-target px / s)
+        float glideErr = float.MaxValue;   // how far the pan was from its focus target last frame
 
         internal void Init(PixelView v)
         {
@@ -182,6 +202,15 @@ namespace FishingKing
 
         /// <summary>The view is at home: 1x or zoomed, the camera has not moved and the 1x view is not panned.</summary>
         public bool AtHome => CamPan == Vector2Int.zero && PanOne == Vector2Int.zero;
+
+        /// <summary>
+        /// The zoom has arrived where it was asked to be: no ease or step change under way and, zoomed, the pan within
+        /// <see cref="GlideArrive"/> of its focus target and at rest (at 1x the pan does not matter).
+        /// </summary>
+        public bool Settled => level == to && !stepEasing && (to <= 0f || (glideErr <= GlideArrive && panV.sqrMagnitude < 25f));
+
+        /// <summary>Where the crop's centre settles at the full step to look at this pixel-view world point (there, kept so the crop stays in the bounds).</summary>
+        public Vector2 PanFor(Vector2 world) => pv != null && pv.Target != null ? Clamp(WorldToPx(world), HalfAtStep) : WorldToPx(world);
 
         /// <summary>At the step, whole screen pixels per game pixel and the crop's origin on whole screen pixels.</summary>
         public bool PixelExact
@@ -251,7 +280,7 @@ namespace FishingKing
         public void Keep(Vector2 world, float marginPx, bool soft = false)
         {
             var p = WorldToPx(world);
-            (soft ? softKeeps : keeps).Add(new Vector3(p.x, p.y, Mathf.Max(0f, marginPx)));
+            (soft || SoftKeeps ? softKeeps : keeps).Add(new Vector3(p.x, p.y, Mathf.Max(0f, marginPx)));
         }
 
         /// <summary>
@@ -316,6 +345,8 @@ namespace FishingKing
                 ArtPx = Vector2Int.zero;
             }
             HurryHome = false;
+            StepExtra = 0;
+            Glide = SoftKeeps = false;
             if (!held && Director != null) Director(this);
             float dt = Time.deltaTime;
             if (!held) ChooseStep(dt);
@@ -339,9 +370,17 @@ namespace FishingKing
             if (hasFocus)
             {
                 var tgt = Constrain(Clamp(focusPx, half), half, topIn, true);
-                panF = jumpPan ? tgt : Vector2.Lerp(panF, tgt, 1f - Mathf.Exp(-dt / focusTau));
+                if (jumpPan)
+                {
+                    panF = tgt;
+                    panV = Vector2.zero;
+                }
+                else if (Glide) GlideTo(tgt, dt);
+                else panF = Vector2.Lerp(panF, tgt, 1f - Mathf.Exp(-dt / focusTau));
+                glideErr = (tgt - panF).magnitude;
                 jumpPan = false;
             }
+            if (!Glide || !hasFocus) panV = Vector2.zero;
             if (keeps.Count > 0)
             {
                 panF = Vector2.Lerp(panF, Constrain(panF, half, topIn, false), 1f - Mathf.Exp(-dt / KeepTau));
@@ -353,6 +392,26 @@ namespace FishingKing
             keeps.Clear();
             softKeeps.Clear();
             Apply();
+        }
+
+        /// <summary>
+        /// The glided pan: towards <paramref name="tgt"/> from where it is, its speed changing by at most
+        /// <see cref="GlideAccel"/> a second, no faster than <see cref="GlideMaxSpeed"/>, braking in time and settling over
+        /// <see cref="GlideTau"/> (no step in speed at the start or the end).
+        /// </summary>
+        void GlideTo(Vector2 tgt, float dt)
+        {
+            var err = tgt - panF;
+            float d = err.magnitude;
+            float want = Mathf.Min(d / GlideTau, GlideMaxSpeed, Mathf.Sqrt(2f * GlideAccel * d));
+            var wantV = d > 1e-4f ? err / d * want : Vector2.zero;
+            panV = Vector2.MoveTowards(panV, wantV, GlideAccel * dt);
+            panF += panV * dt;
+            if ((tgt - panF).magnitude < 0.25f && panV.magnitude < 5f)
+            {
+                panF = tgt;
+                panV = Vector2.zero;
+            }
         }
 
         /// <summary>
@@ -565,7 +624,7 @@ namespace FishingKing
             get
             {
                 int t = StepOf(baseScale.y, StepAim);
-                return StepAim > Aim + 1e-3f ? Mathf.Max(t, StepOf(baseScale.y, Aim) + 1) : t;
+                return (StepAim > Aim + 1e-3f ? Mathf.Max(t, StepOf(baseScale.y, Aim) + 1) : t) + Mathf.Max(0, StepExtra);
             }
         }
 

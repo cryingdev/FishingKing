@@ -8,12 +8,18 @@ namespace FishingKing
     /// -fkauto legendspot (Docs/lures_legend_spec.md 2.2.1), with -fkencounter natural on a stage with a legend (default
     /// the lake's golden carp): the legend's blinking spot and the cast it asks for.
     /// <list type="number">
-    /// <item>The first spot: inside the home view, on open water, within his cast; shot at both blink phases
-    /// (legspot_1_blink_on / _2_blink_off); left alone it times out after its window: no encounter, a miss.</item>
+    /// <item>The first spot (the natural first cue's look let finish, then one offered now from the home view): the look
+    /// at it (<see cref="WatchLook"/>: legspot_look_0_before / _1_peak / _2_home); inside the home view, on open water,
+    /// within his cast; shot at both blink phases (legspot_1_blink_on / _2_blink_off); left alone it times out after its
+    /// window: no encounter, a miss.</item>
     /// <item>Late: a cast into where it was, after it went: no claim, no build-up, no encounter.</item>
-    /// <item>The retry: the next spot comes spotRetry s after the miss; the rig lying in it from before does not claim it.</item>
+    /// <item>The retry: the next spot comes spotRetry s after the miss (looked at from the zoomed wait); the rig lying in
+    /// it from before does not claim it.</item>
+    /// <item>The look cut by a wind-up 0.3 s in (cut within 2 frames, 1x home within ZoomAimOut); with 끔 a spot gets no
+    /// look and the view never moves.</item>
     /// <item>Outside: a cast beside it (radius + 2.5 m): a miss at once (legspot_4_miss), no encounter.</item>
-    /// <item>A wrong rig (a bait no legend here wants) into it: a miss, no encounter.</item>
+    /// <item>A wrong rig (a bait no legend here wants) into it: a miss, no encounter (its spot, the quick retry after the
+    /// outside miss, gets no look).</item>
     /// <item>The key into it in time: claimed (legspot_3_land at the landing) and the encounter starts; left to turn away,
     /// it ends back in Waiting. No cooldown or pity was spent by the misses.</item>
     /// </list>
@@ -35,6 +41,93 @@ namespace FishingKing
             var fx = ctl.Stage.Water;
             Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "[SPOT] {0}: blink {1} at {2:0.00}s, drawn {3} ({4} runs), spot px {5}",
                 what, w.SpotBlinkOn ? "on" : "off", w.SpotT, fx != null && fx.SpotDrawnOn ? "on" : "off", fx != null ? fx.SpotDrawnSegs : -1, w.Spot2D));
+        }
+
+        static string SV(Vector2 v) => string.Format(System.Globalization.CultureInfo.InvariantCulture, "({0:0.0}, {1:0.0})", v.x, v.y);
+
+        /// <summary>
+        /// Follows one spot look (FishingController.SpotLook) from the frame its spot was offered to its end: it starts
+        /// within 0.2 s, reaches the step <paramref name="askedBefore"/> + LookSteps pixel exact with the spot centred (within
+        /// 2 px of where the crop can centre it) for its hold, the camera no faster than ViewZoom.MaxCameraSpeed, takes
+        /// LookIn + LookHold + at most LookBackMax, and leaves the view home (the ready) / the rod tip and the rig in frame
+        /// (waiting), the step back to the mode's. <paramref name="shots"/>: the peak (blink on) and home shots.
+        /// </summary>
+        IEnumerator WatchLook(FishingController ctl, string label, int askedBefore, bool shots)
+        {
+            var z = ZoomNow;
+            var w = ctl.Watch;
+            var water = ctl.Stage.Water;
+            int looks0 = ctl.LookCount;
+            for (float t = 0f; t < 0.3f && !ctl.SpotLooking && ctl.LookCount == looks0; t += Time.deltaTime) yield return null;
+            bool started = ctl.SpotLooking || ctl.LookCount > looks0;
+            SpotCheck($"look_{label}: the look starts {ctl.LookDelay:0.000}s after the spot (<= 0.2; skip '{ctl.LookSkip}' for offer {ctl.LookSkipOffer}, offers {w.SpotOffers})",
+                started && ctl.LookDelay <= 0.2f);
+            if (!started) yield break;
+            float t0 = Time.time - ctl.LookDelay;
+            float lookLen = 0f, backLen = 0f, maxSpeed = 0f;
+            Vector2 last = z.PanPx;
+            float peakErr = 99f, peakRaw = 99f, peakLevel = 0f, centredFor = 0f;
+            int peakStep = 0;
+            bool peakExact = false, peakShot = !shots;
+            while (ctl.SpotLooking)
+            {
+                float dt = Mathf.Max(1e-4f, Time.deltaTime);
+                maxSpeed = Mathf.Max(maxSpeed, (z.PanPx - last).magnitude / dt);
+                last = z.PanPx;
+                peakErr = (z.PanPx - z.PanFor(w.Spot2D)).magnitude;
+                peakRaw = (z.PanPx - z.WorldToPx(w.Spot2D)).magnitude;
+                peakLevel = z.Level;
+                peakStep = z.StepPx.y;
+                peakExact = z.PixelExact;
+                if (z.Level >= 1f && peakErr <= 2f) centredFor += Time.deltaTime;
+                if (!peakShot && Time.time - t0 >= FishingController.LookIn + 0.4f && w.SpotBlinkOn && water != null && water.SpotDrawnOn)
+                {
+                    peakShot = true;
+                    Log($"[SPOT] look peak: {ZDesc(z)}");
+                    yield return Shot("legspot_look_1_peak");
+                    continue;
+                }
+                yield return null;
+            }
+            lookLen = Time.time - t0;
+            string why = ctl.LookEnd;
+            float tb = Time.time;
+            while (ctl.SpotLookBack)
+            {
+                float dt = Mathf.Max(1e-4f, Time.deltaTime);
+                maxSpeed = Mathf.Max(maxSpeed, (z.PanPx - last).magnitude / dt);
+                last = z.PanPx;
+                yield return null;
+            }
+            backLen = Time.time - tb;
+            float total = Time.time - t0;
+            SpotCheck(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "look_{0}: at its peak level {1:0.000} step {2} (asked before {3} + {4}), pixel exact {5}, spot {6:0.0} px from where the crop centres it ({7:0.0} px from the spot itself), centred {8:0.00}s",
+                label, peakLevel, peakStep, askedBefore, FishingController.LookSteps, peakExact, peakErr, peakRaw, centredFor),
+                peakLevel >= 1f && peakStep == askedBefore + FishingController.LookSteps && peakExact && peakErr <= 2f && centredFor >= 0.8f);
+            float lo = FishingController.LookIn + FishingController.LookHold;
+            SpotCheck(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "look_{0}: on the spot {1:0.00}s, back {2:0.00}s, total {3:0.00}s (within {4:0.0}..{5:0.0}), ended '{6}', fastest pan {7:0} px/s (max {8:0})",
+                label, lookLen, backLen, total, lo - 0.05f, lo + FishingController.LookBackMax + 0.15f, ctl.LookEnd, maxSpeed, ViewZoom.MaxCameraSpeed(z.OverscanPx)),
+                total >= lo - 0.05f && total <= lo + FishingController.LookBackMax + 0.15f && ctl.LookEnd == "back" && maxSpeed <= ViewZoom.MaxCameraSpeed(z.OverscanPx));
+            var tip = z.WorldToPx(ctl.RodTip2D);
+            var crop = z.CropPx;
+            bool tipIn = crop.Contains(tip);
+            bool home;
+            string where;
+            if (ctl.State == FishingController.S.Waiting)
+            {
+                var rig = z.WorldToPx(ctl.RigShown2D);
+                home = tipIn && crop.Contains(rig) && z.StepPx.y <= askedBefore && (z.Level <= 0f || z.Level >= 1f);
+                where = $"rig {SV(rig)} in {crop.Contains(rig)}";
+            }
+            else
+            {
+                home = tipIn && z.Level <= 0f && z.AtHome;
+                where = $"at home {z.AtHome}";
+            }
+            SpotCheck($"look_{label}: after it ({ctl.State}) the rod tip {SV(tip)} in the crop {tipIn}, {where}, step {z.StepPx.y} (asked {z.StepPxAsked}): {ZDesc(z)}", home);
+            if (shots) yield return Shot("legspot_look_2_home");
         }
 
         IEnumerator LegendSpotTest()
@@ -65,9 +158,20 @@ namespace FishingKing
             Log($"legend spot test on {ctl.Stage.Def.id}: legend {encId}, key {encKey.id}, debug {LegendWatch.DebugMode ?? "off"}, " +
                 $"window {sp.encounter.spotWindow:0}s radius {sp.encounter.spotRadius:0.0}m retry {sp.encounter.spotRetry:0}s, rod {Game.I.Rod.id} ({Game.I.Rod.castDist:0} m)");
             EncEquip(ctl);
+            if (Arg("-fkzoommode") != null) Game.Data.zoomMode = (int)ZoomModeArg();
+            var mode0 = FishingController.ZoomSetting;
+            var z = ZoomNow;
+            Log($"[SPOT] zoom mode {mode0}");
 
-            // ---- 1. the first spot: where it is, its blink, left alone
+            // ---- 1. the first spot: where it is, its blink, left alone (and the look at it from the ready)
+            // (the natural lurk's first cue comes 1.5 s in: its look let finish, then a spot of our own from the home view)
+            for (float t = 0f; t < 6f && (ctl.SpotLooking || ctl.SpotLookBack || z.Level > 0f || !z.AtHome); t += Time.deltaTime) yield return null;
+            Log($"[SPOT] before the look: {ctl.State}, {ZDesc(z)}");
+            yield return Shot("legspot_look_0_before");
+            int askedReady = z.StepPxAsked;
+            w.DebugSpotNow();
             yield return WaitSpot(ctl, 40f, 6f);
+            if (w.SpotOn && mode0 != ZoomMode.Off) yield return WatchLook(ctl, "ready", askedReady, true);
             SpotCheck($"a spot came up (offers {w.SpotOffers})", w.SpotOn);
             if (!w.SpotOn)
             {
@@ -113,15 +217,68 @@ namespace FishingKing
             SpotCheck($"a late cast into the old spot claims nothing (claimed {w.SpotClaimed}, blocked '{w.Blocked}', meter {w.Meter:0.00}, state {ctl.State})",
                 late && ctl.State == FishingController.S.Waiting && w.Meter <= 0.001f);
 
-            // ---- 3. the retry, and the rig already lying there
+            // ---- 3. the retry, and the rig already lying there (and the look at it from the zoomed wait)
+            int askedWait = z.StepPxAsked;
             yield return WaitSpot(ctl, 20f, 1f);
             float retry = Time.time - w.SpotT - missAt;
             SpotCheck($"the next spot came {retry:0.0}s after the miss (spotRetry {sp.encounter.spotRetry:0}s)", w.SpotOn && Mathf.Abs(retry - sp.encounter.spotRetry) <= 0.6f);
             float lieD = new Vector2(ctl.Tackle.Surface.x - w.Spot.x, ctl.Tackle.Surface.z - w.Spot.z).magnitude;
+            if (w.SpotOn && mode0 != ZoomMode.Off && ctl.State == FishingController.S.Waiting) yield return WatchLook(ctl, "waiting", askedWait, false);
             for (float t = 0f; t < 4f && w.SpotOn; t += Time.deltaTime) yield return null;
             SpotCheck($"the rig already lying in the water ({lieD:0.0} m from the new spot) does not claim it (claimed {w.SpotClaimed}, meter {w.Meter:0.00}, state {ctl.State})",
                 // (an ordinary fish may bite the lying bait meanwhile: only no claim and no encounter matter)
                 !w.SpotClaimed && w.Meter <= 0.001f && ctl.State != FishingController.S.Encounter);
+
+            // ---- 3b. the look cut by a wind-up; with 끔 no look at all
+            yield return BackToReady(ctl);
+            for (float t = 0f; t < 4f && (ctl.SpotLooking || ctl.SpotLookBack || z.Level > 0f || !z.AtHome); t += Time.deltaTime) yield return null;
+            if (mode0 != ZoomMode.Off)
+            {
+                int looks0 = ctl.LookCount;
+                w.DebugSpotNow();
+                for (float t = 0f; t < 1f && ctl.LookCount == looks0; t += Time.deltaTime) yield return null;
+                for (float t = 0f; t < 0.3f; t += Time.deltaTime) yield return null;
+                float lvCut = z.Level;
+                bool lookingCut = ctl.SpotLooking;
+                // a wind-up starts (pressed on the water)
+                PointerInput.SimActive = true;
+                PointerInput.SimPos = Scr(0.5f, 0.55f);
+                PointerInput.SimDown = true;
+                float tPress = Time.time;
+                yield return null;
+                int cutFrames = 1;
+                for (float t = 0f; t < 0.5f && ctl.SpotLooking; t += Time.deltaTime, cutFrames++) yield return null;
+                float cutAfter = Time.time - tPress;
+                var stCut = ctl.State;
+                string endCut = ctl.LookEnd;
+                for (float t = 0f; t < 1f && !(z.Level <= 0f && z.AtHome); t += Time.deltaTime) yield return null;
+                float homeAfter = Time.time - tPress;
+                PointerInput.SimDown = false;
+                for (float t = 0f; t < 1f && ctl.State != FishingController.S.Ready; t += Time.deltaTime) yield return null;
+                SpotCheck(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                    "look_windup: a wind-up {0:0.00}s into the look (level {1:0.00}, looking {2}) cuts it {3:0.000}s ({4} frames) after the press ({5}, ended '{6}'), 1x home {7:0.000}s after (<= {8:0.00} + 3 frames); let go: {9}",
+                    0.3f, lvCut, lookingCut, cutAfter, cutFrames, stCut, endCut, homeAfter, 0.15f, ctl.State),
+                    lookingCut && endCut == "windup" && cutFrames <= 2 && homeAfter <= 0.15f + 3f * Mathf.Max(1f / 60f, Time.smoothDeltaTime) && z.Level <= 0f && z.AtHome);
+            }
+            // 끔: the spot comes up, the view stays put
+            Game.Data.zoomMode = (int)ZoomMode.Off;
+            yield return new WaitForSeconds(0.3f);
+            {
+                int looks0 = ctl.LookCount;
+                w.DebugSpotNow();
+                for (float t = 0f; t < 1f && !w.SpotOn; t += Time.deltaTime) yield return null;
+                float maxLv = 0f;
+                bool moved = false;
+                for (float t = 0f; t < 1.5f; t += Time.deltaTime)
+                {
+                    maxLv = Mathf.Max(maxLv, z.Level);
+                    moved |= !z.AtHome;
+                    yield return null;
+                }
+                SpotCheck($"look_off: with 끔 the spot (offer {w.SpotOffers}) gets no look (looks {looks0} -> {ctl.LookCount}, skip '{ctl.LookSkip}' for offer {ctl.LookSkipOffer}), level at most {maxLv:0.000}, view moved {moved}",
+                    ctl.LookCount == looks0 && ctl.LookSkip == "off" && ctl.LookSkipOffer == w.SpotOffers && maxLv <= 0f && !moved);
+            }
+            Game.Data.zoomMode = (int)mode0;
 
             // ---- 4. outside: beside it
             yield return BackToReady(ctl);
@@ -151,6 +308,10 @@ namespace FishingKing
                 else if (!wrong.infinite && Game.I.BaitCount(wrong.id) < 5) Game.I.AddBait(wrong.id, 10);
                 ctl.EquipBait(wrong);
                 yield return WaitSpot(ctl, 40f);
+                yield return null;
+                // (the quick retry after his own cast missed: no look)
+                SpotCheck($"look_retry: the spot {w.SpotOffers} {w.SpotT:0.0}s up, {Time.time - w.SpotEndedAt:0.0}s after the 'outside' miss, gets no look (skip '{ctl.LookSkip}' for offer {ctl.LookSkipOffer}, looking {ctl.SpotLooking})",
+                    mode0 == ZoomMode.Off || (ctl.LookSkip == "retry" && ctl.LookSkipOffer == w.SpotOffers && !ctl.SpotLooking));
                 miss0 = w.SpotMisses;
                 yield return CastAt(ctl, w.Spot);
                 landD = new Vector2(ctl.Tackle.Surface.x - w.Spot.x, ctl.Tackle.Surface.z - w.Spot.z).magnitude;

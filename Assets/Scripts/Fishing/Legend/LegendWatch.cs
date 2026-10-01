@@ -490,6 +490,19 @@ namespace FishingKing
             cueT = cueIn;
         }
 
+        /// <summary>Test hook (-fkauto legendspot, the look's cases): the blinking spot, if any, goes (no miss), and the next cue with its spot plays on the next frame.</summary>
+        internal void DebugSpotNow()
+        {
+            if (SpotOn || SpotClaimed)
+            {
+                SpotOn = SpotClaimed = false;
+                SpotEnd = "test";
+                SpotEndedAt = Time.time;
+                fadeT = -1f;
+            }
+            cueT = 0f;
+        }
+
         void Place(Vector3 near, bool exact)
         {
             var d = Primary;

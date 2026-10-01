@@ -58,6 +58,34 @@ namespace FishingKing
         bool zoomApart;                    // a run out over the overscan too far from the rod tip for a zoomed frame: at 1x
         float zoomApartT;
 
+        // ---- the legend spot's look (Docs/fishing_gameplay.md 9.4)
+        /// <summary>Seconds the look takes to zoom in on a new spot (the zoom's own full ease: the step change eases as long).</summary>
+        public const float LookIn = ViewZoom.EaseTime;
+        /// <summary>Seconds it then stays on the spot (at least one whole blink of the marker, 0.9 s).</summary>
+        public const float LookHold = 1.4f;
+        /// <summary>Whole-pixel steps beyond the mode's own step the look zooms to (1080p: 1.25배 / 액티브 5 -> 6, 1.5배 6 -> 7).</summary>
+        public const int LookSteps = 1;
+        /// <summary>Seconds the way back may take at most before the usual framing (hard keep-in-frame) takes over.</summary>
+        public const float LookBackMax = 1.2f;
+        /// <summary>Seconds: no look for a spot offered this soon after the last one ended under his own cast (a landing outside, a wrong rig, a claim lost): he knows where it is.</summary>
+        public const float LookGap = 12f;
+        int lookPhase;                     // 0 none, 1 looking at the spot, 2 on the way back
+        int lookSeen;                      // the watch's spot offers already handled
+        float lookT;
+        S lookState;
+        string lookLastEnd = "";
+        float lookLastEndAt = -99f;
+        /// <summary>The look is on the spot now (zooming in or holding).</summary>
+        public bool SpotLooking => lookPhase == 1;
+        /// <summary>The look's way back (soft keep-in-frame, glided) is under way.</summary>
+        public bool SpotLookBack => lookPhase == 2;
+        /// <summary>Test: looks started, the spot's time when the last one started, how the last one ended ("back", "windup", "state", "spot"), the last offer not looked at and why ("off", "ice", "busy", "retry").</summary>
+        public int LookCount { get; private set; }
+        public float LookDelay { get; private set; }
+        public string LookEnd { get; private set; } = "";
+        public int LookSkipOffer { get; private set; }
+        public string LookSkip { get; private set; } = "";
+
         /// <summary>설정 → 캐스팅 후 줌인 now.</summary>
         public static ZoomMode ZoomSetting => Game.I != null && Game.Data != null ? (ZoomMode)Game.Data.zoomMode : ZoomMode.X125;
 
@@ -109,6 +137,14 @@ namespace FishingKing
             var mode = ZoomSetting;
             bool active = mode == ZoomMode.Active;
             z.StepAim = mode == ZoomMode.X150 ? ViewZoom.AimWide : ViewZoom.Aim;
+            if (SpotLook(z, mode)) return;
+            if (lookPhase == 2)
+            {
+                // the way back: the usual framing, its must-see points soft and the pan glided, so the rod tip and the rig
+                // come back into frame without the keep pull's snap
+                z.Glide = true;
+                z.SoftKeeps = true;
+            }
             // (액티브: a snag stays at the zoom it found)
             bool zoomIn = (ZoomWanted || (active && State == S.Snagged && z.ZoomedIn)) && Angler != null && Tackle != null;
             if (State != S.Fighting)
@@ -183,6 +219,90 @@ namespace FishingKing
             }
             z.Want(zoomCue >= 0);
             z.Focus(Vector2.Lerp(tip, rig, 0.5f), zoomCue > 0 ? ZoomCueTau : ZoomWaitTau);
+        }
+
+        /// <summary>
+        /// The legend spot's look: as a new spot comes up (with its cue) the view zooms one whole-pixel step beyond the
+        /// mode's (<see cref="LookSteps"/>) onto it in <see cref="LookIn"/>, its pan glided (acceleration-limited), stays
+        /// there <see cref="LookHold"/> with the marker blinking, then eases back to the usual framing (the rod tip and the
+        /// rig soft, glided: home by <see cref="LookBackMax"/>). The rod tip may leave the frame meanwhile. Not with 끔 (the
+        /// spot always lies in the home view: nothing to bring into sight, and the player asked for no zoom), not on the ice
+        /// (the spot is the hole he always fishes), not while he winds up or throws (casting is from the home view), and not
+        /// for a quick retry after his own cast missed it or lost the claim (<see cref="LookGap"/>). Any change of state (a
+        /// wind-up: hurried home as ever, a bite, the encounter) cuts it at once. True while the look directs the view.
+        /// </summary>
+        bool SpotLook(ViewZoom z, ZoomMode mode)
+        {
+            var w = Watch;
+            if (w == null)
+            {
+                lookPhase = 0;
+                return false;
+            }
+            // (how the last spot ended, kept past the next offer, which clears it)
+            if (!string.IsNullOrEmpty(w.SpotEnd) && w.SpotEndedAt >= 0f)
+            {
+                lookLastEnd = w.SpotEnd;
+                lookLastEndAt = w.SpotEndedAt;
+            }
+            if (w.SpotOffers != lookSeen)
+            {
+                lookSeen = w.SpotOffers;
+                string skip = !w.SpotOn ? "gone" : mode == ZoomMode.Off ? "off" : L.IsIce ? "ice"
+                    : State != S.Ready && State != S.Waiting && State != S.Retrieving ? "busy"
+                    : (lookLastEnd == "outside" || lookLastEnd == "rig" || lookLastEnd == "lost") && Time.time - lookLastEndAt < LookGap ? "retry" : null;
+                if (skip != null)
+                {
+                    LookSkipOffer = lookSeen;
+                    LookSkip = skip;
+                    Debug.Log($"[ZOOM] spot {lookSeen}: no look ({skip})");
+                }
+                else
+                {
+                    lookPhase = 1;
+                    lookT = 0f;
+                    lookState = State;
+                    LookCount++;
+                    LookDelay = w.SpotT;
+                    LookEnd = "";
+                    Debug.Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "[ZOOM] spot {0}: look from {1} (level {2:0.00}, step {3})",
+                        lookSeen, State, z.Level, z.StepPx.y));
+                }
+            }
+            if (lookPhase == 0) return false;
+            if (State != lookState)
+            {
+                // cut: the wind-up's own hurry home (or the bite's, the encounter's framing) from here
+                EndLook(State == S.Aiming || State == S.Casting ? "windup" : "state");
+                return false;
+            }
+            lookT += Time.deltaTime;
+            if (lookPhase == 1)
+            {
+                if (!w.SpotOn || lookT >= LookIn + LookHold)
+                {
+                    lookPhase = 2;
+                    lookT = 0f;
+                    if (!w.SpotOn) LookEnd = "spot";
+                    return false;
+                }
+                z.StepExtra = LookSteps;
+                z.Glide = true;
+                z.Want(true, LookIn);
+                z.Focus(w.Spot2D, ZoomCueTau);
+                return true;
+            }
+            // the way back: done once the usual framing has settled (or after LookBackMax)
+            if ((lookT > 0.1f && z.Settled) || lookT >= LookBackMax) EndLook(LookEnd == "" ? "back" : LookEnd);
+            return false;
+        }
+
+        void EndLook(string why)
+        {
+            if (lookPhase == 0) return;
+            Debug.Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "[ZOOM] spot look ends: {0} ({1} {2:0.00}s in)", why, lookPhase == 1 ? "looking" : "back", lookT));
+            lookPhase = 0;
+            LookEnd = why;
         }
 
         /// <summary>The 1x view's must-see points: the rod tip and the fish, or the rig (a sunk lure a little below its entry).</summary>
