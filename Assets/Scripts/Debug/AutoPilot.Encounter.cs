@@ -135,6 +135,7 @@ namespace FishingKing
         {
             yield return BackToReady(ctl);
             EncEquip(ctl);
+            keyCount0 = encKey != null ? Game.I.BaitCount(encKey.id) : 0;
             yield return new WaitForSeconds(0.3f);
             Log($"[ENC] run {style}: casting");
             bool natural = LegendWatch.DebugMode == "natural";
@@ -311,8 +312,19 @@ namespace FishingKing
             var hooked = ctl.Hooked;
             EncCheck($"fight species={(hooked != null ? hooked.Sp.id : "none")} (state {ctl.State}, {(hooked != null ? hooked.Cm : 0f):0.0}cm)",
                 ctl.State == FishingController.S.Fighting && hooked != null && hooked.Sp.id == encId);
-            if (ctl.State == FishingController.S.Fighting) yield return LureFightOut(ctl);
+            if (ctl.State == FishingController.S.Fighting)
+            {
+                int breaks0 = ctl.Breaks;
+                yield return LureFightOut(ctl);
+                // a natural key (the golden carp's 황금 떡밥) is eaten once at the hook set: a catch, an escape or a parted
+                // line all leave the count one down (a parted line takes nothing more)
+                if (!encKey.isLure && !encKey.infinite)
+                    EncCheck($"key bait {encKey.id} paid once for the hooked legend: {keyCount0} -> {Game.I.BaitCount(encKey.id)} (fight ended {ctl.State}, line parted {ctl.Breaks > breaks0})",
+                        Game.I.BaitCount(encKey.id) == keyCount0 - 1);
+            }
         }
+
+        int keyCount0;
 
         /// <summary>One frame of simulated circles at <paramref name="rps"/> revolutions per second (the finger down).</summary>
         static void Circle(ref float ang, float rps, float windSign, Vector2 centre, float radius, float dt)

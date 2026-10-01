@@ -271,16 +271,20 @@ namespace FishingKing
             ctl.DebugRelease();
             yield return new WaitForEndOfFrame();
             SCheck($"arrow {rig} {st}: gone at once when the fight is over ({ctl.State}, visible {ar.Visible})", ctl.State == FishingController.S.Fighting || !ar.Visible);
-            // a float rig: the float stays on the water where it was and is wound in; a lure is gone at once (ready)
+            // the fish shook the hook (no break): the rig stays on the line where it was and is wound in, a float rig's float
+            // and a lure alike (the lure is no longer gone at once: it comes home from the fish's mouth)
             bool floatRig = rig == "float";
-            if (released) SCheck($"arrow {rig} {st}: after the fish is off {(floatRig ? "the float stays in the water to be wound in" : "the lure is gone")} ({ctl.State}, tackle {ctl.Tackle.State})",
-                floatRig ? ctl.State == FishingController.S.Retrieving && ctl.Tackle.State == Tackle.Mode.Water : ctl.State == FishingController.S.Ready);
+            var rigAt = ctl.Tackle.Surface;
+            if (released) SCheck($"arrow {rig} {st}: after the fish is off the {(floatRig ? "float" : "lure")} stays in the water to be wound in ({ctl.State}, tackle {ctl.Tackle.State}, {N(rigAt.z, "0.0")} m out)",
+                ctl.State == FishingController.S.Retrieving && ctl.Tackle.State == Tackle.Mode.Water && rigAt.z > ctl.Stage.L.zNear + 1f);
+            else Log($"[ARROW] {st} {rig}: the fight ended by itself ({ctl.State}): no let-go to check (-fkauto breaks shake_off covers a fish shaking the lure off)");
             if (released && floatRig && FloatShotsOn)
             {
                 yield return new WaitForSeconds(0.3f);
                 yield return FloatShot(ctl, "float_letgo_" + st);
             }
-            for (float w = 0f; w < 3f && ctl.State != FishingController.S.Ready; w += Time.deltaTime) yield return null;
+            for (float w = 0f; w < 20f && ctl.State != FishingController.S.Ready; w += Time.deltaTime) yield return null;
+            if (released) SCheck($"arrow {rig} {st}: the {(floatRig ? "float" : "lure")} came home ({ctl.State})", ctl.State == FishingController.S.Ready);
             yield return new WaitForSeconds(0.4f);
         }
     }

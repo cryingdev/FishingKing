@@ -931,7 +931,7 @@ namespace FishingKing
                     + " at " + s.clrAt + string.Format(CI, "; kept off the hat {0:0.0}s (tilt max {1:0.0} deg); load in runs x{2:0.000} (x{3:0.000}..x{4:0.000}), sweep across the rod {5:0.00} (max {6:0.00})",
                         s.tiltT, s.tiltMax, s.TMultRun, s.tmultMin, s.tmultMax, s.AcrossRun, s.acrossMax));
                 ctl.DebugRelease();
-                for (float w = 0f; w < 3f && ctl.State != FishingController.S.Ready; w += Time.deltaTime) yield return null;
+                for (float w = 0f; w < 20f && ctl.State != FishingController.S.Ready; w += Time.deltaTime) yield return null;
                 yield return new WaitForSeconds(0.6f);
             }
             Caption(null);
@@ -1140,7 +1140,7 @@ namespace FishingKing
                         if (d < worstDiff) { worstDiff = d; atDiff = at; }
                     }
                     ctl.DebugRelease();
-                    for (float w = 0f; w < 3f && ctl.State != FishingController.S.Ready; w += Time.deltaTime) yield return null;
+                    for (float w = 0f; w < 20f && ctl.State != FishingController.S.Ready; w += Time.deltaTime) yield return null;
                 }
             }
             Log(string.Format(CI, "[STEER] fight clearance SUMMARY: centred min {0:0.0}px at {1}; leant min {2:0.0}px at {3}; leant below min(centred, 1 px) by at worst {4:+0.0;-0.0;0.0}px at {5}",
@@ -1232,7 +1232,7 @@ namespace FishingKing
                         sumB / n, lean, sumYaw / n, Angler.RodMaxRight, sumDrawn / n, sumHud / n, sumModel / n, sumReq / n, sumNew / n, sumOld / n, 1f + sumNewMult / n, 1f + sumOldMult / n, caseWorst, caseModel, n, ActorStrip.Clearance(ctl)));
                 }
                 ctl.DebugRelease();
-                for (float w = 0f; w < 3f && ctl.State != FishingController.S.Ready; w += Time.deltaTime) yield return null;
+                for (float w = 0f; w < 20f && ctl.State != FishingController.S.Ready; w += Time.deltaTime) yield return null;
             }
             SCheck($"at the rod's yaw limits the drawn lean, the fight strip's and the model's match (worst {N(worst, "0.000")} at {atWorst}; the model's rod-to-line angle vs drawn {N(worstModel, "0.000")} at {atModel}; {samples} frames)",
                 samples > 0 && worst <= Tol && worstModel <= TolModel);
