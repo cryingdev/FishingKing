@@ -663,8 +663,13 @@ namespace FishingKing
             {
                 // the harder the flick, the louder and sharper the swish; a strong one whooshes, a top one sparkles
                 float p = AimPower;
-                Sfx.Play(Sfx.Cast, Mathf.Lerp(0.45f, 1f, p), Mathf.Lerp(0.88f, 1.14f, p) + Random.Range(-0.03f, 0.03f));
-                if (p >= 0.6f) Sfx.Play(Sfx.Whoosh, Mathf.Lerp(0.2f, 0.55f, (p - 0.6f) / 0.4f), Mathf.Lerp(0.95f, 1.2f, p));
+                if (Sfx.CastSwing != null)   // (the recorded swing is a whoosh already: no synthesized one on top)
+                    Sfx.Play(Sfx.CastSwing, Mathf.Lerp(0.5f, 1f, p), Mathf.Lerp(0.92f, 1.08f, p) + Random.Range(-0.03f, 0.03f));
+                else
+                {
+                    Sfx.Play(Sfx.Cast, Mathf.Lerp(0.45f, 1f, p), Mathf.Lerp(0.88f, 1.14f, p) + Random.Range(-0.03f, 0.03f));
+                    if (p >= 0.6f) Sfx.Play(Sfx.Whoosh, Mathf.Lerp(0.2f, 0.55f, (p - 0.6f) / 0.4f), Mathf.Lerp(0.95f, 1.2f, p));
+                }
                 if (p >= 0.95f) Fx.Burst(P.To2D(Angler.RodTip), UIKit.Gold, 8, 2f);
             }
             yield return new WaitForSeconds(0.08f);   // (the bait still dangling from the tip as the rod swings)
@@ -700,7 +705,9 @@ namespace FishingKing
             float big = l.contacts > 0 ? 0.5f : 1f;   // (it dropped, it was not thrown)
             Fx.Splash(pos2, Mathf.Clamp(ppm / 25f, 0.35f, 1f) * big, Stage.WaterTint, l.contacts > 0 ? 4 : 8, P.DepthOf(at));
             Fx.Ripple(pos2, Mathf.Clamp(ppm * 1.5f / 64f, 0.15f, 0.8f) * big, P.Foreshorten(at) * 1.6f + 0.15f, new Color(1, 1, 1, 0.8f));
-            Sfx.PlayVar(Sfx.Plop, 0.9f * big);
+            // the float rig lands with the recorded drop; lures keep the synthesized plop
+            if (Tackle.UsesFloat && Sfx.FloatLand != null) Sfx.PlayVar(Sfx.FloatLand, 0.8f * big, 0.06f);
+            else Sfx.PlayVar(Sfx.Plop, 0.9f * big);
             Tackle.EnterWater(at);
             if (L.IsIce) Tackle.FloatDepth = AimDepth;
             SetState(S.Waiting);

@@ -12,6 +12,10 @@
 
 ## 이후 변경
 
+### 녹음한 효과음 2개
+- 추가: `Assets/Resources/Audio/Sfx/cast_swing.wav`(앞으로 휘두르는 캐스팅 소리, `Sfx.CastSwing`)와 `float_land.wav`(찌가 물에 떨어지는 소리, `Sfx.FloatLand`).
+  앞 무음과 꼬리를 잘라 모노·피크 −1 dB로 정리. 캐스팅은 세기에 따라 음량·음높이가 바뀌고, 찌 채비 착수에만 쓰며(루어는 예전 `Plop`), 파일이 없으면 예전 합성음.
+
 ### 효과음 추가 (코드 합성)
 - 추가(`Assets/Scripts/Audio/Sfx.Foley.cs`): 발소리 `StepWood`(호수·늪)/`StepStone`(계곡·방파제·동굴)/`StepSnow`(얼음)/`StepDeck`(먼바다, `Sfx.Step`, 0.3 m마다 `Angler.StepEvery`),
   드랙 풀림 루프 `DragLoop`(`Sfx.Drag`: 장력이 드랙을 넘는 동안, 멈추면 저절로 사라짐; 예전엔 `ReelTick` 재사용), `Keep`(수조에 넣기)·`Release`(놓아주기),

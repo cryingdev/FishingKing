@@ -11,6 +11,11 @@ namespace FishingKing
     public partial class Sfx
     {
         public static AudioClip StepWood, StepStone, StepSnow, StepDeck, Keep, Release, Success, Pop, Scurry, Rattle, DragLoop;
+        /// <summary>
+        /// Recorded one-shots (Resources/Audio/Sfx/&lt;name&gt;): the rod swung forward in the cast, the float landing on the
+        /// water. Null when the file is missing; the callers then use the synthesized Cast / Whoosh / Plop as before.
+        /// </summary>
+        public static AudioClip CastSwing, FloatLand;
 
         /// <summary>Ambience volume (the old single loop's level) and the time-of-day layers' level at full weight.</summary>
         const float AmbBase = 0.35f, AmbLayer = 0.3f;
@@ -28,6 +33,8 @@ namespace FishingKing
             drag = Loop(0f);
             BuildFoley();
             drag.clip = DragLoop;
+            CastSwing = Resources.Load<AudioClip>("Audio/Sfx/cast_swing");
+            FloatLand = Resources.Load<AudioClip>("Audio/Sfx/float_land");
         }
 
         AudioSource Loop(float vol)
