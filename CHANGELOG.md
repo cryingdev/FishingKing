@@ -12,6 +12,13 @@
 
 ## 이후 변경
 
+### 효과음 추가 (코드 합성)
+- 추가(`Assets/Scripts/Audio/Sfx.Foley.cs`): 발소리 `StepWood`(호수·늪)/`StepStone`(계곡·방파제·동굴)/`StepSnow`(얼음)/`StepDeck`(먼바다, `Sfx.Step`, 0.3 m마다 `Angler.StepEvery`),
+  드랙 풀림 루프 `DragLoop`(`Sfx.Drag`: 장력이 드랙을 넘는 동안, 멈추면 저절로 사라짐; 예전엔 `ReelTick` 재사용), `Keep`(수조에 넣기)·`Release`(놓아주기),
+  `Success`(뱅크샷·가지 아래로 쏙·방향을 꺾었다·커버에서 끌어냈다·빠졌다), 루어 `Pop`(포퍼)·`Scurry`(개구리 루어가 연잎 위를 기어감·톡)·`Rattle`(미노우 저킹).
+- 변경: 환경음이 스테이지마다 따로(`Sfx.StageAmbience`): 호수 잔물결·먼 새, 계곡 급류, 방파제 파도·갈매기, 늪 개구리·벌레, 먼바다 너울·선체 삐걱, 얼음 바람·얼음 갈라짐, 동굴은 그대로.
+  시간대 층(`Sfx.AmbienceLayers`): 새벽 새소리(호수·계곡·늪), 밤 귀뚜라미(호수·계곡)·개구리(늪). 예전엔 호수·계곡·방파제·늪·먼바다가 물 루프 하나를 같이 썼습니다.
+
 ### 배경음 (MIDI 작곡 → OGG 스템)
 - 추가: 배경음 파이프라인 `Tools/Music/`(Python으로 음표를 적어 MIDI → FluidSynth 렌더 → 루프·음량을 맞춘 OGG 스템, `Resources/Data/music.json` 매니페스트)과
   임포터 `MusicImporter`(Vorbis, Compressed In Memory, 백그라운드 로드).

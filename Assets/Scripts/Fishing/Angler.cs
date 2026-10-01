@@ -109,6 +109,8 @@ namespace FishingKing
         const float BodyMaxRight = 25f, HandRight = 0.35f, RodMaxRight = 30f;
         const float WalkFace = 25f;         // degrees he turns towards the side he walks to
         float walkV, faceS;
+        float stepAcc;                    // m walked since the last footstep
+        const float StepEvery = 0.3f;     // m per footstep (WalkSpeed / Angler3D.Steps: ~2.7 steps/s)
 
         // ---- the rod's sideways sweep (the controller: the rod sweep while a rig is in the water, side pressure in a fight)
         /// <summary>
@@ -499,6 +501,13 @@ namespace FishingKing
             float free = X + walkV * dt;
             float x = Mathf.Clamp(free, r.x, r.y);
             if (x != free) walkV = 0f; // reached an end
+            // a footstep every StepEvery metres walked (on this stage's ground)
+            stepAcc += Mathf.Abs(x - X);
+            if (stepAcc >= StepEvery)
+            {
+                stepAcc -= StepEvery;
+                Sfx.Step(stage.Def.id);
+            }
             X = x;
             LastX[stage.Def.id] = X;
         }

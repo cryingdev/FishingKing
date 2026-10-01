@@ -5,9 +5,9 @@ namespace FishingKing
 {
     /// <summary>
     /// Procedurally synthesized sound effects, ambience and a small chiptune loop
-    /// (no audio files needed). Lives on the persistent [Game] object.
+    /// (no audio files needed). Lives on the persistent [Game] object. More sounds and the per-stage ambience: Sfx.Foley.cs.
     /// </summary>
-    public class Sfx : MonoBehaviour
+    public partial class Sfx : MonoBehaviour
     {
         const int Rate = 22050;
         static Sfx I;
@@ -46,6 +46,7 @@ namespace FishingKing
             rasp.volume = 0f;
             Build();
             rasp.clip = RaspLoop;
+            InitFoley();
         }
 
         public static void Play(AudioClip c, float vol = 1f, float pitch = 1f)
@@ -64,17 +65,17 @@ namespace FishingKing
         {
             if (I == null) return;
             AudioClip c = kind == "cave" ? ambCave : kind == "snow" ? ambWind : kind == "none" ? null : ambWater;
-            if (I.ambience.clip == c && I.ambience.isPlaying) return;
-            I.ambience.clip = c;
-            if (c != null) I.ambience.Play();
-            else I.ambience.Stop();
+            SetLoop(I.dawnSrc, null);
+            SetLoop(I.nightSrc, null);
+            SetLoop(I.ambience, c);
         }
 
         /// <summary>The ambience's volume x this (the night is a little quieter).</summary>
         public static void AmbienceVolume(float mult)
         {
             if (I == null || I.ambience == null) return;
-            I.ambience.volume = 0.35f * Mathf.Clamp01(mult);
+            I.ambMult = Mathf.Clamp01(mult);
+            I.ambience.volume = AmbBase * I.ambMult;
         }
 
         /// <summary>The line rubbing on structure: the rasp loop at this volume (0 stops it).</summary>

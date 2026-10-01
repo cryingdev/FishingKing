@@ -147,12 +147,14 @@ namespace FishingKing
                 BankShots++;
                 natural = true;
                 hud.Flash("뱅크샷!", UIKit.Gold, 1f);
+                Sfx.Play(Sfx.Success, 0.5f);
                 Obstacles.Say(string.Format(CIo, "bank shot off {0}: in at ({1:0.00}, {2:0.00}), {3:0.00} m from it", l.struck.id, at.x, at.z, Obstacles.Dist(l.struck, xz)));
             }
             else if (l.overhang != null)
             {
                 natural = true;
                 hud.Flash("가지 아래로 쏙!", UIKit.Gold, 1f);
+                Sfx.Play(Sfx.Success, 0.5f);
                 Obstacles.Say($"under the overhang {l.overhang.id}");
             }
             else if (l.slid) natural = true;
@@ -635,6 +637,7 @@ namespace FishingKing
             SnagFrees++;
             LastFreeWay = how;
             hud.Flash("빠졌다!", UIKit.Gold, 0.9f);
+            Sfx.Play(Sfx.Success, 0.5f);
             var s = tk.Surface;
             var s2 = P.To2D(s);
             Fx.Splash(s2, Mathf.Clamp(P.PixelsPerMetre(s) / 45f, 0.2f, 0.5f), Stage.WaterTint, 3, P.DepthOf(s));
@@ -851,6 +854,7 @@ namespace FishingKing
                 f.Downstream = false;
             }
             hud.Flash("커버에서 끌어냈다!", UIKit.Gold, 0.9f);
+            Sfx.Play(Sfx.Success, 0.5f);
         }
 
         /// <summary>

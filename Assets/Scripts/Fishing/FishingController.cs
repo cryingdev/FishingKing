@@ -72,7 +72,7 @@ namespace FishingKing
         SpriteRenderer targetRing, biteMark;
         float biteWindow;
         FishAgent biter;
-        float fightYaw, fightYawTarget, fishDepthTarget, splashT, warnT, tickAcc, dragTickT, jumpTime, lineRingT, dripT;
+        float fightYaw, fightYawTarget, fishDepthTarget, splashT, warnT, tickAcc, jumpTime, lineRingT, dripT;
         // the jump in progress (copied from the fight model when it starts)
         FightModel.JumpKind jumpKind;
         float jumpDur = 1f, trailT;
@@ -1569,6 +1569,7 @@ namespace FishingKing
                     hud.Flash("물살에서 빼냈다!", UIKit.Gold, 0.9f);
                 }
                 else hud.Flash("방향을 꺾었다!", UIKit.Gold, 0.8f);
+                Sfx.Play(Sfx.Success, 0.5f);
             }
             f.SideGood = good;
             f.SideBad = bad;
@@ -1746,12 +1747,9 @@ namespace FishingKing
                 warnT = f.TensionRatio > 0.97f ? 0.1f : 0.2f;
                 Sfx.Play(Sfx.Warn, 0.45f, f.TensionRatio > 0.97f ? 1.3f : 1f);
             }
-            dragTickT -= dt;
-            if (f.Tension >= Game.I.Reel.dragMax * 0.97f && dragTickT <= 0)
-            {
-                dragTickT = 0.05f;
-                Sfx.PlayVar(Sfx.ReelTick, 0.3f, 0.3f);
-            }
+            // the drag slipping: its loop, louder the further the pull is past the drag (fades out by itself once it stops)
+            float dragMax = Game.I.Reel.dragMax;
+            if (f.Tension >= dragMax * 0.97f) Sfx.Drag((f.Tension - dragMax * 0.97f) / (dragMax * 0.15f));
             hud.UpdateFight(f, Hooked);
 
             switch (f.Result)
@@ -2057,9 +2055,11 @@ namespace FishingKing
                         break;
                     case CatchPopup.Choice.Keep:
                         Game.I.AddToAquarium(cf);
+                        Sfx.Play(Sfx.Keep, 0.7f);
                         hud.Flash($"수조에 넣었어요 ({Game.I.UsedSpace}/{Game.I.Capacity}칸)", UIKit.Sky, 1.4f);
                         break;
                     default:
+                        Sfx.Play(Sfx.Release, 0.7f);
                         hud.Flash("잘 가~ 다음에 또 만나자!", UIKit.Cream, 1.2f);
                         break;
                 }
