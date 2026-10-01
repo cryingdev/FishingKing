@@ -257,6 +257,11 @@ namespace FishingKing
             }
             yield return ToReady(ctl);
 
+            // ---- 4b. a line entering the water over the hull's skirt by the bow, the fish out ahead: no rub. The query
+            // (the fish 5.8 m past the bow, 8 m down, against just past the skirt / under the hull), the taut gate, then a
+            // fight with the fish held out ahead and no winding (slack and taut phases both)
+            yield return BowSlack(ctl, obs, yt);
+
             // ---- 5. the ocean's drift still carries a float in open water; the legends' lurk band is clear of the structure
             EquipTest("bait_worm", ctl);
             yield return null;
@@ -288,6 +293,70 @@ namespace FishingKing
             yield return NamedShot("obst_ocean_show");
             Obstacles.Show = false;
             FishingController.NoBites = false;
+        }
+
+        /// <summary>
+        /// ocean_bow_slack: a line entering the water over the hull's skirt by the bow with the fish out ahead raises no rub
+        /// (the query: no hull rub with the fish 5.8 m past the bow, a hull rub with it 0.7 m past the skirt or under the
+        /// hull; the taut gate: a slack line is no rub; a 6 s fight with the fish held out ahead, no winding: no rub frame).
+        /// </summary>
+        IEnumerator BowSlack(FishingController ctl, Obstacles obs, FishSpecies sp)
+        {
+            var skirt = obs.Get("hull.skirt");
+            if (skirt == null)
+            {
+                OCheck("ocean_bow_slack", false, "hull.skirt missing");
+                yield break;
+            }
+            float bowZ = ZMax(skirt);
+            var entry = new Vector2(0f, bowZ - 0.4f);
+            bool Hull(Vector3 fish) => obs.Rub(entry, fish, out var o, out _) && o.Mat.id == "hull";
+            bool qAhead = Hull(new Vector3(0.5f, -8f, bowZ + 5.8f));
+            bool qBy = Hull(new Vector3(0.3f, -6f, bowZ + 0.7f));
+            bool qUnder = Hull(new Vector3(0.3f, -1f, 0f));
+            // (a 5 kgf fish on PE 3호 (limit ~22): slack at 1 kgf, taut at 2.5; a 30 kgf fish on 6 kgf line: taut at 2)
+            bool gate = !FishingController.RubTautNow(1f, 22f, 5f) && FishingController.RubTautNow(2.5f, 22f, 5f)
+                        && FishingController.RubTautNow(2f, 6f, 30f);
+
+            EquipTest("bait_jig", ctl);
+            yield return null;
+            // (2 m past the skirt, 10 m down: the line drops steeply and enters the water by the bow)
+            var hold = new Vector3(ctl.Angler.X + 0.5f, -10f, bowZ + 2f);
+            float snagWas = Obstacles.SnagMult;
+            Obstacles.SnagMult = 0f;
+            ctl.DebugPlaceRig(new Vector3(hold.x, 0f, hold.z));
+            yield return new WaitForSeconds(0.3f);
+            Obstacles.SnagMult = snagWas;
+            int frames = 0, overSkirt = 0, rubF = 0, slackF = 0;
+            float ezMin = float.MaxValue, ezMax = float.MinValue;
+            float tMin = float.MaxValue, tMax = 0f;
+            bool hooked = ctl.DebugHook(sp, 70f, 7272, hold);
+            if (hooked)
+            {
+                var fm = ctl.Fight;
+                PointerInput.SimDown = false;
+                for (float t = 0f; t < 6f && ctl.State == FishingController.S.Fighting && ctl.Fight == fm; t += Time.deltaTime)
+                {
+                    ctl.DebugFishHold = hold;
+                    var e = ctl.Angler.LineUnderwater ? ctl.Angler.WaterEntry : ctl.Angler.RodTip;
+                    frames++;
+                    if (obs.Inside(skirt, new Vector2(e.x, e.z))) overSkirt++;
+                    ezMin = Mathf.Min(ezMin, e.z);
+                    ezMax = Mathf.Max(ezMax, e.z);
+                    if (ctl.Rubbing) rubF++;
+                    if (!FishingController.RubTautNow(fm.Tension, fm.LineLimit, fm.Power)) slackF++;
+                    tMin = Mathf.Min(tMin, fm.TensionRatio);
+                    tMax = Mathf.Max(tMax, fm.TensionRatio);
+                    yield return null;
+                }
+                ctl.DebugFishHold = null;
+            }
+            OCheck("ocean_bow_slack", !qAhead && qBy && qUnder && gate && hooked && rubF == 0,
+                string.Format(CIb, "query: fish 5.8 m past the bow hull rub {0} (want False), 0.7 m past the skirt {1}, under the hull {2}; taut gate {3}; held-out fight (2 m past the skirt, 10 m down) {4} frames: line entry over the skirt {5} (z {10:0.00}..{11:0.00}, the skirt to {12:0.00}), slack {6}, tension ratio {7:0.00}..{8:0.00}, rub frames {9}",
+                    qAhead, qBy, qUnder, gate, frames, overSkirt, slackF, tMin == float.MaxValue ? 0f : tMin, tMax, rubF, ezMin, ezMax, bowZ));
+            if (ctl.State == FishingController.S.Fighting) ctl.DebugRelease();
+            yield return new WaitForSeconds(2f);
+            yield return ToReady(ctl);
         }
 
         static float ZMax(Obstacle o)

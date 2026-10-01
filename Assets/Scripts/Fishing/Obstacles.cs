@@ -619,6 +619,9 @@ namespace FishingKing
         /// itself is inside an abrasive snag zone (grinding the line on a rock's base). The props at his feet (near) are left
         /// out. Of several, the roughest counts; <paramref name="at"/> is the contact point.
         /// </summary>
+        /// <summary>The line rubs on a hull's under-boat zone only with the fish within this (m, plan) of it.</summary>
+        public const float HullRubReach = 1.0f;
+
         public bool Rub(Vector2 entry, Vector3 fish, out Obstacle o, out Vector3 at)
         {
             o = null;
@@ -654,6 +657,9 @@ namespace FishingKing
                     at = fish;
                     continue;
                 }
+                // a hull (under the boat): only with the fish under it or right by it, not a line merely entering the
+                // water over its skirt by the bow
+                if (s.Mat.id == "hull" && !Inside(s, f2, HullRubReach)) continue;
                 if (segLen < 0.05f || SegDist(entry, f2, s.C) > s.R + 0.05f) continue;
                 if (!Clip(entry, f2, s.Poly, 0f, out float c0, out float c1)) continue;
                 var deep = entry + seg * c1;

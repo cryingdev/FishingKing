@@ -624,6 +624,13 @@ Each fight frame (not during a jump: the line is in the air), with `E` = `Angler
 The contact point: the clip's entry point at depth `dF x s` (case 1), the fish's mouth (2), the rim point towards the
 fish at y = -0.1 (3).
 
+Two exceptions keep a slack line off structure it does not press on:
+- a `hull` snag zone (under a boat: the ocean hull and its skirt, the rowboat's keel skirt) counts in case 1 only with the
+  fish inside it or within `Obstacles.HullRubReach` = 1.0 m of it (a line merely entering the water over the skirt by
+  the bow does not rub);
+- any rub counts (wear, warning, rasp) only on a taut line: tension >= `FishingController.RubTaut` = 0.3 x
+  min(line limit, fish power) (the fish's pull too: PE 3호 holding a dug-in 감성돔 sits at ~0.15 of its limit).
+
 ### 7.5 The abrasion meter
 
 `FightModel.Abrasion` A in 0..1, from 0 at each hook set, **never decreasing** in a fight:

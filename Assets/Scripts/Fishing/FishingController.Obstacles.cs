@@ -14,6 +14,17 @@ namespace FishingKing
         static readonly CultureInfo CIo = CultureInfo.InvariantCulture;
         // line wear per second on structure before roughness / tension / speed / toughness (0.22 cut PE 3호 on tetrapods in 2-10 s)
         const float RubRate = 0.11f;
+        /// <summary>
+        /// A rub counts (wear, warning, rasp) only on a line this taut: tension >= this x the lesser of the line's limit and
+        /// the fish's pull. A slack line (a resting fish, line given, its water entry dropping by the bow) does not press on
+        /// structure. (The fish's pull too, not the line alone: PE 3호 holding a 감성돔 dug into the tetrapods sits at ~0.15 of
+        /// its limit yet is loaded.)
+        /// </summary>
+        public const float RubTaut = 0.3f;
+
+        /// <summary>The line is taut enough to rub (see <see cref="RubTaut"/>).</summary>
+        public static bool RubTautNow(float tension, float lineLimit, float power) =>
+            tension >= RubTaut * Mathf.Max(0.01f, Mathf.Min(lineLimit, power));
 
         /// <summary>Test hook (-fkauto obstacles): the next run of the hooked fish heads for this cover (its id), no roll.</summary>
         internal static string DebugCover;
@@ -953,6 +964,8 @@ namespace FishingKing
                     rub = Obst.Rub(new Vector2(e.x, e.z), pos, out o, out at);
                 }
             }
+            // (a slack line does not press on the structure)
+            if (rub && !RubTautNow(f.Tension, f.LineLimit, f.Power)) rub = false;
             f.Rubbing = rub;
             Rubbing = rub;
             float fishSpeed = Plan(pos, rubPrevFish) / Mathf.Max(dt, 1e-4f);

@@ -133,6 +133,8 @@ namespace FishingKing
         float sweepS;
         /// <summary>The sweep this frame after the rod's yaw limits (degrees, + = right): the rod's yaw minus where it would point unswept (what is drawn).</summary>
         public float SweepEff { get; private set; }
+        /// <summary>The rod's yaw this frame (degrees, + = right, within its limits): where he faces plus the sweep.</summary>
+        public float RodYaw { get; private set; }
         /// <summary>
         /// The sweep asked for this frame (degrees, + = right, eased), before the rod's yaw limits: side pressure reads it, so
         /// a lean counts in full with the fish far out to one side, where the drawn rod is pinned at a limit.
@@ -564,6 +566,7 @@ namespace FishingKing
             if (Sweep == 0f && Mathf.Abs(sweepS) < 0.01f) sweepS = 0f;
             float rodYawDeg = Mathf.Clamp(faceS + sweepS, -RodMax, RodMaxRight);
             SweepEff = rodYawDeg - Mathf.Clamp(faceS, -RodMax, RodMaxRight);
+            RodYaw = rodYawDeg;
             float swSign = Mathf.Sign(sweepS);
             SweepLine = sweepS == 0f ? 0f : swSign * Mathf.Min(Mathf.Abs(sweepS), Mathf.Max(0f, swSign * (rodYawDeg - faceS)));
             // (only swept out to his left: swept right, a lower rod would pass closer to the hat seen from behind; there it

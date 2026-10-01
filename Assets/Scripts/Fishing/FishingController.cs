@@ -1633,6 +1633,23 @@ namespace FishingKing
             f.CurrentSpeed = cF.magnitude;
         }
 
+        /// <summary>-fksidelog: every 0.25 s of a fight a [SIDELOG] line (the run, the lean, the rod's yaw, the tension).</summary>
+        static readonly bool SideLog = System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-fksidelog") >= 0;
+        float sideLogT;
+
+        void LogSide(float dt, FightModel f)
+        {
+            sideLogT -= dt;
+            if (sideLogT > 0f || Hooked == null) return;
+            sideLogT = 0.25f;
+            var p = Hooked.Pos;
+            Debug.Log(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "[SIDELOG] {0} run {1:+0;-0;0} fightYaw {2:+0.0;-0.0} tgt {3:+0.0;-0.0} bearing {4:+0.0;-0.0} lean {5:+0.00;-0.00} req {6:+0.0;-0.0} eff {7:+0.0;-0.0} rodYaw {8:+0.0;-0.0} side {9:+0.00;-0.00} good {10:0.00} bad {11:0.00} T {12:0.00} Tmult {13:0.000} ratio {14:0.00} line {15:0.0} revs {16:0.00}",
+                f.State, FishRun, fightYaw * Mathf.Rad2Deg, fightYawTarget * Mathf.Rad2Deg,
+                Mathf.Atan2(p.x - Angler.Feet.x, Mathf.Max(0.5f, p.z - Angler.Feet.z)) * Mathf.Rad2Deg, Lean, Angler.SweepReq, Angler.SweepEff,
+                Angler.RodYaw, SideNow, f.SideGood, f.SideBad, f.Tension, f.SideTensionMult, f.TensionRatio, f.Line, Gesture.Speed));
+        }
+
         void UpdateFighting(float dt)
         {
             var f = Fight;
@@ -1641,6 +1658,7 @@ namespace FishingKing
             CurrentFight(dt, f);
             f.Step(dt, revs, Hooked.Depth < 1.6f);
             bool running = (f.State == FightModel.Phase.Run || f.State == FightModel.Phase.Burst) && !f.Exhausted;
+            if (SideLog) LogSide(dt, f);
 
             // --- place the fish so its distance from the rod tip equals the line length
             bool tailWalking = jumpTime >= 0 && jumpKind == FightModel.JumpKind.TailWalk;
