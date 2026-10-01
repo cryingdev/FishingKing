@@ -39,7 +39,7 @@ Unity 6 (6000.3.22f1) 픽셀아트 모바일 낚시 게임입니다. 낚시꾼 �
   카메라가 정수 픽셀 단위로 부드럽게 따라가고(끔 모드도, 필요한 만큼만) 파이트가 끝나면 원래 자리로 돌아옵니다
 - **수족관**: 사료 봉투를 뜯어 뿌리고 새우·정어리를 집어 주기, 미세한 성장과 가격 변화, 이끼·부유물 청소, 자리별 장식,
   5단계 수조와 크기별 칸 수. 관람 수입은 희귀도 × 가치에 비례합니다.
-- **상점·도감·레벨업**, 자동 저장, 코드로 합성한 사운드
+- **상점·도감·레벨업**, 자동 저장, 코드로 합성한 효과음, MIDI로 작곡해 렌더한 배경음(시간대·파이트·조우에 따라 스템을 섞음)
 
 밸런스 수치는 대부분 `Assets/Scripts/Data/GameDatabase.cs`에 있습니다.
 
@@ -47,7 +47,7 @@ Unity 6 (6000.3.22f1) 픽셀아트 모바일 낚시 게임입니다. 낚시꾼 �
 
 ```
 Assets/
-  Resources/            Blender가 렌더한 스프라이트·모델(FBX)·팔레트·레이아웃/장애물/깊이 데이터, 폰트
+  Resources/            Blender가 렌더한 스프라이트·모델(FBX)·팔레트·레이아웃/장애물/깊이 데이터, 폰트, 배경음 스템(OGG)·music.json
   Shaders/              툰·림 라이트·시간대 디졸브·그림자·발판 가림 셰이더
   Scripts/Core/         Game(상태·경제), SaveData, PixelView(저해상도 픽셀 뷰)·ViewZoom, 입력, 게임 시계, 수족관 모델
   Scripts/Data/         Models, GameDatabase
@@ -55,9 +55,11 @@ Assets/
   Scripts/Fishing/Legend/ 전설어 조우
   Scripts/Scenes/       타이틀·지도·낚시·수족관(먹이·청소·장식)
   Scripts/UI/           코드 UI, 상점, 도감, 설정
+  Scripts/Audio/        Sfx(합성 효과음·환경음·칩튠), Music(배경음 덱·스템·크로스페이드·sting)
   Scripts/Debug/        AutoPilot 자동 테스트 시나리오
-  Editor/               픽셀아트·액터 모델 임포터, 프로젝트 설정·빌드 메뉴
+  Editor/               픽셀아트·액터 모델·배경음 임포터, 프로젝트 설정·빌드 메뉴
 Tools/Blender/          에셋 생성 스크립트 (variants/hybrid 가 현재 스타일)
+Tools/Music/            배경음 작곡·렌더 스크립트 (MIDI → FluidSynth → OGG)
 Docs/                   설계 문서
 ```
 
@@ -86,6 +88,19 @@ Builds\Windows\FishingKing.exe -fkfresh -fkrich -fkgear -fksave test -fkscene Fi
 
 ## 설계 문서
 
+구현 정리 (현재 코드 기준):
+
+- [전체 구조](Docs/architecture.md) — 씬 흐름, 픽셀 뷰·줌·입력, 낚시 상태 머신, 그리기 순서, 부분 3D, 발판 가림, 실행 순서
+- [낚시 플레이 시스템](Docs/fishing_gameplay.md) — 플릭 캐스팅, 입질·챔질, 파이트 모델, 스윕·사이드 프레셔, 원 그리기, 루어 입력, 캐스팅 후 줌, 걷기
+- [수족관](Docs/aquarium.md) — 먹이·생먹이, 배부름·성장·관람 수입, 청소, 장식, 수조 5단계, 오프라인 보정
+- [Blender 에셋 파이프라인](Docs/art_pipeline.md) — 스크립트별 역할, 하이브리드 스타일 규칙, 빌드·설치, Unity 임포터
+- [데이터 표](Docs/data_reference.md) — 스테이지·어종·장비·루어·수조·사료·장식, SaveData 필드와 마이그레이션
+- [배경음](Docs/music.md) — 덱·스템·크로스페이드·sting·칩튠 대체, 낚시 씬의 곡 규칙, 설정 (작곡·빌드: [Tools/Music/README.md](Tools/Music/README.md))
+- [로컬 작업 안내](Docs/local_workflow.md) — 머지 전 Unity 확인·듣기 목록, 배경음 빌드(Windows), 효과음 파일 규칙, 머지 순서
+- [변경 기록](CHANGELOG.md)
+
+사양서:
+
 - [루어와 전설어 조우](Docs/lures_legend_spec.md) · [전설어 확장](Docs/legends_rollout.md)
 - [시간대·물때·물살](Docs/time_currents_spec.md) · [장애물](Docs/obstacles_spec.md)
 
@@ -94,6 +109,11 @@ Builds\Windows\FishingKing.exe -fkfresh -fkrich -fkgear -fksave test -fkscene Fi
 UI와 로고는 픽셀 폰트 **Galmuri** (© Lee Minseo, [SIL Open Font License 1.1](Assets/Resources/Fonts/Galmuri-LICENSE.txt), https://github.com/quiple/galmuri)를 사용합니다.
 픽셀 폰트는 격자 크기의 정수배에서만 선명하므로 `UIKit.Label`의 크기는 가장 가까운 선명한 크기로 자동 보정됩니다.
 새 문자열을 추가했다면 `python Tools/font_coverage.py Assets/Resources/Fonts/Galmuri11.ttf …`로 글리프 누락을 확인하세요.
+
+## 사운드폰트
+
+배경음은 GM 사운드폰트 **FluidR3_GM** (© Frank Wen, MIT License; Debian/Ubuntu `fluid-soundfont-gm` 패키지)으로 렌더했습니다.
+렌더한 OGG만 저장소에 들어 있고 사운드폰트 파일은 들어 있지 않습니다. 다시 렌더하는 방법은 [Tools/Music/README.md](Tools/Music/README.md)에 있습니다.
 
 ## 참고
 
