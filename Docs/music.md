@@ -132,7 +132,7 @@
 
 | 줄 | 막대 | 오른쪽 |
 |---|---|---|
-| 전체 볼륨 | `masterVol` | 소리 켜짐/꺼짐 (`soundOn`, 설정 창의 소리 줄과 같은 값) |
+| 전체 볼륨 | `masterVol` | 소리 켜짐/꺼짐 (`soundOn`, 설정 창의 소리 줄과 같은 값 — 음량 창이 닫히면 그 밑의 설정 창 토글이 저장된 값으로 다시 그려짐, `Dialog.Window(onClose)`) |
 | 배경음악 | `musicVol` | 배경음 켜짐/꺼짐 (`musicOn`) |
 | 효과음 | `sfxVol` | — |
 | 환경음 | `ambVol` | — |
@@ -161,7 +161,7 @@
 | `-fkmusiclog` | 이벤트마다 `[MUSIC]` 로그 (`play`, `stem`, `sting`, `duck`, `start … at dsp …`, `stop`, `free`, `chiptune on/off`, `preload`, `audio reset`) |
 | `-fkauto music` | `AutoPilot.Music.cs`, 처음부터 포인터를 가져감(`PointerInput.SimActive`): 타이틀 → 지도(없는 곡 → 칩튠 → 진짜 곡) → **오디오 설정**(아래) → 스테이지 낮 → 밤(크로스페이드 중간과 끝) → 입질 덕킹, 파이트 스템과 장력의 상관, 잡음 sting과 덕킹, 희귀어, 놓침(0.4), 줄 끊김(0.4), 밑걸림 억지로 끊김(0.45), `끊기`(sting 없음), 장력이 문턱에서 오르내릴 때 줄 튕김 간격(3초에 4번 이하) → (`-fkencounter`가 있으면) 조우 성공(각 단계의 스템, 챔질 창 무음, `sting_hook`, `legend_<id>`, `sting_legend`과 그 밑에서 조용한 파이트 곡, 스테이지 복귀)·실패(`sting_fail`과 그 밑에서 조용한 조우 덱, 스테이지 복귀) → 지도 → 수족관 → 스테이지별 환경음 RMS(`[MIX] ambience`). `[MUSIC] CHECK PASS/FAIL` 줄 끝에 그 순간의 `Music.Describe()`, 0.5초마다 스템 동기를 읽어 같은 덱에서 두 번 연달아 5 ms 넘으면 실패(한 번만 보이는 한 블록 21 ms는 `sync transient`로 기록만: 덱이 막 시작했거나 무거운 프레임에서 위치를 읽은 것으로, 다음 읽기에서 0으로 돌아옴 — 정말 어긋난 스템은 저절로 맞춰지지 않음), 마지막에 요약 |
 
-**오디오 설정 검사** (`AudioSettingsTest`, 각 단계마다 실제 `AudioSource.volume`을 `[MIX]` 줄로 남김): 옛 세이브(`soundOn=false`, 슬라이더 없음) → `musicOn` 켬·슬라이더 100·음소거 유지, `Sanitize`(137 → 100, −5 → 0, 44 → 40), 기본값 = 설계 믹스(리스너 1, 스템 0.4) → 캡처 `settings_main` → 음량 버튼 → 캡처 `audio_settings` → 배경음 꺼짐(덱 0개, sting 무음)·켜짐(곡 복귀) → 배경음악 `-` 5번 = 50%(스템 0.4 × 0.25 × 크기, sting 0.1, 칩튠 0.055) → 효과음 막대를 왼쪽 끝으로 끌어 0(원샷·드랙·긁힘 0) → 환경음 다섯째 칸 탭 = 50%(환경음 × 0.25) → 전체 50%(리스너 0.25; 소리 꺼짐 0, 켜짐 0.25) → 캡처 `audio_settings_changed` → 디스크에서 다시 읽어 같은 값 → 모두 100으로.
+**오디오 설정 검사** (`AudioSettingsTest`, 각 단계마다 실제 `AudioSource.volume`을 `[MIX]` 줄로 남김): 옛 세이브(`soundOn=false`, 슬라이더 없음) → `musicOn` 켬·슬라이더 100·음소거 유지, `Sanitize`(137 → 100, −5 → 0, 44 → 40), 기본값 = 설계 믹스(리스너 1, 스템 0.4) → 캡처 `settings_main` → 음량 버튼 → 캡처 `audio_settings` → 배경음 꺼짐(덱 0개, sting 무음)·켜짐(곡 복귀) → 배경음악 `-` 5번 = 50%(스템 0.4 × 0.25 × 크기, sting 0.1, 칩튠 0.055) → 효과음 막대를 왼쪽 끝으로 끌어 0(원샷·드랙·긁힘 0) → 환경음 다섯째 칸 탭 = 50%(환경음 × 0.25) → 전체 50%(리스너 0.25; 소리 꺼짐 0, 켜짐 0.25) → 캡처 `audio_settings_changed` → 디스크에서 다시 읽어 같은 값 → 모두 100으로 → 음량 창에서 소리 꺼짐 후 닫기: 설정 창의 소리 토글이 꺼짐, 한 번 누르면 켜짐(리스너 1).
 
 예: `-fkfresh -fkrich -fkgear -fksave au_music -fkstage lake -fkencounter now -fkauto music -fkmusiclog -fkshots <폴더> -screen-width 960 -screen-height 540` (`-fkscene` 없이 타이틀에서 시작). 매니페스트에 아직 없는 곡은 칩튠이 대신하는지, 없는 sting은 울리지 않는지를 대신 검사합니다.
 

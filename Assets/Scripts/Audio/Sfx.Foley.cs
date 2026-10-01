@@ -41,7 +41,10 @@ namespace FishingKing
         const float StrainPitchCurve = 2.5f;
         /// <summary>The hooked fish splashing at the surface: Resources/Audio/Sfx/fish_thrash (a loop) when present, else the synthesized splashing loop.</summary>
         public static AudioClip FishThrash;
-        float thrashWant, thrashUntil = -1f;
+        /// <summary>The per-frame splash level (the latest short call) and a held burst (a longer hold, the hook set), kept apart so a burst cannot pin the resting level up.</summary>
+        float thrashWant, thrashUntil = -1f, burstWant, burstUntil = -1f;
+        /// <summary>A Thrash call holding longer than this is a burst.</summary>
+        const float ThrashFrameHold = 0.15f;
         /// <summary>Seconds the thrash loop fades in / out over.</summary>
         const float ThrashFade = 0.25f;
         float dragWant, dragSeen = -1f, ambMult = 1f, ambGain = 1f, dawnW, nightW;
@@ -101,7 +104,8 @@ namespace FishingKing
             drag.volume = Mathf.MoveTowards(drag.volume, want, Time.unscaledDeltaTime / DragHold);
             if (drag.volume <= 0.001f && drag.isPlaying) drag.Stop();
             // the thrash loop: on while Thrash() keeps it alive, then fades
-            float tw = (Time.unscaledTime <= thrashUntil ? thrashWant : 0f) * AudioMix.Effects;
+            float tnow = Time.unscaledTime;
+            float tw = Mathf.Max(tnow <= thrashUntil ? thrashWant : 0f, tnow <= burstUntil ? burstWant : 0f) * AudioMix.Effects;
             thrash.volume = Mathf.MoveTowards(thrash.volume, tw, Time.unscaledDeltaTime / ThrashFade);
             if (thrash.volume <= 0.001f && thrash.isPlaying) thrash.Stop();
         }
@@ -169,8 +173,18 @@ namespace FishingKing
         {
             if (I == null || I.thrash == null || FishThrash == null) return;
             float now = Time.unscaledTime;
-            I.thrashWant = now <= I.thrashUntil ? Mathf.Max(I.thrashWant, Mathf.Clamp01(level)) : Mathf.Clamp01(level);
-            I.thrashUntil = Mathf.Max(I.thrashUntil, now + hold);
+            // (a frame's call sets the level outright, so a run's louder splashing drops back when the fish rests; a burst
+            // holds its own level until it lapses)
+            if (hold > ThrashFrameHold)
+            {
+                I.burstWant = now <= I.burstUntil ? Mathf.Max(I.burstWant, Mathf.Clamp01(level)) : Mathf.Clamp01(level);
+                I.burstUntil = Mathf.Max(I.burstUntil, now + hold);
+            }
+            else
+            {
+                I.thrashWant = Mathf.Clamp01(level);
+                I.thrashUntil = now + hold;
+            }
             if (!I.thrash.isPlaying) I.thrash.Play();
         }
 

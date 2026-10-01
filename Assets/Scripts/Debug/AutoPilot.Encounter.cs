@@ -193,7 +193,13 @@ namespace FishingKing
             encTriggerOn = false;
             PointerInput.SimDown = false;
             EncCheck($"encounter triggered ({style}, after {t:0.0}s)", ctl.State == FishingController.S.Encounter);
-            if (ctl.State != FishingController.S.Encounter) yield break;
+            if (ctl.State != FishingController.S.Encounter)
+            {
+                var w = ctl.Watch;
+                Log($"[ENC] no encounter: state {ctl.State}, rig {ctl.Tackle.State}, bait {Game.I.Bait?.id}, mode {LegendWatch.DebugMode}, "
+                    + $"noBites {FishingController.NoBites}, dialog {Dialog.Open}, watch {(w == null ? "none" : $"{w.Legend?.id} lurk {w.HasLurk} castUsed {w.CastUsed} soak {w.Soak:0.0} away {w.Away}")}");
+                yield break;
+            }
             var e = ctl.Encounter;
             Log($"[ENC] legend {e.Sp.id} (expected {encId})");
             var lastPh = e.Ph;

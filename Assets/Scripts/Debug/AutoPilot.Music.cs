@@ -259,7 +259,9 @@ namespace FishingKing
             yield return null;
             MixLog("전체 50%");
             MCheck("전체 50 %: the listener at 0.25", Game.Data.masterVol == 50 && Mathf.Abs(AudioListener.volume - 0.25f) < 1e-3f, string.Format(CIm, "{0:0.000}", AudioListener.volume));
-            var mute = ButtonNamed("Toggle_소리");
+            // (two toggles share the name: 설정's under, 음량's on top — this is 음량's)
+            var mute = FindObjectsByType<Button>(FindObjectsSortMode.None)
+                .FirstOrDefault(b => b.name == "Toggle_소리" && b.transform.parent.Find("Toggle_배경음") != null);
             mute?.onClick.Invoke();
             yield return null;
             MCheck("소리 꺼짐: the listener at 0, the slider kept", !Game.Data.soundOn && AudioListener.volume == 0f && Game.Data.masterVol == 50);
@@ -282,11 +284,20 @@ namespace FishingKing
             MixLog("back to 100");
             MCheck("back to 100: the designed mix again", Game.Data.masterVol == 100 && Game.Data.musicVol == 100 && Game.Data.sfxVol == 100 && Game.Data.ambVol == 100
                 && Mathf.Abs(AudioListener.volume - 1f) < 1e-3f && Mathf.Abs(Sfx.AmbienceVolumeNow - amb0) < 1e-3f);
-            // 닫기 twice: the 음량 window, then 설정
+            // 소리 꺼짐 in 음량, then 닫기: 설정's own 소리 toggle (under it all along) must say 꺼짐, and a tap turns sound on
+            mute?.onClick.Invoke();
+            yield return null;
             var closes = FindObjectsByType<Button>(FindObjectsSortMode.None).Where(b => ButtonText(b) == "닫기").ToList();
             var audioClose = closes.FirstOrDefault(b => b.transform.parent.Find("Toggle_배경음") != null);
             audioClose?.onClick.Invoke();
             yield return new WaitForSecondsRealtime(0.3f);
+            var settingsSound = FindObjectsByType<Button>(FindObjectsSortMode.None).FirstOrDefault(b => b != null && b != mute && b.name == "Toggle_소리");
+            MCheck("음량 closed with 소리 꺼짐: 설정's toggle says 꺼짐", !Game.Data.soundOn && settingsSound != null && ButtonText(settingsSound) == "꺼짐",
+                $"it says {ButtonText(settingsSound)}");
+            settingsSound?.onClick.Invoke();
+            yield return null;
+            MCheck("설정's 소리 tapped: sound on, 켜짐, the listener at 1", Game.Data.soundOn && ButtonText(settingsSound) == "켜짐"
+                && Mathf.Abs(AudioListener.volume - 1f) < 1e-3f);
             closes.FirstOrDefault(b => b != audioClose && b != null)?.onClick.Invoke();
             yield return new WaitForSecondsRealtime(0.3f);
         }
@@ -303,7 +314,10 @@ namespace FishingKing
             expect.AddRange(new[] { "sting_catch", "sting_rare", "sting_legend", "sting_escape", "sting_omen", "sting_hook", "sting_fail" });
             var notYet = expect.Where(c => !ids.Contains(c)).ToList();
             Log($"[MUSIC] music test: the manifest has {ids.Count} cues; not yet: {(notYet.Count > 0 ? string.Join(", ", notYet) : "none")}");
-            var key = Game.I.Bait;   // (with -fkencounter: the stage legend's key, equipped at boot)
+            // (with -fkencounter: the stage legend's key, equipped by Game.DebugBoot — read a frame on, since that boot
+            // hook and the one that started this test run in either order)
+            yield return null;
+            var key = Game.I.Bait;
 
             // 1. the title and the map, the fallback, the setting
             if (SceneManager.GetActiveScene().name != "Title") SceneFlow.Go("Title");

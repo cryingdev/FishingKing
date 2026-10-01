@@ -86,7 +86,11 @@ namespace FishingKing
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         static void DebugBoot()
         {
-            if (Flag("-fkfresh")) I.data = SaveData.NewGame();
+            if (Flag("-fkfresh"))
+            {
+                I.data = SaveData.NewGame();
+                AudioMix.Apply();   // (Boot applied the replaced save's mute and volumes)
+            }
             // the clock / tide / current switches (-fktime, -fkperiod, -fktimescale, -fktide, -fkcurrent, -fkgust,
             // -fkcurrentvivid, -fkclocklog: see GameClock.DebugBoot)
             GameClock.DebugBoot();

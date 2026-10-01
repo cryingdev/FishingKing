@@ -23,8 +23,9 @@ namespace FishingKing
         public static void Open()
         {
             var w = Dialog.Window("설정", new Vector2(Width, Height), out var close);
-            Row(w, 0, "소리", () => Game.Data.soundOn, on => Game.I.SetSound(on), toggleRight: -44 - 120 - 12);
-            var vol = UIKit.Button(w, "음량", "blue", OpenAudio, new Vector2(120, 52), 20, null, "Volume");
+            var sound = Row(w, 0, "소리", () => Game.Data.soundOn, on => Game.I.SetSound(on), toggleRight: -44 - 120 - 12);
+            // (the volume window has its own 소리 toggle: this one redraws when that window closes)
+            var vol = UIKit.Button(w, "음량", "blue", () => OpenAudio(sound), new Vector2(120, 52), 20, null, "Volume");
             vol.GetComponent<RectTransform>().At(new Vector2(1, 1), new Vector2(-44, FirstRowY), new Vector2(120, 52), new Vector2(1, 0.5f));
             Row(w, 1, "릴 감기 원 · 방향 화살표", () => Game.Data.reelRing, on => Game.I.SetReelRing(on));
             Row(w, 2, "원을 그려 감는 방향", () => Game.Data.reelReverse, on => Game.I.SetReelReverse(on),
@@ -35,10 +36,10 @@ namespace FishingKing
             done.GetComponent<RectTransform>().At(new Vector2(0.5f, 0), new Vector2(0, 28), new Vector2(160, 56), new Vector2(0.5f, 0));
         }
 
-        /// <summary>The volume window (over 설정; 닫기 goes back to it).</summary>
-        public static void OpenAudio()
+        /// <summary>The volume window (over 설정; 닫기 goes back to it). `onClose` runs when it closes (설정 redraws its 소리 toggle).</summary>
+        public static void OpenAudio(Action onClose = null)
         {
-            var w = Dialog.Window("음량", new Vector2(Width, Height), out var close);
+            var w = Dialog.Window("음량", new Vector2(Width, Height), out var close, onClose: onClose);
             Level(w, 0, "전체 볼륨", AudioChannel.Master, ("소리", () => Game.Data.soundOn, on => Game.I.SetSound(on)));
             Level(w, 1, "배경음악", AudioChannel.Music, ("배경음", () => Game.Data.musicOn, on => Game.I.SetMusic(on)));
             Level(w, 2, "효과음", AudioChannel.Effects);
@@ -50,26 +51,30 @@ namespace FishingKing
         /// <summary>A small "설정" button for a screen corner.</summary>
         public static Button CornerButton(Transform parent) => UIKit.Button(parent, "설정", "grey", Open, new Vector2(96, 56), 20);
 
-        static void Row(RectTransform w, int i, string label, Func<bool> get, Action<bool> set,
+        /// <summary>A labelled on/off row; returns the toggle's redraw (from the saved value).</summary>
+        static Action Row(RectTransform w, int i, string label, Func<bool> get, Action<bool> set,
             string onText = "켜짐", string offText = "꺼짐", string onStyle = "green", string offStyle = "grey", float toggleRight = -44)
         {
             float y = FirstRowY - i * RowStep;
             var t = UIKit.Label(w, label, 20, UIKit.Ink, TextAnchor.MiddleLeft, false);
             t.rectTransform.At(new Vector2(0, 1), new Vector2(44, y), new Vector2(300, 52), new Vector2(0, 0.5f));
-            var b = Toggle(w, get, set, new Vector2(150, 52), onText, offText, onStyle, offStyle, "Toggle_" + label);
+            var b = Toggle(w, get, set, new Vector2(150, 52), out var show, onText, offText, onStyle, offStyle, "Toggle_" + label);
             b.GetComponent<RectTransform>().At(new Vector2(1, 1), new Vector2(toggleRight, y), new Vector2(150, 52), new Vector2(1, 0.5f));
+            return show;
         }
 
-        static Button Toggle(RectTransform w, Func<bool> get, Action<bool> set, Vector2 size,
+        static Button Toggle(RectTransform w, Func<bool> get, Action<bool> set, Vector2 size, out Action refresh,
             string onText = "켜짐", string offText = "꺼짐", string onStyle = "green", string offStyle = "grey", string name = "Toggle")
         {
             Button b = null;
             Action show = () =>
             {
+                if (b == null) return;   // (the window closed)
                 bool on = get();
                 b.SetLabel(on ? onText : offText);
                 b.SetStyle(on ? onStyle : offStyle);
             };
+            refresh = show;
             b = UIKit.Button(w, onText, onStyle, () =>
             {
                 set(!get());
@@ -132,7 +137,7 @@ namespace FishingKing
             plus.GetComponent<RectTransform>().At(new Vector2(0, 1), new Vector2(PlusX, y), new Vector2(BtnW, 52), new Vector2(0, 0.5f));
             if (toggle is { } tg)
             {
-                var b = Toggle(w, tg.get, tg.set, new Vector2(ToggleW, 52), name: "Toggle_" + tg.name);
+                var b = Toggle(w, tg.get, tg.set, new Vector2(ToggleW, 52), out _, name: "Toggle_" + tg.name);
                 b.GetComponent<RectTransform>().At(new Vector2(1, 1), new Vector2(-44, y), new Vector2(ToggleW, 52), new Vector2(1, 0.5f));
             }
             show();

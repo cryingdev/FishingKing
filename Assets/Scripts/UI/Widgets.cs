@@ -256,10 +256,18 @@ namespace FishingKing
 
         public static bool Open => canvas != null && canvas.transform.childCount > 0;
 
-        public static RectTransform Window(string title, Vector2 size, out Action close, bool closeOnBackground = true)
+        /// <param name="onClose">Runs once when the window closes (its close action or a tap on the background).</param>
+        public static RectTransform Window(string title, Vector2 size, out Action close, bool closeOnBackground = true, Action onClose = null)
         {
             RectTransform dim = null;
-            Action doClose = () => { if (dim != null) UnityEngine.Object.Destroy(dim.gameObject); };
+            bool closed = false;
+            Action doClose = () =>
+            {
+                if (closed) return;
+                closed = true;
+                if (dim != null) UnityEngine.Object.Destroy(dim.gameObject);
+                onClose?.Invoke();
+            };
             dim = UIKit.Modal(C.transform, closeOnBackground ? doClose : null);
             var p = UIKit.Panel(dim, "panel_wood", null, "Window");
             p.raycastTarget = true;
