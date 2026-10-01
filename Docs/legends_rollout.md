@@ -95,6 +95,9 @@ flick resets it to 0.
 
 New fields: `runMin`, `runMax`, `pauseMin`, `pauseMax`, `overRun`, `overRunLoss`.
 
+Its prompt icon is `verb_runpause` (16×16, fk_items.py `ENC_ICONS`): `verb_wind`'s blue circle arrow with `verb_hold`'s
+yellow pause bars in place of its hub.
+
 **`Verb.Wind` gains `tooSlow` / `slowLoss`.** The loss applies per second while winding below `tooSlow`, or when not
 winding for > 0.5 s (the marlin) or > 1.0 s (the great white). The default `tooSlow` of 0 leaves it off.
 
@@ -343,13 +346,13 @@ Pacing ≈ 5 + 5.5 + 3.4 = **14 s**.
   - A circle skims it 0.12 m per rev along the surface, the frog kicking.
   - A flick is a "pop": a 0.06 m dip, 6 bubbles, a pop ring and frame 1 for 0.2 s.
 
-**Top view (the frog, `teaseView = Top`, `TopViewDef` set `swamp_top`; EncounterView.Top.cs):**
+**Top view (the frog and the popper, `teaseView = Top`, `TopViewDef` set `swamp_top`; EncounterView.Top.cs):**
 - Omen, open, eyes and the approach stay underwater; the approach's spiral ends on the 경계 pass.
 - The approach's last 0.7 s rise through the waterline: the window splits at a moving waterline band, the underwater
   view sliding down below it and the top view coming down above it.
-- The tease and the nose-in are seen straight down over the frog (2.5 m up, 56 px/m on the surface). The frog stays
-  put and the water slides past it (0.3 m per turn): winding kicks it with a V-wake, a 톡 pops it ("퐁" spray, a ring, a
-  hop), a pause lets it float (a settle ring, calm).
+- The tease and the nose-in are seen straight down over the lure (2.5 m up, 56 px/m on the surface). The lure stays
+  put and the water slides past it (0.3 m per turn): winding swims it with a V-wake (the frog kicks, the popper chugs),
+  a 톡 pops it ("퐁" spray, a ring, a hop), a pause lets it float (a settle ring, calm).
 - The legend is its 3D model seen from above as a shadow (EncShadow.shader, `#060905` darkened with the water by the
   time of day): opacity 1.0 at the surface to 0.6 at 2 m and blur 0.6 to 2.4 px, run from the head to the tail. Like
   the stage's fish shadows on dark water it stays at least 50% darker than the water even deep (about 70% through the
@@ -360,7 +363,14 @@ Pacing ≈ 5 + 5.5 + 3.4 = **14 s**.
   - Nose-in: it rises to 0.25 m (−50°) and the bulge grows; the tell streams bubbles.
 - Captions from above: the 흥분 credit "…아래에서 노려본다", the nose-in "떠오른다…!". The frog is kept clear like the face.
 - The lunge cuts straight to the full-screen underwater view (the strike from below); the fight starts with a 1.8×
-  boil. The popper has no top frames, so it keeps the underwater tease.
+  boil.
+- Each lure has its own top frames, `lure_<lure>_top_0..3` (24×28, the same pivot and line tie, so the view draws them
+  alike; `encounter_sets/swamp_top.py`): 0 at rest, 1 and 2 the two beats of a swim stroke, 3 the pop (0.2 s).
+  - Frog: 0 floating, 1 legs drawn in, 2 legs kicked back, 3 the hop.
+  - Popper (`bait_popper` parts and materials): 0 tail-down with the cup's hollow tipped up and the feathers sunk in the
+    murk, 1 the face digging in with the feathers flared (the chug), 2 planing level with the feathers streaming back,
+    3 the nose kicked up with the cup to the sky and its shadow on the water.
+  - The spray, the V-wake and the rings are the shared `fx_top_*` for either lure; the frames carry no splash.
 
 **Bite — explosive strike from below:**
 - No fake-out.
@@ -807,6 +817,8 @@ line:
 | ocean (marlin) | bait_kona | line_pe8 |
 | ocean (great white) | bait_kona | line_titan |
 
+- A `-fkbait` / `-fklure` that is one of the legend's keys stays on instead of the top key (e.g. `-fkbait bait_popper`
+  on the swamp).
 - **`-fklegend <fish_id>`** picks the ocean legend (default blue_marlin).
 - **natural mode:**
   - The lurk goes at (Angler.X, −, 16); on the ice at (holeX, −, holeZ + 4); on the ocean at z 24.
@@ -829,7 +841,9 @@ line:
 - `early` taps on the fake-out.
 
 **One capture set per legend**, `enc_<fish_id>_<n>_<beat>.png`: `1_eyes`, `2_approach`, `3_pass`, `4_excited`,
-`5_bite_full`, `6_wipe`, `7_fight`. The checks are as in the spec, with `fight species=<fish_id>`.
+`5_bite_full`, `6_wipe`, `7_fight`, plus `enc_<fish_id>_verb_zoom.png` (the first tease shot's verb icon, blown up). The
+checks are as in the spec, with `fight species=<fish_id>`, plus: a topwater legend's tease is seen from above whenever
+the key has top frames, and the prompt's verb icon is the mood's verb's (RunPause: `verb_runpause`).
 
 ---
 

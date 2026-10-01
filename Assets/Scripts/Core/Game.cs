@@ -56,7 +56,8 @@ namespace FishingKing
         // -fklure <id>       own and equip this lure (with -fkauto lure: the lure action test, see AutoPilot)
         // -fkencounter [now|natural]  the legend encounter test (Docs/lures_legend_spec.md 4.4, Docs/legends_rollout.md 6):
         //                    with -fkstage <id>, owns and equips the stage legend's top key (the cave's 야광 에기, the lake's
-        //                    황금 떡밥, ...) and, when the line is under its minLine, the weakest line that holds it; no
+        //                    황금 떡밥, ...; a -fkbait / -fklure that is one of its keys instead, e.g. the swamp's
+        //                    bait_popper) and, when the line is under its minLine, the weakest line that holds it; no
         //                    cooldowns, no pity; now: the encounter starts 1 s after the lure lands; natural: the lurk point in
         //                    front of him (the ice: by the hole; the ocean: 24 m out), a 2 s soak, the meter x8, the roll
         //                    always succeeds (see LegendWatch)
@@ -134,7 +135,10 @@ namespace FishingKing
                 string want = Arg("-fklegend");
                 var sp = legends.FirstOrDefault(f => f.id == want) ?? legends.FirstOrDefault() ?? GameDatabase.GetFish("coelacanth");
                 var ed = sp.encounter;
-                var key = GameDatabase.GetItem<BaitDef>(ed.keyLures.OrderByDescending(kv => kv.Value).First().Key);
+                // (a -fkbait / -fklure that is one of its keys stays on: e.g. the arapaima's popper instead of the frog)
+                var asked = GameDatabase.GetItem<BaitDef>(Arg("-fklure") ?? Arg("-fkbait"));
+                var key = asked != null && ed.keyLures.ContainsKey(asked.id) ? asked
+                    : GameDatabase.GetItem<BaitDef>(ed.keyLures.OrderByDescending(kv => kv.Value).First().Key);
                 if (key.isLure) { if (!I.Owns(key.id)) I.data.ownedItems.Add(key.id); }
                 else I.AddBait(key.id, 99);
                 I.Equip(key);

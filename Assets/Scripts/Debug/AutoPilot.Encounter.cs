@@ -34,7 +34,9 @@ namespace FishingKing
     /// cap_NN shot per caption); the run fails if any caption covers the face. It also watches the gauge: from above it
     /// must never cover the frog (every frame it shows), and it may move to another spot at most
     /// <see cref="GaugeMovesCap"/> times an encounter (each move logged "[CAP] gauge a -> b"; from above the first three
-    /// shot 0.3 s later as gauge_&lt;id&gt;_N_&lt;spot&gt;).
+    /// shot 0.3 s later as gauge_&lt;id&gt;_N_&lt;spot&gt;). It also checks that a topwater legend's tease is seen from above
+    /// whenever the key (-fkbait / -fklure, else the top key) has top frames, and that the prompt's verb icon is the
+    /// mood's verb's (RunPause: verb_runpause), the first tease shot with the prompt up adding enc_&lt;id&gt;_verb_zoom.
     /// </summary>
     public partial class AutoPilot
     {
@@ -100,6 +102,9 @@ namespace FishingKing
             if (gaugeTopFrames > 0) EncCheck($"gauge never on the top view's lure ({gaugeFrogHits} of {gaugeTopFrames} frames)", gaugeFrogHits == 0);
             EncCheck($"gauge moves at most {GaugeMovesCap} times an encounter (most {gaugeMovesMax}, total {gaugeMovesTotal})", gaugeMovesMax <= GaugeMovesCap);
             EncCheck($"gauge inside the safe area ({gaugeOutside} of {gaugeFrames} frames outside)", gaugeFrames > 0 && gaugeOutside == 0);
+            EncCheck($"verb icon is the mood's verb's ({verbMiss} of {verbFrames} prompt frames wrong)", verbFrames > 0 && verbMiss == 0);
+            if (verbRunPauseWant > 0)
+                EncCheck($"RunPause prompt shows {EncounterHUD.VerbIconOf(Verb.RunPause)} ({verbRunPause} of {verbRunPauseWant} frames)", verbRunPause == verbRunPauseWant);
             // (-fkencwinh: the narrowed window must make it move)
             if (EncounterView.DebugWinH > 0f) EncCheck($"gauge moved in the narrowed window ({EncounterView.DebugWinH:0} px: {gaugeMovesTotal} moves)", gaugeMovesTotal > 0);
             Log($"encounter test done ({encId}): {encFails} failed");
@@ -182,7 +187,7 @@ namespace FishingKing
             int lastMood = e.Mood;
             float t0 = Time.time, ang = 0f, stepT = 0f;
             int step = 0, stepMood = -1;
-            bool sawNoseIn = false, earlyDone = false, tapped = false;
+            bool sawNoseIn = false, earlyDone = false, tapped = false, viewChecked = false;
             float windSign = CircleGesture.Reversed ? -1f : 1f;
             var centre = Scr(0.72f, 0.4f);
             float radius = Screen.height * 0.12f;
@@ -197,6 +202,16 @@ namespace FishingKing
                     LogEnc(e, t0);
                 }
                 if (e.Ph == LegendEncounter.Phase.NoseIn) sawNoseIn = true;
+                if (e.Ph == LegendEncounter.Phase.Tease && !viewChecked && ctl.EncounterView != null)
+                {
+                    // a topwater legend's tease is watched from above whenever the key has top frames (the frog, the popper)
+                    viewChecked = true;
+                    string lid = encKey.id.Replace("bait_", "");
+                    bool frames = Resources.Load<Sprite>($"Sprites/Encounter/lure_{lid}_top_0") != null;
+                    bool want = e.Def.teaseView == TeaseView.Top && frames;
+                    EncCheck($"tease seen {(ctl.EncounterView.TopFlow ? "from above" : "underwater")} with {encKey.id} ({style}; view {e.Def.teaseView}, top frames {frames})",
+                        ctl.EncounterView.TopFlow == want);
+                }
                 float dt = Time.deltaTime;
                 if (e.Ph == LegendEncounter.Phase.Tease)
                 {
@@ -422,6 +437,10 @@ namespace FishingKing
         int capFrames, capHits, capOverlays, capMoves, capTopFrames, capFrogHits, capFrogOverlays;
         int gaugeTopFrames, gaugeFrogHits, gaugeMovesMax, gaugeMovesTotal, gaugeShots, gaugeFrames, gaugeOutside;
         const int GaugeMovesCap = 4;
+        // the prompt's verb icon: tease frames with the prompt up, wrong ones, RunPause ones right; one zoomed crop
+        int verbFrames, verbMiss, verbRunPause, verbRunPauseWant;
+        readonly HashSet<string> verbSeen = new HashSet<string>();
+        bool verbZoomed;
 
         static string R(Rect r) => string.Format(System.Globalization.CultureInfo.InvariantCulture, "({0:0},{1:0},{2:0},{3:0})", r.xMin, r.yMin, r.xMax, r.yMax);
 
@@ -515,6 +534,21 @@ namespace FishingKing
                             Log(string.Format(inv, "[CAP] overlay on the lure ph={0} t={1:0.00} lure={2}:{3}", e.Ph, e.PhaseT, R(gr), o));
                         }
                     }
+                    // the prompt's verb icon is its mood's verb's (turning away: the 경계 one), RunPause its own
+                    if (e.Ph == LegendEncounter.Phase.Tease && hud.PromptShown)
+                    {
+                        var verb = e.Leaving ? e.Def.moods[0].verb : e.MoodDef.verb;
+                        string want = EncounterHUD.VerbIconOf(verb), got = hud.VerbIconShown;
+                        verbFrames++;
+                        if (got != want) verbMiss++;
+                        if (verb == Verb.RunPause)
+                        {
+                            verbRunPauseWant++;
+                            if (got == want) verbRunPause++;
+                        }
+                        if (verbSeen.Add($"{e.Mood}/{e.Leaving}/{got}"))
+                            Log($"[ENC] verb icon {got ?? "none"} for {LegendEncounter.MoodName(e.Mood)}{(e.Leaving ? " (turning away)" : "")} ({verb}, want {want})");
+                    }
                     // the gauge: never on the frog, and few moves (each logged; from above the first three shot)
                     if (hud != gHud)
                     {
@@ -590,15 +624,43 @@ namespace FishingKing
             if (ctl.State == FishingController.S.Encounter && hud != null) yield return EncShot(ctl, $"gauge_{encId}_{n}_{hud.GaugeSpotName}");
         }
 
+        /// <summary>The prompt's verb icon cut out of a shot (a quarter of its size round it), blown up (nearest) to ~256 px.</summary>
+        void VerbZoom(Texture2D tex, EncounterHUD hud, string name)
+        {
+            var r = hud.VerbIconScreen;
+            int pad = Mathf.CeilToInt(r.height * 0.25f);
+            int x0 = Mathf.Clamp(Mathf.FloorToInt(r.xMin) - pad, 0, tex.width - 1), y0 = Mathf.Clamp(Mathf.FloorToInt(r.yMin) - pad, 0, tex.height - 1);
+            int x1 = Mathf.Clamp(Mathf.CeilToInt(r.xMax) + pad, x0 + 1, tex.width), y1 = Mathf.Clamp(Mathf.CeilToInt(r.yMax) + pad, y0 + 1, tex.height);
+            int w = x1 - x0, h = y1 - y0, k = Mathf.Clamp(Mathf.RoundToInt(256f / h), 1, 16);
+            var src = tex.GetPixels(x0, y0, w, h);
+            var dst = new Color[w * k * h * k];
+            for (int y = 0; y < h * k; y++)
+                for (int x = 0; x < w * k; x++)
+                    dst[y * w * k + x] = src[y / k * w + x / k];
+            var big = new Texture2D(w * k, h * k, TextureFormat.RGBA32, false);
+            big.SetPixels(dst);
+            big.Apply();
+            File.WriteAllBytes(Path.Combine(shots, name + ".png"), big.EncodeToPNG());
+            Destroy(big);
+            Log($"shot {name}: verb icon {hud.VerbIconShown} at {R(r)} (screen px), x{k}");
+        }
+
         IEnumerator EncShot(FishingController ctl, string name)
         {
             yield return new WaitForEndOfFrame();
             var tex = ScreenCapture.CaptureScreenshotAsTexture();
             string p = Path.Combine(shots, name + ".png");
             File.WriteAllBytes(p, tex.EncodeToPNG());
-            Destroy(tex);
             var e = ctl.Encounter;
             var v = ctl.EncounterView;
+            // the first tease shot with the prompt up: its verb icon blown up beside it
+            var hud = EncounterHUD.Current;
+            if (!verbZoomed && e != null && e.Ph == LegendEncounter.Phase.Tease && hud != null && hud.PromptShown && hud.VerbIconShown != null)
+            {
+                verbZoomed = true;
+                VerbZoom(tex, hud, $"enc_{encId}_verb_zoom");
+            }
+            Destroy(tex);
             // (a light column: its ends, the hole's first; the lean is their x difference)
             string col = v != null && v.ColumnEnds(out var ct, out var cb) ? $" column=({ct.x:0},{ct.y:0})->({cb.x:0},{cb.y:0}) lean={ct.x - cb.x:0}px" : "";
             Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "shot {0} phase={1} gauge={2:0} mood={3} fishDist={4:0.00} crop={5}{6}",
