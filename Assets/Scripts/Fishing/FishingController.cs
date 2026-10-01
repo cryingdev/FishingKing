@@ -72,7 +72,9 @@ namespace FishingKing
         SpriteRenderer targetRing, biteMark;
         float biteWindow;
         FishAgent biter;
-        float fightYaw, fightYawTarget, fishDepthTarget, splashT, warnT, tickAcc, dragTickT, jumpTime, lineRingT, dripT;
+        /// <summary>Tension ratio (of the line's limit, or of a snag's pull) where the line starts to twang (Sfx.LineStrain).</summary>
+        const float StrainFrom = 0.6f;
+        float fightYaw, fightYawTarget, fishDepthTarget, splashT, tickAcc, jumpTime, lineRingT, dripT;
         // the jump in progress (copied from the fight model when it starts)
         FightModel.JumpKind jumpKind;
         float jumpDur = 1f, trailT;
@@ -239,12 +241,14 @@ namespace FishingKing
             Watch = LegendWatch.For(this);
             if (Watch != null) Debug.Log($"[ENC] {Stage.Def.id}: legend watch {string.Join(", ", Watch.Legends.Select(f => f.id))} (debug {LegendWatch.DebugMode ?? "off"}{(LegendWatch.DebugLegend != null ? ", " + LegendWatch.DebugLegend : "")})");
             InitZoom();   // (the view zooms in on the rig once it lands: FishingController.Zoom.cs)
+            InitMusic();  // (the stage's cue and everything the state does to it: FishingController.Music.cs)
             SetState(S.Ready);
         }
 
         void OnDestroy()
         {
             Sfx.Rasp(0f);
+            LeaveMusic();
             GameClock.PeriodBegan -= OnPeriodBegan;
             GameClock.Stopped();
             if (Game.I != null)
@@ -336,6 +340,7 @@ namespace FishingKing
         void Update()
         {
             TickClock();
+            TickMusic(Time.unscaledDeltaTime);
             Angler.WalkInput = 0f; // he only walks while ready (UpdateReady)
             // the line's belly in the current shows while the rig is in the water
             if (State != S.Waiting && State != S.Retrieving && State != S.Biting) Angler.LineBow = Vector3.zero;
@@ -696,8 +701,13 @@ namespace FishingKing
             {
                 // the harder the flick, the louder and sharper the swish; a strong one whooshes, a top one sparkles
                 float p = AimPower;
-                Sfx.Play(Sfx.Cast, Mathf.Lerp(0.45f, 1f, p), Mathf.Lerp(0.88f, 1.14f, p) + Random.Range(-0.03f, 0.03f));
-                if (p >= 0.6f) Sfx.Play(Sfx.Whoosh, Mathf.Lerp(0.2f, 0.55f, (p - 0.6f) / 0.4f), Mathf.Lerp(0.95f, 1.2f, p));
+                if (Sfx.CastSwing != null)   // (the recorded swing is a whoosh already: no synthesized one on top)
+                    Sfx.Play(Sfx.CastSwing, Mathf.Lerp(0.5f, 1f, p), Mathf.Lerp(0.92f, 1.08f, p) + Random.Range(-0.03f, 0.03f));
+                else
+                {
+                    Sfx.Play(Sfx.Cast, Mathf.Lerp(0.45f, 1f, p), Mathf.Lerp(0.88f, 1.14f, p) + Random.Range(-0.03f, 0.03f));
+                    if (p >= 0.6f) Sfx.Play(Sfx.Whoosh, Mathf.Lerp(0.2f, 0.55f, (p - 0.6f) / 0.4f), Mathf.Lerp(0.95f, 1.2f, p));
+                }
                 if (p >= 0.95f) Fx.Burst(P.To2D(Angler.RodTip), UIKit.Gold, 8, 2f);
             }
             yield return new WaitForSeconds(0.08f);   // (the bait still dangling from the tip as the rod swings)
@@ -733,7 +743,9 @@ namespace FishingKing
             float big = l.contacts > 0 ? 0.5f : 1f;   // (it dropped, it was not thrown)
             Fx.Splash(pos2, Mathf.Clamp(ppm / 25f, 0.35f, 1f) * big, Stage.WaterTint, l.contacts > 0 ? 4 : 8, P.DepthOf(at));
             Fx.Ripple(pos2, Mathf.Clamp(ppm * 1.5f / 64f, 0.15f, 0.8f) * big, P.Foreshorten(at) * 1.6f + 0.15f, new Color(1, 1, 1, 0.8f));
-            Sfx.PlayVar(Sfx.Plop, 0.9f * big);
+            // the float rig lands with the recorded drop; lures keep the synthesized plop
+            if (Tackle.UsesFloat && Sfx.FloatLand != null) Sfx.PlayVar(Sfx.FloatLand, 0.8f * big, 0.06f);
+            else Sfx.PlayVar(Sfx.Plop, 0.9f * big);
             Tackle.EnterWater(at);
             if (L.IsIce) Tackle.FloatDepth = AimDepth;
             SetState(S.Waiting);
@@ -860,7 +872,7 @@ namespace FishingKing
             if (tickAcc >= 0.25f)
             {
                 tickAcc = 0;
-                Sfx.PlayVar(Sfx.ReelTick, 0.35f, 0.15f);
+                Sfx.ReelClick(0.35f);
             }
         }
 
@@ -1475,6 +1487,7 @@ namespace FishingKing
         {
             biteMark.enabled = false;
             Sfx.Play(Sfx.Hook, 1f);
+            Sfx.Thrash(0.7f, 1.2f);   // the fish splashes as the hook goes home
             view.Shake(0.12f, 0.15f);
             var f = biter;
             biter = null;
@@ -1734,6 +1747,7 @@ namespace FishingKing
                     hud.Flash("물살에서 빼냈다!", UIKit.Gold, 0.9f);
                 }
                 else hud.Flash("방향을 꺾었다!", UIKit.Gold, 0.8f);
+                Sfx.Play(Sfx.Success, 0.5f);
             }
             f.SideGood = good;
             f.SideBad = bad;
@@ -1923,7 +1937,8 @@ namespace FishingKing
             // the cover (the run's arrival, the hold) and the line rubbing on structure
             FightObstacles(dt, f, pos);
 
-            // thrashing near the surface
+            // thrashing near the surface (its sound: louder while it runs)
+            if (depth < 0.7f && jumpTime < 0) Sfx.Thrash(running ? 0.75f : 0.45f);
             splashT -= dt;
             if (splashT <= 0 && depth < 0.7f && jumpTime < 0)
             {
@@ -1955,19 +1970,11 @@ namespace FishingKing
             }
             else Angler.SetPose("fight");
 
-            // audio cues
-            warnT -= dt;
-            if (f.TensionRatio > 0.85f && warnT <= 0)
-            {
-                warnT = f.TensionRatio > 0.97f ? 0.1f : 0.2f;
-                Sfx.Play(Sfx.Warn, 0.45f, f.TensionRatio > 0.97f ? 1.3f : 1f);
-            }
-            dragTickT -= dt;
-            if (f.Tension >= Game.I.Reel.dragMax * 0.97f && dragTickT <= 0)
-            {
-                dragTickT = 0.05f;
-                Sfx.PlayVar(Sfx.ReelTick, 0.3f, 0.3f);
-            }
+            // audio cues: the line twanging faster and higher as the tension climbs (from StrainFrom of its limit, full at the break)
+            Sfx.LineStrain(Mathf.InverseLerp(StrainFrom, 1f, f.TensionRatio));
+            // the drag slipping: its loop, louder the further the pull is past the drag (fades out by itself once it stops)
+            float dragMax = Game.I.Reel.dragMax;
+            if (f.Tension >= dragMax * 0.97f) Sfx.Drag((f.Tension - dragMax * 0.97f) / (dragMax * 0.15f));
             hud.UpdateFight(f, Hooked);
 
             switch (f.Result)
@@ -2195,6 +2202,7 @@ namespace FishingKing
                 yield return null;
             }
             Sfx.Play(Sfx.Catch, 0.9f);
+            CatchMusic(fish.Sp);
             Fx.Burst(P.To2D(fish.Pos), UIKit.Gold, 16, 4f);
             var cf = Game.I.MakeCatch(fish.Sp, fish.Cm, Stage.Def.id);
             var rep = Game.I.RegisterCatch(cf);
@@ -2221,9 +2229,11 @@ namespace FishingKing
                         break;
                     case CatchPopup.Choice.Keep:
                         Game.I.AddToAquarium(cf);
+                        Sfx.Play(Sfx.Keep, 0.7f);
                         hud.Flash($"수조에 넣었어요 ({Game.I.UsedSpace}/{Game.I.Capacity}칸)", UIKit.Sky, 1.4f);
                         break;
                     default:
+                        Sfx.Play(Sfx.Release, 0.7f);
                         hud.Flash("잘 가~ 다음에 또 만나자!", UIKit.Cream, 1.2f);
                         break;
                 }

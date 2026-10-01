@@ -119,6 +119,7 @@ namespace FishingKing
         /// </summary>
         void FishOff(Off how, Vector3 mouth, Vector3 breakAt)
         {
+            FishOffMusic();
             // (where the line met the water, or its end in the air, before the fight lets it go)
             var lineEnd = Angler.LineUnderwater ? Angler.WaterEntry : Angler.LineTarget ?? mouth;
             bool floatRig = Tackle.FloatFight == Tackle.FightFloat.Line;

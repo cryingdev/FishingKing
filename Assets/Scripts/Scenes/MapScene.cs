@@ -40,7 +40,7 @@ namespace FishingKing
             periodTint.enabled = periodTint.color.a > 0.005f;
             Toast.Init();
             Sfx.Ambience("day");
-            Sfx.Music(true);
+            Music.Play("map");
 
             canvas = UIKit.CreateCanvas("MapUI", 10);
             var root = (RectTransform)canvas.transform;

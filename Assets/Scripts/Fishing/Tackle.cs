@@ -145,6 +145,8 @@ namespace FishingKing
         Vector3 lastHook;
         // lure motion
         float windT = 99f;                // since the last wind
+        float padCrawl;                   // m wound across a lily pad since the last scurry
+        const float ScurryEvery = 0.12f;  // m of crawling across a pad per patter (Sfx.Scurry)
         float twitchLeft, twitchHop;      // hop metres (+ = up) spread over TwitchTime
         Vector3 twitchMove;
         bool fallArmed, touched;
@@ -640,8 +642,14 @@ namespace FishingKing
             float d = flat.magnitude;
             if (OnPad != null)
             {
-                // on a lily pad it crawls across it towards him (pad friction: 0.7 x the wound distance)
+                // on a lily pad it crawls across it towards him (pad friction: 0.7 x the wound distance), pattering
                 if (d > 0.01f) Surface += flat / d * Mathf.Min(d, metres * 0.7f);
+                padCrawl += metres;
+                if (padCrawl >= ScurryEvery)
+                {
+                    padCrawl = 0f;
+                    Sfx.PlayVar(Sfx.Scurry, 0.3f, 0.12f);
+                }
                 windT = 0f;
                 CheckPadLeave();
                 return;
@@ -776,6 +784,7 @@ namespace FishingKing
             if (OnPad != null)
             {
                 // on a lily pad a 톡 hops it 0.35 m towards him
+                Sfx.PlayVar(Sfx.Scurry, 0.4f, 0.1f);
                 var toShore = new Vector3(shore.x - Surface.x, 0, shore.z - Surface.z);
                 if (toShore.magnitude > 0.05f) Surface += toShore.normalized * Mathf.Min(0.35f, toShore.magnitude);
                 dartSide = -dartSide;
@@ -818,10 +827,15 @@ namespace FishingKing
                     float ppm = P.PixelsPerMetre(s);
                     Fx.Splash(s2, Mathf.Clamp(ppm / 40f, 0.3f, 0.7f), stage.WaterTint, 5, P.DepthOf(s));
                     Fx.Ripple(s2, Mathf.Clamp(ppm * 0.9f / 64f, 0.08f, 0.5f), P.Foreshorten(s) * 1.6f + 0.15f, new Color(1, 1, 1, 0.75f), 0.7f);
-                    Sfx.PlayVar(Sfx.Plop, 0.55f, 0.12f);
+                    // (the popper's cupped face chugs; the frog just splashes)
+                    if (b.id == "bait_popper") Sfx.PlayVar(Sfx.Pop, 0.6f, 0.1f);
+                    else Sfx.PlayVar(Sfx.Plop, 0.55f, 0.12f);
                     break;
                 }
                 case LureAction.Twitch:
+                    Sfx.PlayVar(Sfx.Rattle, 0.3f, 0.12f); // the jerkbait's rattle
+                    Fx.Sparkle(Snap(P.To2D(P.Apparent(hp))), new Color(1f, 1f, 0.95f, 0.9f), 0.2f, 2f, OrderUnder);
+                    break;
                 case LureAction.Vertical:
                     Fx.Sparkle(Snap(P.To2D(P.Apparent(hp))), new Color(1f, 1f, 0.95f, 0.9f), 0.2f, 2f, OrderUnder);
                     break;

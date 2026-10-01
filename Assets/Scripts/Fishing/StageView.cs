@@ -127,7 +127,7 @@ namespace FishingKing
             if (L.snow) for (int i = 0; i < 70; i++) motes.Add(NewMote(Color.white, false));
             BuildLamps();
             Water = WaterFx.Create(this);
-            Sfx.Ambience(L.ambient);
+            Sfx.StageAmbience(Def.id, L.ambient);
             ApplyLook(true);
         }
 
@@ -223,6 +223,7 @@ namespace FishingKing
                 else if (!L.IsIce && !glints[i].sr.enabled) RespawnGlint(glints[i], true);
             ActorArt.ApplyLook(Def.id, now);
             Sfx.AmbienceVolume(1f - 0.2f * now.Night);
+            Sfx.AmbienceLayers(b.Weight(Period.Dawn), now.Night);
         }
 
         // ------------------------------------------------------------------ animated lights (spec 5.6)

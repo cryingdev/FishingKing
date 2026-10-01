@@ -79,7 +79,7 @@ namespace FishingKing
         Vector3 snagPrevHook;
         bool snagPrevOk, snagArrow;
         float snagCoolUntil = -99f, hookSpeed, lastSideMove;
-        float snagRightT, snagWrongT, snagSoftT, snagBreakT, snagLastWindT, snagGiveT = -99f, snagCurT, snagPadWound, snagRingT, snagWarnT;
+        float snagRightT, snagWrongT, snagSoftT, snagBreakT, snagLastWindT, snagGiveT = -99f, snagCurT, snagPadWound, snagRingT;
         // ---- the cover fight
         Obstacle coverTarget;
         float coverYaw, coverCoolUntil = -99f, horseT, rimTarget, sparkT, rubLogT;
@@ -179,12 +179,14 @@ namespace FishingKing
                 BankShots++;
                 natural = true;
                 hud.Flash("뱅크샷!", UIKit.Gold, 1f);
+                Sfx.Play(Sfx.Success, 0.5f);
                 Obstacles.Say(string.Format(CIo, "bank shot off {0}: in at ({1:0.00}, {2:0.00}), {3:0.00} m from it", l.struck.id, at.x, at.z, Obstacles.Dist(l.struck, xz)));
             }
             else if (l.overhang != null)
             {
                 natural = true;
                 hud.Flash("가지 아래로 쏙!", UIKit.Gold, 1f);
+                Sfx.Play(Sfx.Success, 0.5f);
                 Obstacles.Say($"under the overhang {l.overhang.id}");
             }
             else if (l.slid) natural = true;
@@ -510,7 +512,7 @@ namespace FishingKing
             Tackle.SetSnag(sn);
             SnagCount++;
             snagArrow = false;
-            snagRightT = snagWrongT = snagSoftT = snagBreakT = snagCurT = snagPadWound = snagWarnT = 0f;
+            snagRightT = snagWrongT = snagSoftT = snagBreakT = snagCurT = snagPadWound = 0f;
             snagRingT = 0f;
             snagLastWindT = Time.time;
             foreach (var f in Spawner.Fish) if (f.State == FishAgent.St.Approach || f.State == FishAgent.St.Nibble) f.LoseInterest();
@@ -577,15 +579,8 @@ namespace FishingKing
                 if (winding) sn.r += 0.9f * revs * dt;
                 else if (giving) sn.r = Mathf.Max(0f, sn.r - 1.5f * dt);
                 else sn.r = Mathf.Max(floor, sn.r - 1.2f * dt);
-                if (sn.r >= 0.6f)
-                {
-                    snagWarnT -= dt;
-                    if (snagWarnT <= 0f)
-                    {
-                        snagWarnT = sn.r > 0.85f ? 0.1f : 0.2f;
-                        Sfx.Play(Sfx.Warn, 0.45f, sn.r > 0.85f ? 1.3f : 1f);
-                    }
-                }
+                // the line twanging as winding loads the snag (as in a fight)
+                Sfx.LineStrain(Mathf.InverseLerp(StrainFrom, 1f, sn.r));
                 if (sn.r >= 1f)
                 {
                     snagBreakT += dt;
@@ -690,6 +685,7 @@ namespace FishingKing
             SnagFrees++;
             LastFreeWay = how;
             hud.Flash("빠졌다!", UIKit.Gold, 0.9f);
+            Sfx.Play(Sfx.Success, 0.5f);
             var s = tk.Surface;
             var s2 = P.To2D(s);
             Fx.Splash(s2, Mathf.Clamp(P.PixelsPerMetre(s) / 45f, 0.2f, 0.5f), Stage.WaterTint, 3, P.DepthOf(s));
@@ -724,6 +720,7 @@ namespace FishingKing
             {
                 Sfx.Play(Sfx.Snap, 1f);
                 view.Shake(0.3f, 0.35f);
+                SnagBreakMusic();
             }
             hud.Flash(cut ? "줄을 끊었어요" : "밑걸림으로 줄이 끊어졌다!", UIKit.Bad, cut ? 1.6f : 2f);
             SnagBreaks++;
@@ -932,6 +929,7 @@ namespace FishingKing
                 f.Downstream = false;
             }
             hud.Flash("커버에서 끌어냈다!", UIKit.Gold, 0.9f);
+            Sfx.Play(Sfx.Success, 0.5f);
         }
 
         /// <summary>

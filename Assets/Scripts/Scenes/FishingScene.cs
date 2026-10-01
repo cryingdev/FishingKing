@@ -12,9 +12,8 @@ namespace FishingKing
             var pv = PixelView.Create(Color.black);
             var stage = StageView.Build(id);
             var ctl = new GameObject("Fishing").AddComponent<FishingController>();
-            ctl.Init(stage, pv);
+            ctl.Init(stage, pv);   // (the stage's music too: FishingController.Music.cs)
             Toast.Init();
-            Sfx.Music(true);
             if (!Game.Data.tutorialDone)
             {
                 Game.Data.tutorialDone = true;

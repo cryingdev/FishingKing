@@ -81,6 +81,7 @@ namespace FishingKing
         public List<LegendRecord> legends = new List<LegendRecord>();
         public string lastStage = "lake";
         public bool soundOn = true;
+        public bool musicOn = true;      // 설정 → 배경음 (Music); a save from before it reads true (JsonUtility keeps the initialiser)
         public bool reelRing = true;     // the circle + direction arrows shown while drawing reel circles
         public bool reelReverse;         // counter-clockwise winds in (default: clockwise)
         public int zoomMode;             // 캐스팅 후 줌인 (ZoomMode): 0 1.25배 (default; older saves), 1 끔, 2 1.5배, 3 액티브
