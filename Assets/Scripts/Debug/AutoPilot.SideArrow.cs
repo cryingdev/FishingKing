@@ -28,6 +28,7 @@ namespace FishingKing
             public int runFrames, activeFrames, arrowFrames, atTarget, settled, settledArrow, settledActive, wrongWay, deadMiss, flicker;
             float settledT, activeT, offT = -1f, lastYaw = float.NaN;
             bool wasActive;
+            FishingHUD hud;
 
             public void Frame(FishingController ctl, float dt)
             {
@@ -69,8 +70,11 @@ namespace FishingKing
                 if (vis && ctl.SideActive && activeT > 0.3f && ar.Side != -ctl.FishRun) wrongWay++;
                 if (ctl.SideActive)
                 {
+                    // (and the strip's rod as drawn in the controller's Update: past the dead zone exactly when the word /
+                    // model are; not ctl.Lean, read after the Angler's LateUpdate has moved the rod on)
+                    if (hud == null) hud = UnityEngine.Object.FindAnyObjectByType<FishingHUD>();
                     bool model = f.SideGood > 0f || f.SideBad > 0f, word = Mathf.Abs(ctl.SideNow) > SideArrow.Deadband;
-                    if (model != word) deadMiss++;
+                    if (model != word || (hud != null && (Mathf.Abs(hud.StripLean) > SideArrow.Deadband) != word)) deadMiss++;
                 }
             }
 

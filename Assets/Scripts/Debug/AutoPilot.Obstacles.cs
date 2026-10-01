@@ -271,7 +271,7 @@ namespace FishingKing
             float leanAt = -1f, t = 0f;
             for (; t < 3f && ctl.State == FishingController.S.Snagged; t += Time.deltaTime)
             {
-                if (leanAt < 0f && Mathf.Abs(ctl.Lean) >= 0.5f && Mathf.Sign(ctl.Lean) == free) leanAt = t;
+                if (leanAt < 0f && Mathf.Abs(ctl.LeanReq) >= 0.5f && Mathf.Sign(ctl.LeanReq) == free) leanAt = t;
                 yield return null;
             }
             PointerInput.SimLeft = PointerInput.SimRight = false;

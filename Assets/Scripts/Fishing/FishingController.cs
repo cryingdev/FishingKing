@@ -94,10 +94,14 @@ namespace FishingKing
         /// <summary>The sideways slide / A-D keys that sweep the rod (sticky).</summary>
         public SideSlide Slide { get; } = new SideSlide();
         /// <summary>
-        /// The rod's lean this frame, -1 (full left) .. 1 (full right): the sweep asked for (eased), so side pressure counts
-        /// in full even with the fish beyond the rod's drawn yaw limits (the fight strip's rod shows it too).
+        /// The rod's lean this frame, -1 (full left) .. 1 (full right): the lean the drawn rod shows (Angler.SweepLine: its
+        /// yaw within the yaw limits off where he faces, on the side swept to, at most the sweep asked for). Side pressure
+        /// counts it and the fight strip's rod shows it: pinned at a limit by a fish far out that way, a lean on outwards
+        /// counts (and shows) nothing, and no lean is no lean.
         /// </summary>
-        public float Lean => Mathf.Clamp(Angler.SweepReq / Angler.SweepMax, -1f, 1f);
+        public float Lean => Mathf.Clamp(Angler.SweepLine / Angler.SweepMax, -1f, 1f);
+        /// <summary>The lean asked for (eased, -1..1), before the rod's yaw limits: what sweeps a snag free.</summary>
+        public float LeanReq => Mathf.Clamp(Angler.SweepReq / Angler.SweepMax, -1f, 1f);
         /// <summary>Sine of the rod tip's angle off the line to the rig, towards its sweep (+ = right): what bends the rig's path.</summary>
         public float SweepSin => L.IsIce ? 0f : Mathf.Sin(Angler.SweepLine * Mathf.Deg2Rad);
         /// <summary>The hooked fish's sideways run: -1 to his left, +1 to his right, 0 none (resting, jumping, worn out, the ice).</summary>
@@ -1424,7 +1428,7 @@ namespace FishingKing
             lastFishPos = Hooked.Pos;
             sweepBearing = FishBearing();
             sweepRate = 0f;
-            rodOff = Mathf.DeltaAngle(Angler.RodYawHeld, sweepBearing * Mathf.Rad2Deg) * Mathf.Deg2Rad;
+            rodOff = Mathf.DeltaAngle(Angler.RodYawShown, sweepBearing * Mathf.Rad2Deg) * Mathf.Deg2Rad;
             jumpTime = -1;
             if (fish.Sp.encounter != null)
             {
@@ -1710,8 +1714,9 @@ namespace FishingKing
         /// <summary>
         /// Each fight step, before side pressure: the fish's actual swing round him (its bearing's rate of change, each
         /// frame's capped at <see cref="SweepRawMax"/>, smoothed over <see cref="SweepTau"/>) and the rod's angle to the line
-        /// (the fish's bearing minus the rod's yaw as held, Angler.RodYawHeld, smoothed over <see cref="RodOffTau"/>), for
-        /// the line's load (FightModel.SideTensionMult).
+        /// (the fish's bearing minus the rod's yaw as side pressure counts it, Angler.RodYawShown: where he faces plus the lean
+        /// the drawn rod shows, so a fish beyond the rod's yaw limits with no lean is no angle; smoothed over
+        /// <see cref="RodOffTau"/>), for the line's load (FightModel.SideTensionMult).
         /// </summary>
         void TrackRodLine(float dt)
         {
@@ -1720,7 +1725,7 @@ namespace FishingKing
             {
                 float raw = Mathf.Clamp(Mathf.DeltaAngle(sweepBearing * Mathf.Rad2Deg, b * Mathf.Rad2Deg) * Mathf.Deg2Rad / dt, -SweepRawMax, SweepRawMax);
                 sweepRate = Mathf.Lerp(sweepRate, raw, 1f - Mathf.Exp(-dt / SweepTau));
-                float off = Mathf.DeltaAngle(Angler.RodYawHeld, b * Mathf.Rad2Deg) * Mathf.Deg2Rad;
+                float off = Mathf.DeltaAngle(Angler.RodYawShown, b * Mathf.Rad2Deg) * Mathf.Deg2Rad;
                 rodOff = Mathf.Lerp(rodOff, off, 1f - Mathf.Exp(-dt / RodOffTau));
             }
             sweepBearing = b;
@@ -1740,11 +1745,12 @@ namespace FishingKing
             sideLogT = 0.25f;
             var p = Hooked.Pos;
             Debug.Log(string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                "[SIDELOG] {0} run {1:+0;-0;0} fightYaw {2:+0.0;-0.0} tgt {3:+0.0;-0.0} bearing {4:+0.0;-0.0} lean {5:+0.00;-0.00} req {6:+0.0;-0.0} eff {7:+0.0;-0.0} rodYaw {8:+0.0;-0.0} side {9:+0.00;-0.00} good {10:0.00} bad {11:0.00} T {12:0.00} Tmult {13:0.000} ratio {14:0.00} line {15:0.0} revs {16:0.00} rodOff {17:+0.0;-0.0;0.0} ang {18:+0.00;-0.00;0.00} sweep {19:+0.00;-0.00;0.00} across {20:0.00} sweeping {21} active {22}",
+                "[SIDELOG] {0} run {1:+0;-0;0} fightYaw {2:+0.0;-0.0} tgt {3:+0.0;-0.0} bearing {4:+0.0;-0.0} lean {5:+0.00;-0.00} leanReq {23:+0.00;-0.00} shown {24:+0.0;-0.0} req {6:+0.0;-0.0} eff {7:+0.0;-0.0} rodYaw {8:+0.0;-0.0} side {9:+0.00;-0.00} good {10:0.00} bad {11:0.00} T {12:0.00} Tmult {13:0.000} ratio {14:0.00} line {15:0.0} revs {16:0.00} rodOff {17:+0.0;-0.0;0.0} ang {18:+0.00;-0.00;0.00} sweep {19:+0.00;-0.00;0.00} across {20:0.00} sweeping {21} active {22} rodOffReq {25:+0.0;-0.0;0.0}",
                 f.State, FishRun, fightYaw * Mathf.Rad2Deg, fightYawTarget * Mathf.Rad2Deg,
                 Mathf.Atan2(p.x - Angler.Feet.x, Mathf.Max(0.5f, p.z - Angler.Feet.z)) * Mathf.Rad2Deg, Lean, Angler.SweepReq, Angler.SweepEff,
                 Angler.RodYaw, SideNow, f.SideGood, f.SideBad, f.Tension, f.SideTensionMult, f.TensionRatio, f.Line, Gesture.Speed,
-                rodOff * Mathf.Rad2Deg, f.SideAngle01, sweepRate, f.SideAcross01, Sweeping ? 1 : 0, SideActive ? 1 : 0));
+                rodOff * Mathf.Rad2Deg, f.SideAngle01, sweepRate, f.SideAcross01, Sweeping ? 1 : 0, SideActive ? 1 : 0, LeanReq, Angler.SweepLine,
+                Mathf.DeltaAngle(Angler.RodYawHeld, Mathf.Atan2(p.x - Angler.Feet.x, Mathf.Max(0.5f, p.z - Angler.Feet.z)) * Mathf.Rad2Deg)));
         }
 
         void UpdateFighting(float dt)

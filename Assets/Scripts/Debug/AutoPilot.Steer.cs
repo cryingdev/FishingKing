@@ -73,6 +73,9 @@ namespace FishingKing
             var raise = ArgF("-fksweepraise");
             if (raise.HasValue) Angler.SweepRaiseRight = raise.Value;
             Log($"sweep raise right {N(Angler.SweepRaiseRight, "0.0")} deg");
+            var rodRight = ArgF("-fkrodright");
+            if (rodRight.HasValue) Angler.RodMaxRight = rodRight.Value;
+            Log($"rod yaw limit right {N(Angler.RodMaxRight, "0.0")} deg");
             Log($"steer test {st}: screen {Screen.width}x{Screen.height} 3d {ctl.Angler.Uses3D} angler x {N(ctl.Angler.X)} range {N(ctl.Angler.Range.x)}..{N(ctl.Angler.Range.y)}");
             if (ctl.Stage.L.IsIce) yield return SteerIce(ctl);
             else
@@ -978,6 +981,7 @@ namespace FishingKing
                 SideArrow.Deadband == FishingController.SideDead && watchAll.deadMiss == 0);
             SCheck($"shots of right / wrong side pressure taken (good {shotGood}, bad {shotBad})", shotGood && shotBad);
             yield return SteerFightGrid(ctl, sp, cm);
+            yield return SteerLimits(ctl, sp, cm, homeX);
         }
 
         /// <summary>What side pressure does to the same run of the same fish, on the fight model (<see cref="SideBench"/>).</summary>
@@ -1089,8 +1093,8 @@ namespace FishingKing
         IEnumerator SteerFightGrid(FishingController ctl, FishSpecies sp, float cm)
         {
             var a = ctl.Angler;
-            float worstBase = 999f, worstLean = 999f, worstDiff = 999f, worstRead = 999f;
-            string atBase = "", atLean = "", atDiff = "", atRead = "";
+            float worstBase = 999f, worstLean = 999f, worstDiff = 999f;
+            string atBase = "", atLean = "", atDiff = "";
             foreach (float x in new[] { a.Range.x, a.Range.y })
             foreach (var (bearing, dist) in new[] { (-40f, 13f), (0f, 13f), (40f, 13f), (-25f, 6f), (25f, 6f) })
             {
@@ -1106,13 +1110,12 @@ namespace FishingKing
                     yield return null;
                     PointerInput.SimLeft = lean < 0;
                     PointerInput.SimRight = lean > 0;
-                    float mn = 999f, leanRead = 0f;
+                    float mn = 999f;
                     string at = "";
                     for (float t = 0f; t < 1.3f && ctl.State == FishingController.S.Fighting; t += Time.deltaTime)
                     {
                         yield return new WaitForEndOfFrame();
                         float c = ActorStrip.Clearance(ctl);
-                        if (t > 0.3f) leanRead = Mathf.Max(leanRead, lean * ctl.Lean);   // (the lean counts in full, the fish far out or not)
                         if (t > 0.3f && c < mn)
                         {
                             mn = c;
@@ -1130,7 +1133,6 @@ namespace FishingKing
                     }
                     else
                     {
-                        if (leanRead < worstRead) { worstRead = leanRead; atRead = string.Format(CI, "x={0:0.00} fish bearing {1:+0;-0;0} at {2:0} m lean {3:+0;-0;0}", a.X, bearing, dist, lean); }
                         if (mn < worstLean) { worstLean = mn; atLean = at; }
                         // (how much the lean takes from the clearance, counting only down to 1 px: a lean may come closer
                         // than the centred rod as long as it stays clear)
@@ -1145,8 +1147,98 @@ namespace FishingKing
                 worstBase, atBase, worstLean, atLean, worstDiff, atDiff));
             SCheck($"fight: leaning never brings the rod onto the hat (leant min {N(worstLean, "0.0")} px, centred min {N(worstBase, "0.0")} px; leant vs min(centred, 1 px) worst {N(worstDiff, "+0.0;-0.0;0.0")} px)",
                 worstDiff >= -0.5f);
-            SCheck($"fight: a lean counts in full wherever the fish is, beyond the rod's drawn yaw limits too (weakest {N(worstRead)} at {atRead})",
-                worstRead >= 0.9f);
+        }
+
+        /// <summary>
+        /// The drawn rod, the fight strip and the model agree at the rod's yaw limits: the fish hooked out beyond the limits
+        /// (and between the old right limit and the new one) with the rod leant left / centred / right. Each frame after it
+        /// settles: the drawn lean (the drawn rod's yaw off where he faces, the part on the side leant to, of a full sweep),
+        /// the strip's (FishingHUD.StripLean), the model's (FishingController.Lean, what side pressure counts, and the lean its
+        /// rod-to-line angle implies: bearing - facing - RodOffset) must match; unleant beyond a limit the line's load
+        /// multiplier for a run either way is ~1 and the drawn rod's own angle off the line (the limit's) is inside the dead
+        /// zone. Logs what the old reading (the lean asked for, the rod's yaw as asked for) gave. Shots at the full yaw either way.
+        /// </summary>
+        IEnumerator SteerLimits(FishingController ctl, FishSpecies sp, float cm, float homeX)
+        {
+            var a = ctl.Angler;
+            var hud = FindAnyObjectByType<FishingHUD>();
+            const float Tol = 0.05f, TolModel = 0.1f;
+            float worst = 0f, worstModel = 0f, worstMult = 0f, worstPhantom = 0f;
+            string atWorst = "", atModel = "", atMult = "", atPhantom = "";
+            int samples = 0, beyondSamples = 0;
+            bool shotR = false, shotL = false;
+            foreach (float bearing in new[] { 35f, 45f, -45f })
+            foreach (int lean in new[] { -1, 0, 1 })
+            {
+                yield return SteerCast(ctl, "bait_minnow", homeX);
+                if (ctl.State != FishingController.S.Waiting) continue;
+                float br = bearing * Mathf.Deg2Rad;
+                if (!ctl.DebugHook(sp, cm, 777, new Vector3(a.X + Mathf.Sin(br) * 13f, -1.2f, Mathf.Cos(br) * 13f))) continue;
+                yield return null;
+                PointerInput.SimLeft = lean < 0;
+                PointerInput.SimRight = lean > 0;
+                float caseWorst = 0f, caseModel = 0f, sumDrawn = 0f, sumHud = 0f, sumModel = 0f, sumReq = 0f, sumOld = 0f, sumNew = 0f, sumOldMult = 0f, sumNewMult = 0f, sumB = 0f, sumYaw = 0f;
+                int n = 0;
+                for (float t = 0f; t < 1.4f && ctl.State == FishingController.S.Fighting && ctl.Fight != null; t += Time.deltaTime)
+                {
+                    yield return null;
+                    if (t < 0.6f || hud == null) continue;
+                    var p = ctl.Hooked.Pos;
+                    float b = Mathf.Atan2(p.x - a.Feet.x, Mathf.Max(0.5f, p.z - a.Feet.z)) * Mathf.Rad2Deg;
+                    float req = a.SweepReq;
+                    // the drawn rod's yaw off where he faces, the part on the side leant to (at most the lean asked for)
+                    float off = a.RodYaw - a.Facing;
+                    float drawn = Mathf.Clamp(off, Mathf.Min(0f, req), Mathf.Max(0f, req)) / Angler.SweepMax;
+                    float hudLean = hud.StripLean, model = ctl.Lean;
+                    float fromOff = (Mathf.DeltaAngle(a.Facing, b) - ctl.RodOffset * Mathf.Rad2Deg) / Angler.SweepMax;
+                    float d = Mathf.Max(Mathf.Abs(drawn - hudLean), Mathf.Abs(drawn - model));
+                    caseWorst = Mathf.Max(caseWorst, d);
+                    caseModel = Mathf.Max(caseModel, Mathf.Abs(fromOff - drawn));
+                    bool beyond = Mathf.Abs(a.Facing) > (a.Facing > 0f ? Angler.RodMaxRight : 40f) + 1f;
+                    float oldOff = Mathf.DeltaAngle(a.RodYawHeld, b) * Mathf.Deg2Rad;
+                    float newMult = Mathf.Max(Mathf.Abs(FightModel.SideTensionMultFor(1, ctl.RodOffset, 0f) - 1f), Mathf.Abs(FightModel.SideTensionMultFor(-1, ctl.RodOffset, 0f) - 1f));
+                    float oldMult = Mathf.Max(Mathf.Abs(FightModel.SideTensionMultFor(1, oldOff, 0f) - 1f), Mathf.Abs(FightModel.SideTensionMultFor(-1, oldOff, 0f) - 1f));
+                    if (lean == 0 && beyond)
+                    {
+                        beyondSamples++;
+                        if (newMult > worstMult) { worstMult = newMult; atMult = string.Format(CI, "fish {0:+0.0;-0.0} deg rod yaw {1:+0.0;-0.0}", b, a.RodYaw); }
+                        if (Mathf.Abs(off) > worstPhantom) { worstPhantom = Mathf.Abs(off); atPhantom = string.Format(CI, "fish {0:+0.0;-0.0} deg rod yaw {1:+0.0;-0.0}", b, a.RodYaw); }
+                    }
+                    n++;
+                    sumDrawn += drawn; sumHud += hudLean; sumModel += model; sumReq += req / Angler.SweepMax;
+                    sumOld += oldOff * Mathf.Rad2Deg; sumNew += ctl.RodOffset * Mathf.Rad2Deg; sumOldMult += oldMult; sumNewMult += newMult; sumB += b; sumYaw += a.RodYaw;
+                    // the full yaw either way: a shot each
+                    if (!shotR && lean > 0 && bearing > 40f && t > 1f && a.RodYaw >= Angler.RodMaxRight - 0.5f)
+                    {
+                        shotR = true;
+                        LogFightShot(ctl, "fight_yaw_max_right");
+                        yield return Shot($"fight_yaw_max_right_{ctl.Stage.Def.id}");
+                    }
+                    if (!shotL && lean < 0 && bearing < -40f && t > 1f && a.RodYaw <= -39.5f)
+                    {
+                        shotL = true;
+                        LogFightShot(ctl, "fight_yaw_max_left");
+                        yield return Shot($"fight_yaw_max_left_{ctl.Stage.Def.id}");
+                    }
+                }
+                PointerInput.SimLeft = PointerInput.SimRight = false;
+                if (n > 0)
+                {
+                    samples += n;
+                    string at = string.Format(CI, "fish {0:+0.0;-0.0} deg lean {1:+0;-0;0}", sumB / n, lean);
+                    if (caseWorst > worst) { worst = caseWorst; atWorst = at; }
+                    if (caseModel > worstModel) { worstModel = caseModel; atModel = at; }
+                    Log(string.Format(CI, "[SIDE] limit fish {0:+0.0;-0.0} deg lean {1:+0;-0;0}: rod yaw {2:+0.0;-0.0} (limits -40 / +{3:0}); lean drawn {4:+0.00;-0.00;0.00} HUD {5:+0.00;-0.00;0.00} model {6:+0.00;-0.00;0.00} (asked {7:+0.00;-0.00;0.00}: the old reading); rod-to-line {8:+0.0;-0.0;0.0} deg (old {9:+0.0;-0.0;0.0}); load either way up to x{10:0.000} (old x{11:0.000}); worst mismatch {12:0.000}, model's angle vs drawn {13:0.000}; {14} frames, clear {15:0.0}px",
+                        sumB / n, lean, sumYaw / n, Angler.RodMaxRight, sumDrawn / n, sumHud / n, sumModel / n, sumReq / n, sumNew / n, sumOld / n, 1f + sumNewMult / n, 1f + sumOldMult / n, caseWorst, caseModel, n, ActorStrip.Clearance(ctl)));
+                }
+                ctl.DebugRelease();
+                for (float w = 0f; w < 3f && ctl.State != FishingController.S.Ready; w += Time.deltaTime) yield return null;
+            }
+            SCheck($"at the rod's yaw limits the drawn lean, the fight strip's and the model's match (worst {N(worst, "0.000")} at {atWorst}; the model's rod-to-line angle vs drawn {N(worstModel, "0.000")} at {atModel}; {samples} frames)",
+                samples > 0 && worst <= Tol && worstModel <= TolModel);
+            SCheck($"a fish beyond the rod's yaw limit with no lean: load x1 for a run either way (off by at most {N(worstMult, "0.0000")} at {atMult}; {beyondSamples} frames), the strip and the model centred (in the match above) although the rod pinned at the limit points {N(worstPhantom, "0.0")} deg off the line at {atPhantom} (the dead zone is {N(FishingController.SideDead * Angler.SweepMax, "0.0")} deg)",
+                beyondSamples > 0 && worstMult <= 0.01f);
+            SCheck($"shots at the full rod yaw either way (right {shotR}, left {shotL})", shotR && shotL);
         }
 
         void LogFightShot(FishingController ctl, string name)

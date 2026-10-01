@@ -121,28 +121,29 @@ namespace FishingKing
         /// </summary>
         public const float SideSweepLoad = 0.05f, SideSweepFull = 0.45f;
         /// <summary>-1..1: the rod's angle to the line against the run (+) / along it (-), of a full angle.</summary>
-        public float SideAngle01 => SideRun == 0 ? 0f : Mathf.Clamp(RodOffset * SideRun / SideFullAngle, -1f, 1f);
+        public float SideAngle01 => Angle01(SideRun, RodOffset);
         /// <summary>
         /// 0..1: how hard the fish sweeps across the rod: its sideways speed (of <see cref="SideSweepFull"/>) x how far the
         /// rod points away from its path (1 opened against its motion, 0.5 on the line, 0 pointing ahead along it).
         /// </summary>
-        public float SideAcross01
-        {
-            get
-            {
-                if (SideRun == 0 || SweepRate == 0f) return 0f;
-                float across = 0.5f + 0.5f * Mathf.Clamp(RodOffset * Mathf.Sign(SweepRate) / SideFullAngle, -1f, 1f);
-                return Mathf.Clamp01(Mathf.Abs(SweepRate) / SideSweepFull) * across;
-            }
-        }
+        public float SideAcross01 => Across01(SideRun, RodOffset, SweepRate);
         /// <summary>The line's load multiplier from the rod's angle and the fish's sweep this step (1 = none).</summary>
-        public float SideTensionMult
+        public float SideTensionMult => SideTensionMultFor(SideRun, RodOffset, SweepRate);
+
+        static float Angle01(int run, float rodOffset) => run == 0 ? 0f : Mathf.Clamp(rodOffset * run / SideFullAngle, -1f, 1f);
+
+        static float Across01(int run, float rodOffset, float sweepRate)
         {
-            get
-            {
-                float a = SideAngle01;
-                return 1f + SideAgainstLoad * Mathf.Max(a, 0f) - SideWithEase * Mathf.Max(-a, 0f) + SideSweepLoad * SideAcross01;
-            }
+            if (run == 0 || sweepRate == 0f) return 0f;
+            float across = 0.5f + 0.5f * Mathf.Clamp(rodOffset * Mathf.Sign(sweepRate) / SideFullAngle, -1f, 1f);
+            return Mathf.Clamp01(Mathf.Abs(sweepRate) / SideSweepFull) * across;
+        }
+
+        /// <summary>The <see cref="SideTensionMult"/> a run to <paramref name="run"/>'s side gives with this rod angle to the line (radians) and sweep (rad/s).</summary>
+        public static float SideTensionMultFor(int run, float rodOffset, float sweepRate)
+        {
+            float a = Angle01(run, rodOffset);
+            return 1f + SideAgainstLoad * Mathf.Max(a, 0f) - SideWithEase * Mathf.Max(-a, 0f) + SideSweepLoad * Across01(run, rodOffset, sweepRate);
         }
         /// <summary>Runs turned by side pressure so far.</summary>
         public int Turns { get; private set; }

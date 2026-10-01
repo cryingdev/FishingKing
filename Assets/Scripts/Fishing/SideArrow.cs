@@ -127,7 +127,7 @@ namespace FishingKing
             if (want)
             {
                 // (snagged: bright while the rod is held swept the free way, else the prompt)
-                float s = fighting ? ctl.SideNow : (Mathf.Abs(ctl.Lean) >= 0.5f && Mathf.Sign(ctl.Lean) == ctl.SnagFreeSide ? 1f : 0f);
+                float s = fighting ? ctl.SideNow : (Mathf.Abs(ctl.LeanReq) >= 0.5f && Mathf.Sign(ctl.LeanReq) == ctl.SnagFreeSide ? 1f : 0f);
                 State = s > Deadband ? Mode.Right : s < -Deadband ? Mode.Wrong : Mode.Prompt;
             }
             if (hidden || State != lastMode)

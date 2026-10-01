@@ -104,9 +104,12 @@ namespace FishingKing
         const float BodyShare = 0.8f;       // the body turns this much of the way, the rod and head the rest
         const float BodyMax = 35f, HeadMax = 45f, RodMax = 40f; // degrees either way
         // the rod is held on his left: turning right would swing the rod hand, the reel and the rod's butt behind his
-        // head (seen from behind), so to the right the body turns less, the hand follows only part of the body turn
-        // (the left arm reaches out) and the rod turns a little less; the head still turns the whole way
-        const float BodyMaxRight = 25f, HandRight = 0.35f, RodMaxRight = 30f;
+        // head (seen from behind), so to the right the body turns less and the hand follows only part of the body turn
+        // (the left arm reaches out) and the rod turns less (RodMaxRight: at 40 deg, as to the left, the fish close in out to
+        // his right brought it onto the hat with the hat guard's tilt at its most, KeepOffHat); the head turns the whole way
+        const float BodyMaxRight = 25f, HandRight = 0.35f;
+        /// <summary>Degrees the rod may yaw to his right (static: the -fkrodright test switch; to the left <see cref="RodMax"/>).</summary>
+        internal static float RodMaxRight = 30f;
         const float WalkFace = 25f;         // degrees he turns towards the side he walks to
         float walkV, faceS;
 
@@ -136,21 +139,28 @@ namespace FishingKing
         /// <summary>The rod's yaw this frame (degrees, + = right, within its limits): where he faces plus the sweep.</summary>
         public float RodYaw { get; private set; }
         /// <summary>
-        /// The sweep asked for this frame (degrees, + = right, eased), before the rod's yaw limits: side pressure reads it, so
-        /// a lean counts in full with the fish far out to one side, where the drawn rod is pinned at a limit.
+        /// The sweep asked for this frame (degrees, + = right, eased), before the rod's yaw limits (sweeping a snag free reads
+        /// it; side pressure reads what the drawn rod shows, <see cref="SweepLine"/>).
         /// </summary>
         public float SweepReq => sweepS;
-        /// <summary>
-        /// The rod's yaw as held (degrees, + = right): where he faces plus the sweep asked for, before the rod's yaw limits
-        /// (the fight's load reads the rod's angle to the line from it, so it counts beyond the limits as side pressure does).
-        /// </summary>
+        /// <summary>Where he faces this frame (degrees, + = right, eased; in a fight the hooked fish's bearing), before the rod's yaw limits.</summary>
+        public float Facing => faceS;
+        /// <summary>The rod's yaw as asked for (degrees, + = right): where he faces plus the sweep asked for, before the rod's yaw limits (for the tests).</summary>
         public float RodYawHeld => faceS + sweepS;
         /// <summary>
-        /// How far the rod tip is off the line to the rig, towards the side it is swept to (degrees, the sweep's sign, at most
-        /// the sweep): what bends a wound-in rig's path. A rod pinned at a yaw limit by a rig far out that way and swept back
-        /// inwards counts in full; swept on outwards it cannot go, so that counts nothing.
+        /// How far the rod tip is off the line to the rig / fish, towards the side it is swept to (degrees, the sweep's sign,
+        /// at most the sweep): the drawn rod's yaw (within its limits) minus where he faces, only the part on the side swept
+        /// to. What bends a wound-in rig's path, and the lean side pressure counts (FishingController.Lean, the fight strip):
+        /// a rod pinned at a yaw limit by a rig / fish far out that way and swept back inwards counts in full; swept on
+        /// outwards it cannot go, so that counts nothing; unswept it is 0 (the limit's own angle off the line is no lean).
         /// </summary>
         public float SweepLine { get; private set; }
+        /// <summary>
+        /// The rod's yaw as side pressure counts it (degrees, + = right): where he faces plus <see cref="SweepLine"/>. The
+        /// fight's load reads the rod's angle to the line from it (FishingController.TrackRodLine): the lean the drawn rod
+        /// shows; a fish beyond the rod's yaw limits with no lean is no angle.
+        /// </summary>
+        public float RodYawShown => faceS + SweepLine;
 
         // ---- the wind-up of a flick cast: the rod follows the finger
         /// <summary>

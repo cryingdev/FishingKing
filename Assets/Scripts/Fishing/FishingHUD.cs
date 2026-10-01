@@ -417,12 +417,16 @@ namespace FishingKing
             sideBg.gameObject.SetActive(!ctl.Stage.L.IsIce);
         }
 
+        /// <summary>The lean the fight strip's rod showed last (-1..1; for the tests: the controller's Lean, what the drawn rod shows and side pressure counts).</summary>
+        internal float StripLean { get; private set; }
+
         /// <summary>The side-pressure strip and its word: the fish's run, the rod's lean, right / wrong.</summary>
         void UpdateSide()
         {
             // (the run's side only while side pressure counts: the fish really sweeping that way, or a run for cover)
             int run = ctl.SideActive ? ctl.FishRun : 0;
             float lean = ctl.Lean, side = ctl.SideNow, dead = FishingController.SideDead;
+            StripLean = lean;
             bool blink = Mathf.Repeat(Time.unscaledTime * 3f, 1f) < 0.6f;
             sideL.color = run < 0 ? (blink ? SideBadColor : Color.Lerp(SideBadColor, SideDim, 0.5f)) : SideDim;
             sideR.color = run > 0 ? (blink ? SideBadColor : Color.Lerp(SideBadColor, SideDim, 0.5f)) : SideDim;

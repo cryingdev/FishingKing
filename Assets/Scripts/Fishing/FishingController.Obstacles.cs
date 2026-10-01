@@ -612,7 +612,7 @@ namespace FishingKing
             // the rod sweep (not through the ice)
             if (!L.IsIce)
             {
-                float lean = Lean;
+                float lean = LeanReq;   // (the sweep asked for: a snag far out to one side frees the same)
                 bool held = Mathf.Abs(lean) >= 0.5f;
                 if (sn.soft)
                 {
