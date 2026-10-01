@@ -402,7 +402,10 @@ namespace FishingKing
                 tgt = Mathf.Clamp(tgt, -m, m);
             }
             bool going = keeps.Count + softKeeps.Count == 0;   // (nothing kept: back home, briskly)
-            float vmax = going ? OneReturnSpeed : OneMaxSpeed;
+            // (but no faster than the follow while the zoom is still easing out on the way: the crop then also swings from
+            // the zoomed focus to the 1x view and widens, and the camera holding it moved 7 px a frame at the brisk return,
+            // e.g. a fish landed zoomed with the view panned out over the overscan)
+            float vmax = going && level <= 0f ? OneReturnSpeed : OneMaxSpeed;
             float acc = going ? OneReturnAccel : OneAccel;
             float err = tgt - panOne.x;
             float want = Mathf.Clamp(err / OneTau, -vmax, vmax);
