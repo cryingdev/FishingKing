@@ -34,12 +34,6 @@ namespace FishingKing
         AudioSource dawnSrc, nightSrc, drag, thrash;
         /// <summary>The taut line twanging under load: one rubbery pluck (see <see cref="LineStrain"/>).</summary>
         public static AudioClip LineTing;
-        /// <summary>
-        /// The recorded twangs of a rubber band (Resources/Audio/Sfx/line_twang_1..N, as many as there are), played in a
-        /// random order that never repeats the last one. Empty: the synthesized LineTing.
-        /// </summary>
-        static readonly System.Collections.Generic.List<AudioClip> twangs = new System.Collections.Generic.List<AudioClip>();
-        static int lastTwang = -1;
         static float nextTing = -1f;
         /// <summary>Seconds between tings at the bottom / the top of the strain (they come faster as it climbs).</summary>
         const float TingSlow = 0.9f, TingFast = 0.16f;
@@ -73,12 +67,6 @@ namespace FishingKing
                 var c = Resources.Load<AudioClip>("Audio/Sfx/reel_click_" + k);
                 if (c == null) break;
                 reelClicks.Add(c);
-            }
-            for (int k = 1; ; k++)
-            {
-                var c = Resources.Load<AudioClip>("Audio/Sfx/line_twang_" + k);
-                if (c == null) break;
-                twangs.Add(c);
             }
         }
 
@@ -122,15 +110,7 @@ namespace FishingKing
             level = Mathf.Clamp01(level);
             if (nextTing < 0f || now - nextTing > 1f) nextTing = now;   // (the first ting comes at once)
             if (now < nextTing) return;
-            var clip = LineTing;
-            if (twangs.Count > 0)
-            {
-                int k = UnityEngine.Random.Range(0, twangs.Count);
-                if (twangs.Count > 1 && k == lastTwang) k = (k + 1) % twangs.Count;
-                lastTwang = k;
-                clip = twangs[k];
-            }
-            Play(clip, 0.12f + 0.33f * level, 0.85f + 0.65f * level + UnityEngine.Random.Range(-0.015f, 0.015f));
+            Play(LineTing, 0.12f + 0.33f * level, 0.85f + 0.65f * level + UnityEngine.Random.Range(-0.015f, 0.015f));
             nextTing = now + Mathf.Lerp(TingSlow, TingFast, level);
         }
 
@@ -320,30 +300,38 @@ namespace FishingKing
         /// without a seam (490 samples a click, 1200 whole cycles of the whine).
         /// </summary>
         /// <summary>
-        /// One twang of the taut line, rubbery: a buzzy saw-like tone at 180 Hz (12 harmonics) through a low pass that closes
-        /// fast from 3.5 kHz to 300 Hz (the "dwang"), its pitch snapping down from +25 % at the pluck and wobbling at 9 Hz
-        /// as the band settles, with a short damped decay.
+        /// One twang of the taut line, modelled on a recorded rubber band (measured: f0 ~113 Hz, a full harmonic series (here to the
+        /// 24th) with the 3rd weaker than the 4th, the overtones dying 2-3x faster than the fundamental, ~0.3 s). Its pitch
+        /// starts a little flat, rises ~6 % in the first 60 ms as the band snaps taut, then sags back; a low thump and a tiny
+        /// click at the pluck.
         /// </summary>
         static AudioClip BuildLineTing()
         {
-            var d = Buf(0.4f);
-            const float f0 = 180f;
+            var d = Buf(0.34f);
+            const float f0 = 113f;
+            // harmonic levels at the pluck (dB, measured) and their decay times (s)
+            float[] db = { 0, -4, -16, -10, -16, -16, -21, -20, -27, -24, -28, -28, -29, -30, -31, -31, -33, -33, -34, -35, -36, -37, -38, -38 };
             double ph = 0;
-            float lp = 0f;
-            var rnd = new System.Random(99);
             for (int i = 0; i < d.Length; i++)
             {
                 float t = (float)i / Rate;
-                float f = f0 * (1f + 0.25f * Mathf.Exp(-t / 0.03f)) * (1f + 0.035f * Mathf.Sin(2f * Mathf.PI * 9f * t) * Mathf.Exp(-t / 0.15f));
+                float rise = 1f - Mathf.Exp(-t / 0.018f);
+                float sag = Mathf.Clamp01((t - 0.08f) / 0.17f);
+                float f = f0 * (0.955f + 0.065f * rise - 0.045f * sag * sag * (3f - 2f * sag)) * (1f + 0.006f * Mathf.Sin(2f * Mathf.PI * 7f * t));
                 ph += f / Rate;
                 float v = 0f;
-                for (int k = 1; k <= 12; k++) v += Mathf.Sin((float)(2.0 * Math.PI * k * ph)) / k;
-                v += 0.08f * ((float)rnd.NextDouble() * 2f - 1f) * Mathf.Exp(-t / 0.01f);   // the snap of the pluck
-                float cut = 300f + 3200f * Mathf.Exp(-t / 0.05f);
-                lp += (1f - Mathf.Exp(-2f * Mathf.PI * cut / Rate)) * (v - lp);
-                float env = Mathf.Min(1f, t / 0.002f) * Mathf.Exp(-t / 0.11f);
-                d[i] = lp * env;
+                for (int k = 1; k <= db.Length; k++)
+                {
+                    float tau = k == 1 ? 0.075f : k <= 4 ? 0.04f : 0.028f;
+                    v += Mathf.Pow(10f, db[k - 1] / 20f) * Mathf.Exp(-t / tau) * Mathf.Sin((float)(2.0 * Math.PI * k * ph));
+                }
+                float attack = Mathf.Min(1f, t / 0.0015f);
+                d[i] = v * attack + 0.3f * Mathf.Exp(-t / 0.03f) * Mathf.Sin(2f * Mathf.PI * 42f * t);   // the thump
             }
+            Noise(d, 0f, 0.004f, 0.15f, 0.9f, 0.7f, 2f, 99);   // the click of the pluck
+            Noise(d, 0f, 0.12f, 0.12f, 0.45f, 0.3f, 3f, 98);   // the rubber's buzz against the fingers, dying fast
+            int fo = (int)(0.03f * Rate);
+            for (int i = 0; i < fo; i++) d[d.Length - fo + i] *= 1f - (float)i / fo;
             return Make("line_ting", d);
         }
 
