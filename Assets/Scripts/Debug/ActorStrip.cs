@@ -27,7 +27,8 @@ namespace FishingKing
     ///                         poses; see Audit)
     /// -fkarmtune "v;v;..."    variants for -fkcrank, tried one after the other: comma separated key=value (see Tune):
     ///                         name, h / hi / hr / hf (hold hand x:y:z, all / idle / reel / fight, "none" = the sprite's),
-    ///                         reels, scale, roll (reel), lean (rod), turn, rsh, poler, polel (Angler3D reeling hold)
+    ///                         reels, scale, roll (reel), lean (rod), turn, rsh, poler, polel (Angler3D reeling hold),
+    ///                         hc (the middle hold's hand x:y:z), crsh, cpoler, cpolel (its posture; Angler.RodCentre)
     /// -fkwindup &lt;dir&gt;         the rod following the finger in the flick wind-up (see WindUpRun): a grid of finger
     ///                         offsets (windup_&lt;stage&gt;_strip.png), a clearance sweep, a flick's cast swing and a
     ///                         wind-up called off, with the rod's pitch / lean and hat clearance in the log ([Windup]);
@@ -739,9 +740,9 @@ namespace FishingKing
             if (a.Model3D == null)
             {
                 var hat = a.HatPos2D * PixelView.PPU;
-                float b2 = 999f;
-                foreach (var q in a.RodPaint.Axis) b2 = Mathf.Min(b2, (q - hat).magnitude - SpriteHatR);
-                return b2;
+                var g2 = new Angler.HatGapAcc();
+                foreach (var q in a.RodPaint.Axis) g2.Take((q - hat).magnitude - SpriteHatR);
+                return g2.Result(a.RodCentre);
             }
             var head = a.Model3D.HeadPos;
             var pts = new List<Vector2>();
@@ -753,10 +754,30 @@ namespace FishingKing
                 pts.Add((P.To2D(head + Vector3.up * 0.22f + o * 0.11f) + bob) * PixelView.PPU);
             }
             var hull = Hull(pts);
-            float best = 999f;
-            foreach (var q in a.RodPaint.Axis) best = Mathf.Min(best, SignedDist(hull, q));
-            return best;
+            // (held in the middle: a rod crossing the hat counts by its deepest point inside, Angler.HatGapAcc)
+            var g = new Angler.HatGapAcc();
+            foreach (var q in a.RodPaint.Axis) g.Take(SignedDist(hull, q));
+            if (Detail != null)
+            {
+                float minX = float.MaxValue, maxX = float.MinValue, minY = float.MaxValue, maxY = float.MinValue;
+                foreach (var h in hull) { minX = Mathf.Min(minX, h.x); maxX = Mathf.Max(maxX, h.x); minY = Mathf.Min(minY, h.y); maxY = Mathf.Max(maxY, h.y); }
+                var ax = a.RodPaint.Axis;
+                float inMinY = float.MaxValue, inMaxY = float.MinValue, near = 999f;
+                Vector2 nearAt = default;
+                foreach (var q in ax)
+                {
+                    float d = SignedDist(hull, q);
+                    if (d < 0f) { inMinY = Mathf.Min(inMinY, q.y); inMaxY = Mathf.Max(inMaxY, q.y); }
+                    if (Mathf.Abs(d) < Mathf.Abs(near)) { near = d; nearAt = q; }
+                }
+                Detail = string.Format(CultureInfo.InvariantCulture, "hat x {0:0.0}..{1:0.0} y {2:0.0}..{3:0.0}; rod {4} .. {5} ({6} pts), inside y {7:0.0}..{8:0.0}, nearest edge {9:+0.0;-0.0} at {10}; hand {11}",
+                    minX, maxX, minY, maxY, Fmt(ax[0]), Fmt(ax[ax.Count - 1]), ax.Count, inMinY, inMaxY, near, Fmt(nearAt), Fmt((P.To2D(a.Hand) + bob) * PixelView.PPU));
+            }
+            return g.Result(a.RodCentre);
         }
+
+        /// <summary>Set non-null to have <see cref="Clearance"/> describe the hat and the rod on screen (px) in it.</summary>
+        internal static string Detail;
 
         const float SpriteHatR = 8f;   // px: the pose sprites' hat, brim to brim ~16 px
 
@@ -849,6 +870,11 @@ namespace FishingKing
                     case "rsh": Angler3D.HoldRsh = V3(v); break;
                     case "poler": Angler3D.HoldPoleR = V3(v); break;
                     case "polel": Angler3D.HoldPoleL = V3(v); break;
+                    // the middle hold (Angler.RodCentre): the rod hand, the cranking shoulder, the elbow poles
+                    case "hc": Angler.HoldCentre = V3(v); break;
+                    case "crsh": Angler3D.CentreRsh = V3(v); break;
+                    case "cpoler": Angler3D.CentrePoleR = V3(v); break;
+                    case "cpolel": Angler3D.CentrePoleL = V3(v); break;
                     default: Debug.Log("[Crank] unknown tune key " + k); break;
                 }
             }

@@ -37,7 +37,7 @@ namespace FishingKing
     /// </summary>
     public partial class AutoPilot
     {
-        int steerFails;
+        int steerFails, grazeLogs;
         readonly List<SpriteRenderer> trail = new List<SpriteRenderer>();
         Text caption;
         Image captionPlate;
@@ -69,31 +69,34 @@ namespace FishingKing
             FishingController.NoBites = true;
             PointerInput.SimDpi = 0f;
             string st = ctl.Stage.Def.id;
-            bool clearOnly = Arg("-fksteer") == "clear", fightsOnly = Arg("-fksteer") == "fights", arrowOnly = Arg("-fksteer") == "arrow";
+            bool clearOnly = Arg("-fksteer") == "clear", fightsOnly = Arg("-fksteer") == "fights", arrowOnly = Arg("-fksteer") == "arrow", edgeOnly = Arg("-fksteer") == "edge";
             var raise = ArgF("-fksweepraise");
             if (raise.HasValue) Angler.SweepRaiseRight = raise.Value;
             Log($"sweep raise right {N(Angler.SweepRaiseRight, "0.0")} deg");
+            var rodCentreMax = ArgF("-fkrodcentremax");
+            if (rodCentreMax.HasValue) Angler.RodMaxCentre = rodCentreMax.Value;
             var rodRight = ArgF("-fkrodright");
-            if (rodRight.HasValue) Angler.RodMaxRight = rodRight.Value;
-            Log($"rod yaw limit right {N(Angler.RodMaxRight, "0.0")} deg");
+            if (rodRight.HasValue) Angler.RodMaxAcross = rodRight.Value;
+            var ca = ctl.Angler;
+            Log($"hold: {(ca.LeftHanded ? "left" : "right")}-handed, rod {(ca.RodCentre ? "centre" : "side")}; rod yaw limits {N(ca.RodYawMin, "0.0")} .. {N(ca.RodYawMax, "+0.0")} deg (across the body {N(Angler.RodMaxAcross, "0.0")}, middle {N(Angler.RodMaxCentre, "0.0")})");
             Log($"steer test {st}: screen {Screen.width}x{Screen.height} 3d {ctl.Angler.Uses3D} angler x {N(ctl.Angler.X)} range {N(ctl.Angler.Range.x)}..{N(ctl.Angler.Range.y)}");
             if (ctl.Stage.L.IsIce) yield return SteerIce(ctl);
             else
             {
                 // a lure rod that casts far enough for three stretches of winding
                 SteerGear("rod_carbon", "reel_highgear", null);
-                if (!clearOnly && !fightsOnly && !arrowOnly)
+                if (!clearOnly && !fightsOnly && !arrowOnly && !edgeOnly)
                 {
                     yield return SteerLure(ctl);
                     yield return SteerStrokes(ctl);
                     yield return SteerFloat(ctl);
                 }
-                if (!fightsOnly && !arrowOnly) yield return SteerClearance(ctl);
-                if (!clearOnly && !arrowOnly) yield return SteerFights(ctl);
+                if (!fightsOnly && !arrowOnly && !edgeOnly) yield return SteerClearance(ctl);
+                if (!clearOnly && !arrowOnly && !edgeOnly) yield return SteerFights(ctl);
                 // the side-pressure arrow over the line's entry, with a float rig and a lure (AutoPilot.SideArrow.cs)
-                if (!clearOnly) yield return SteerArrow(ctl);
+                if (!clearOnly && !edgeOnly) yield return SteerArrow(ctl);
                 // the float swept at the edge of the visible water (last: the fights above keep their rolls)
-                if (!clearOnly && !fightsOnly && !arrowOnly) yield return SteerEdge(ctl);
+                if (edgeOnly || (!clearOnly && !fightsOnly && !arrowOnly)) yield return SteerEdge(ctl);
             }
             FishingController.NoBites = false;
             PointerInput.SimLeft = PointerInput.SimRight = false;
@@ -653,15 +656,19 @@ namespace FishingKing
             Game.I.AddBait(b.id, 99);
             ctl.EquipBait(b);
             float ax = ctl.Angler.X;
-            ctl.Angler.DebugPlace(ctl.Angler.Range.x);
+            // (out to the rod hand's side: his left, left-handed his right, where the rod turns furthest; held in the middle
+            // the same side as the hand. Across the body the rod's yaw limit sits about where the edge is: no sweep left there)
+            float es = Arg("-fksteeredge") == "left" ? -1f : Arg("-fksteeredge") == "right" ? 1f : ctl.Angler.LeftHanded ? 1f : -1f;   // (-fksteeredge left|right: that edge)
+            Log($"edge test on the {(es < 0f ? "left" : "right")}");
+            ctl.Angler.DebugPlace(es < 0f ? ctl.Angler.Range.x : ctl.Angler.Range.y);
             yield return null;
             var tk = ctl.Tackle;
             var wf = ctl.Stage.Water;
             var L = ctl.Stage.L;
             const float z = 24f;
             float xe = ctl.Angler.X;
-            while (xe > -L.xLim && wf.DriftOpen(xe - 0.05f, z)) xe -= 0.05f;
-            var at = new Vector3(xe + 0.6f, 0f, z);
+            while (es * xe < L.xLim && wf.DriftOpen(xe + es * 0.05f, z)) xe += es * 0.05f;
+            var at = new Vector3(xe - es * 0.6f, 0f, z);
             if (!ctl.DebugPlaceRig(at))
             {
                 SCheck($"float placed by the edge ({ctl.State})", false);
@@ -673,26 +680,26 @@ namespace FishingKing
             yield return new WaitForSeconds(1f);
             float d0 = tk.SweepDrift, x0 = tk.Surface.x, minX = x0;
             int out0 = 0, frames = 0;
-            yield return SimSlide(0.72f, 0.30f, 0.55f, 0.35f);
+            yield return es < 0f ? SimSlide(0.72f, 0.30f, 0.55f, 0.35f) : SimSlide(0.28f, 0.70f, 0.55f, 0.35f);
             Caption("찌 · 화면 가장자리 쪽으로 밀기 (가장자리에서 멈춤)");
             for (float t = 0f; t < 25f && ctl.State == FishingController.S.Waiting; t += Time.deltaTime)
             {
                 frames++;
-                minX = Mathf.Min(minX, tk.Surface.x);
+                minX = es < 0f ? Mathf.Min(minX, tk.Surface.x) : Mathf.Max(minX, tk.Surface.x);   // (the outermost)
                 if (!wf.DriftOpen(tk.Surface.x, tk.Surface.z)) out0++;
                 yield return null;
             }
-            float drift = d0 - tk.SweepDrift;
+            float drift = es * (tk.SweepDrift - d0);
             if (PixelView.Current != null)
             {
                 var s = PixelView.Current.WorldToScreen(ctl.Stage.P.To2D(tk.Surface));
                 Log(string.Format(CI, "[STEER] edgeshot float_edge_{0}.png {1:0} {2:0} edge x {3:0.00}", ctl.Stage.Def.id, s.x, Screen.height - s.y, xe));
             }
             yield return Shot($"float_edge_{ctl.Stage.Def.id}");
-            Log(string.Format(CI, "[STEER] edge: visible edge x {0:0.00} at z {1:0.0}; float x {2:0.00} -> {3:0.00} (leftmost {4:0.00}), swept {5:0.00} m left, out of the visible water {6} of {7} frames ({8})",
+            Log(string.Format(CI, "[STEER] edge: visible edge x {0:0.00} at z {1:0.0}; float x {2:0.00} -> {3:0.00} (outermost {4:0.00}), swept {5:0.00} m out, out of the visible water {6} of {7} frames ({8})",
                 xe, z, x0, tk.Surface.x, minX, drift, out0, frames, SweepState(ctl)));
-            SCheck($"float swept at the edge stops there: {N(drift)} m left (< {N(Tackle.SweepDragMax, "0.0")}), {N(minX - xe)} m from the edge at most, out of the visible water {out0} of {frames} frames",
-                ctl.State == FishingController.S.Waiting && drift > 0.2f && drift < Tackle.SweepDragMax - 0.3f && minX - xe <= 0.3f && out0 == 0);
+            SCheck($"float swept at the edge stops there: {N(drift)} m out (< {N(Tackle.SweepDragMax, "0.0")}), {N(es * (xe - minX))} m from the edge at most, out of the visible water {out0} of {frames} frames",
+                ctl.State == FishingController.S.Waiting && drift > 0.2f && drift < Tackle.SweepDragMax - 0.3f && es * (xe - minX) <= 0.3f && out0 == 0);
             // 회수 with the rod still swept left: the bend takes it no further out of the visible water than the same 회수
             // unswept from the same spot (the straight way in may pass behind the painted reeds along the edge)
             int out1 = 0, frames1 = 0, out2 = 0;
@@ -743,7 +750,8 @@ namespace FishingKing
             foreach (var (en, x) in ends)
             {
                 a.DebugPlace(x);
-                foreach (float yaw in new[] { -35f, 0f, 25f })
+                // (the rig at 5 deg inside either yaw limit and straight ahead: -35 / 0 / +25 right-handed at the side)
+                foreach (float yaw in new[] { a.RodYawMin + 5f, 0f, a.RodYawMax - 5f })
                 foreach (int side in new[] { -1, 0, 1 })
                 foreach (bool reel in new[] { false, true })
                 {
@@ -889,7 +897,15 @@ namespace FishingKing
                     s.tensionAll += f.TensionRatio * dt;
                     prevRun = ctl.FishRun != 0;
                     prevStam = f.Stamina;
+                    ActorStrip.Detail = grazeLogs < 12 ? "" : null;
                     float clrNow = ActorStrip.Clearance(ctl);
+                    if (clrNow < 1.5f && grazeLogs < 12)
+                    {
+                        grazeLogs++;
+                        Log(string.Format(CI, "[STEER] graze {0} t {1:0.00}: clear {2:0.0}px, guard gap {3:0.0} tilt {4:+0.0;-0.0;0.0}, rod yaw {5:+0.0;-0.0;0.0} pitch {6:0.0} lean {7:+0.0;-0.0;0.0}, pose {8}, tension {9:0.00}; {10}",
+                            mode, s.t, clrNow, ctl.Angler.HatGapNow, ctl.Angler.HatTilt, ctl.Angler.RodYaw, ctl.Angler.RodAngles.x, ctl.Angler.RodAngles.y, ctl.Angler.Pose, f.TensionRatio, ActorStrip.Detail));
+                    }
+                    ActorStrip.Detail = null;
                     if (Mathf.Abs(ctl.Angler.HatTilt) > 0.5f) s.tiltT += dt;
                     s.tiltMax = Mathf.Max(s.tiltMax, Mathf.Abs(ctl.Angler.HatTilt));
                     if (clrNow < s.clrMin)
@@ -975,7 +991,7 @@ namespace FishingKing
                 && bench.tensionAcross > bench.tensionBack * 1.02f && none.acrossMax > 0.2f);
             float clr = Mathf.Min(none.clrMin, Mathf.Min(opp.clrMin, same.clrMin));
             SCheck($"the rod stays off the hat through the fights (min {N(clr, "0.0")} px: none {N(none.clrMin, "0.0")} / against {N(opp.clrMin, "0.0")} / with {N(same.clrMin, "0.0")}; kept off by tilting {N(none.tiltT + opp.tiltT + same.tiltT, "0.0")} s, max {N(Mathf.Max(none.tiltMax, Mathf.Max(opp.tiltMax, same.tiltMax)), "0.0")} deg)",
-                clr > 0f);
+                clr > (ctl.Angler.RodCentre ? 1f : 0f));   // (held in the middle: a crossing at least 1 px deep, Angler.HatGapAcc)
             SCheck("side pressure only while the fish really sweeps sideways the way it runs (on over " + N(FishingController.SweepOn) + " rad/s, off under " + N(FishingController.SweepOff) + " for " + N(FishingController.SweepHold) + " s): " + watchAll.Report(), watchAll.Ok);
             SCheck($"one lean dead zone: model {N(FishingController.SideDead)}, arrow / HUD {N(SideArrow.Deadband)} (and no frame where they disagree: {watchAll.deadMiss})",
                 SideArrow.Deadband == FishingController.SideDead && watchAll.deadMiss == 0);
@@ -1167,7 +1183,11 @@ namespace FishingKing
             string atWorst = "", atModel = "", atMult = "", atPhantom = "";
             int samples = 0, beyondSamples = 0;
             bool shotR = false, shotL = false;
-            foreach (float bearing in new[] { 35f, 45f, -45f })
+            // the fish beyond the limits: 5 / 15 deg past the across-the-body limit and 5 past the rod side's (+35 / +45 / -45
+            // right-handed at the side, mirrored left-handed); held in the middle 5 / 10 past one and 10 past the other
+            float lo = a.RodYawMin, hi = a.RodYawMax;
+            var bearings = a.RodCentre ? new[] { hi + 5f, hi + 10f, lo - 10f } : a.LeftHanded ? new[] { lo - 5f, lo - 15f, hi + 5f } : new[] { hi + 5f, hi + 15f, lo - 5f };
+            foreach (float bearing in bearings)
             foreach (int lean in new[] { -1, 0, 1 })
             {
                 yield return SteerCast(ctl, "bait_minnow", homeX);
@@ -1194,7 +1214,7 @@ namespace FishingKing
                     float d = Mathf.Max(Mathf.Abs(drawn - hudLean), Mathf.Abs(drawn - model));
                     caseWorst = Mathf.Max(caseWorst, d);
                     caseModel = Mathf.Max(caseModel, Mathf.Abs(fromOff - drawn));
-                    bool beyond = Mathf.Abs(a.Facing) > (a.Facing > 0f ? Angler.RodMaxRight : 40f) + 1f;
+                    bool beyond = a.Facing > hi + 1f || a.Facing < lo - 1f;
                     float oldOff = Mathf.DeltaAngle(a.RodYawHeld, b) * Mathf.Deg2Rad;
                     float newMult = Mathf.Max(Mathf.Abs(FightModel.SideTensionMultFor(1, ctl.RodOffset, 0f) - 1f), Mathf.Abs(FightModel.SideTensionMultFor(-1, ctl.RodOffset, 0f) - 1f));
                     float oldMult = Mathf.Max(Mathf.Abs(FightModel.SideTensionMultFor(1, oldOff, 0f) - 1f), Mathf.Abs(FightModel.SideTensionMultFor(-1, oldOff, 0f) - 1f));
@@ -1208,13 +1228,13 @@ namespace FishingKing
                     sumDrawn += drawn; sumHud += hudLean; sumModel += model; sumReq += req / Angler.SweepMax;
                     sumOld += oldOff * Mathf.Rad2Deg; sumNew += ctl.RodOffset * Mathf.Rad2Deg; sumOldMult += oldMult; sumNewMult += newMult; sumB += b; sumYaw += a.RodYaw;
                     // the full yaw either way: a shot each
-                    if (!shotR && lean > 0 && bearing > 40f && t > 1f && a.RodYaw >= Angler.RodMaxRight - 0.5f)
+                    if (!shotR && lean > 0 && bearing > hi && t > 1f && a.RodYaw >= hi - 0.5f)
                     {
                         shotR = true;
                         LogFightShot(ctl, "fight_yaw_max_right");
                         yield return Shot($"fight_yaw_max_right_{ctl.Stage.Def.id}");
                     }
-                    if (!shotL && lean < 0 && bearing < -40f && t > 1f && a.RodYaw <= -39.5f)
+                    if (!shotL && lean < 0 && bearing < lo && t > 1f && a.RodYaw <= lo + 0.5f)
                     {
                         shotL = true;
                         LogFightShot(ctl, "fight_yaw_max_left");
@@ -1228,8 +1248,8 @@ namespace FishingKing
                     string at = string.Format(CI, "fish {0:+0.0;-0.0} deg lean {1:+0;-0;0}", sumB / n, lean);
                     if (caseWorst > worst) { worst = caseWorst; atWorst = at; }
                     if (caseModel > worstModel) { worstModel = caseModel; atModel = at; }
-                    Log(string.Format(CI, "[SIDE] limit fish {0:+0.0;-0.0} deg lean {1:+0;-0;0}: rod yaw {2:+0.0;-0.0} (limits -40 / +{3:0}); lean drawn {4:+0.00;-0.00;0.00} HUD {5:+0.00;-0.00;0.00} model {6:+0.00;-0.00;0.00} (asked {7:+0.00;-0.00;0.00}: the old reading); rod-to-line {8:+0.0;-0.0;0.0} deg (old {9:+0.0;-0.0;0.0}); load either way up to x{10:0.000} (old x{11:0.000}); worst mismatch {12:0.000}, model's angle vs drawn {13:0.000}; {14} frames, clear {15:0.0}px",
-                        sumB / n, lean, sumYaw / n, Angler.RodMaxRight, sumDrawn / n, sumHud / n, sumModel / n, sumReq / n, sumNew / n, sumOld / n, 1f + sumNewMult / n, 1f + sumOldMult / n, caseWorst, caseModel, n, ActorStrip.Clearance(ctl)));
+                    Log(string.Format(CI, "[SIDE] limit fish {0:+0.0;-0.0} deg lean {1:+0;-0;0}: rod yaw {2:+0.0;-0.0} (limits {16:0} / +{3:0}); lean drawn {4:+0.00;-0.00;0.00} HUD {5:+0.00;-0.00;0.00} model {6:+0.00;-0.00;0.00} (asked {7:+0.00;-0.00;0.00}: the old reading); rod-to-line {8:+0.0;-0.0;0.0} deg (old {9:+0.0;-0.0;0.0}); load either way up to x{10:0.000} (old x{11:0.000}); worst mismatch {12:0.000}, model's angle vs drawn {13:0.000}; {14} frames, clear {15:0.0}px",
+                        sumB / n, lean, sumYaw / n, hi, sumDrawn / n, sumHud / n, sumModel / n, sumReq / n, sumNew / n, sumOld / n, 1f + sumNewMult / n, 1f + sumOldMult / n, caseWorst, caseModel, n, ActorStrip.Clearance(ctl), lo));
                 }
                 ctl.DebugRelease();
                 for (float w = 0f; w < 20f && ctl.State != FishingController.S.Ready; w += Time.deltaTime) yield return null;

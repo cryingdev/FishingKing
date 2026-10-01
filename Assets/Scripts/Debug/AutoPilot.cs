@@ -66,7 +66,7 @@ namespace FishingKing
                 : scenario == "zoom" ? ap.ZoomTest() : scenario == "legcool" ? ap.LegendCoolTest()
                 : scenario == "panmeasure" ? ap.PanMeasure() : scenario == "pan" ? ap.PanTest()
                 : scenario == "breaks" ? ap.BreaksTest() : scenario == "legendspot" ? ap.LegendSpotTest()
-                : scenario == "music" ? ap.MusicTest() : ap.Fish());
+                : scenario == "music" ? ap.MusicTest() : scenario == "hold" ? ap.HoldTest() : ap.Fish());
         }
 
         /// <summary>-fkflick &lt;speed&gt;[:&lt;deg&gt;]: the flick of the fish / walk scenarios' casts (angle null = not given).</summary>
