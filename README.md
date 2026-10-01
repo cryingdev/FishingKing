@@ -53,6 +53,7 @@ Assets/
   Scripts/Fishing/Legend/ 전설어 조우
   Scripts/Scenes/       타이틀·지도·낚시·수족관(먹이·청소·장식)
   Scripts/UI/           코드 UI, 상점, 도감, 설정
+  Scripts/Audio/        Sfx(합성 효과음·환경음·칩튠), Music(배경음 덱·스템·크로스페이드·sting)
   Scripts/Debug/        AutoPilot 자동 테스트 시나리오
   Editor/               픽셀아트·액터 모델·배경음 임포터, 프로젝트 설정·빌드 메뉴
 Tools/Blender/          에셋 생성 스크립트 (variants/hybrid 가 현재 스타일)

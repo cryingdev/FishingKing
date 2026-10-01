@@ -27,9 +27,11 @@ namespace FishingKing
     public class Music : MonoBehaviour
     {
         /// <summary>
-        /// Master volume of every deck and sting. The tracks are normalized to an RMS of -17 (legend fights, stings) ..
-        /// -22 dBFS (stage beds -21, menus -19), the old chiptune loop sat at about -33 dBFS (an unboosted square-wave mix
-        /// at 0.22), the water ambience at about -34 dBFS (0.35) and the synthesized one-shots peak at 0.9 of full scale.
+        /// Master volume of every deck and sting. The tracks are normalized to an RMS of -17 (legend fights; the stings aim
+        /// at it but stop at the -1 dBFS peak limit, about -18 .. -19) .. -22 dBFS (stage beds -21, menus -19), the old
+        /// chiptune loop sat at about -33 dBFS (an unboosted square-wave mix at 0.22), the water ambience at about -34 dBFS
+        /// (0.35) and the synthesized one-shots peak at about 0.35 .. 0.9 of full scale, most under 0.75, before Sfx.Play's
+        /// volume (capped at 0.9, never raised).
         /// 0.4 (-8 dB) puts a stage bed near -29 dBFS: a few dB over the chiptune it replaces (real instruments sound
         /// softer than square waves at the same RMS), still far under the effects, with the ambience heard in its rests.
         /// </summary>
@@ -46,7 +48,13 @@ namespace FishingKing
         internal const float StingAttack = 0.12f, StingRelease = 0.9f, StingLead = 0.35f;
         /// <summary>A sting cut off by the next one fades out over this long (a hard stop clicks).</summary>
         const float StingCut = 0.05f;
-        /// <summary>Music turned off (setting / -fkmusic off): the decks and the sting fade out over this long.</summary>
+        /// <summary>
+        /// A source faded out (a deck, a cut sting, the chiptune) is stopped once its 0 has been set this long, not in the
+        /// frame that set it: the mixer takes a volume a block later, so a stop in that frame cuts it at the volume
+        /// before (a click).
+        /// </summary>
+        const float StopHold = 0.05f;
+        /// <summary>Music turned off (setting / -fkmusic off): the decks (those already fading out too), the sting and the chiptune fade out over this long (at most).</summary>
         const float OffFade = 0.4f;
         /// <summary>Music turned back on: the cue last asked for fades in over this long.</summary>
         const float OnFade = 1f;
@@ -134,6 +142,7 @@ namespace FishingKing
             public float fadeIn;           // the fade-in it starts with once its stems are playing
             public float hold = 1f;        // the game's duck it had when it stopped being the current deck (a sting's still applies)
             public float outAfter = -1f;   // dying: the fade-out it starts once the new deck has started
+            public float quiet;            // dying and faded out: how long its 0 has been set (freed after StopHold s)
             public float age;
             public bool started, dying;
 
@@ -151,6 +160,7 @@ namespace FishingKing
         // the sting sounding, and the one the last sting cut off (fading out over StingCut s)
         AudioSource stingSrc, stingOut;
         Ramp stingOutGain = Ramp.At(0f);
+        float stingOutQuiet;   // how long the cut sting's 0 has been set (stopped after StopHold s)
         CueDef stingCue;
         AudioClip stingClip;
         bool stingWaiting, stingReleased;
@@ -158,6 +168,7 @@ namespace FishingKing
         // chip: the chiptune stands in; chipLive: its source plays (still fading out after chip is off)
         bool chip, chipLive, wasOn;
         Ramp chipGain = Ramp.At(0f);
+        float chipQuiet;   // how long the chiptune's 0 has been set while it goes (stopped after StopHold s)
         // set by AudioSettings.OnAudioConfigurationChanged, handled in the next Update
         volatile bool audioReset;
         // what the game asked for last (played again when the music is switched back on)
@@ -657,6 +668,12 @@ namespace FishingKing
                 Missing($"sting {id}");
                 return;
             }
+            if (clip.loadState == AudioDataLoadState.Failed)
+            {
+                // (known not to play: the sting sounding is left alone)
+                Missing($"sting {id} (could not load)");
+                return;
+            }
             CutSting(StingCut);
             stingCue = c;
             stingClip = clip;
@@ -710,6 +727,7 @@ namespace FishingKing
             (stingSrc, stingOut) = (stingOut, stingSrc);
             stingOutGain = Ramp.At(1f);
             stingOutGain.Go(0f, seconds);
+            stingOutQuiet = 0f;
         }
 
         // ================================================================== the frame
@@ -733,20 +751,30 @@ namespace FishingKing
             sduck.Step(dt);
             if (stingOut.isPlaying)
             {
-                stingOutGain.Step(dt);
-                stingOut.volume = Volume * stingOutGain.v;
-                if (stingOutGain.v <= 0f) stingOut.Stop();
+                // (stopped once its 0 has been set for StopHold s)
+                if (stingOutGain.v > 0f)
+                {
+                    stingOutGain.Step(dt);
+                    stingOut.volume = Volume * stingOutGain.v;
+                }
+                else if ((stingOutQuiet += dt) >= StopHold) stingOut.Stop();
             }
-            chipGain.Step(dt);
             if (chipLive)
             {
-                Sfx.MusicVolume(chipGain.v);
+                // (its source stopped once its 0 has been set for StopHold s)
                 if (!chip && chipGain.v <= 0f)
                 {
-                    Sfx.Music(false);
-                    chipLive = false;
+                    chipQuiet += dt;
+                    if (chipQuiet >= StopHold)
+                    {
+                        Sfx.Music(false);
+                        chipLive = false;
+                    }
                 }
+                else chipQuiet = 0f;
             }
+            chipGain.Step(dt);
+            if (chipLive) Sfx.MusicVolume(chipGain.v);
             for (int k = decks.Count - 1; k >= 0; k--)
             {
                 var d = decks[k];
@@ -756,6 +784,17 @@ namespace FishingKing
                     TryStart(d);
                     if (!decks.Contains(d) || !d.started) continue;
                 }
+                // (faded out: freed once its 0 has been set for StopHold s, not in the frame that set it)
+                if (d.dying && d.outAfter < 0f && d.fade.v <= 0f)
+                {
+                    d.quiet += dt;
+                    if (d.quiet >= StopHold)
+                    {
+                        Kill(d);
+                        continue;
+                    }
+                }
+                else d.quiet = 0f;
                 // (a deck nothing is heard of, e.g. under a sting's duck 0, has nothing to crossfade: it goes at once)
                 if (d.dying && d.outAfter >= 0f && (current == null || current.started || current.age > LoadTimeout || Heard(d) <= 0.001f))
                 {
@@ -764,30 +803,32 @@ namespace FishingKing
                 }
                 d.fade.Step(dt);
                 for (int i = 0; i < d.level.Length; i++) d.level[i].Step(dt);
-                if (d.dying && d.outAfter < 0f && d.fade.v <= 0f)
-                {
-                    Kill(d);
-                    continue;
-                }
                 float g = Volume * Heard(d);
                 for (int i = 0; i < d.src.Length; i++)
                     if (d.src[i] != null) d.src[i].volume = g * d.level[i].v;
             }
         }
 
-        /// <summary>Switched off (설정 → 배경음): every deck and the sting fade out and are freed, the chiptune too; what was asked for is kept.</summary>
+        /// <summary>Switched off (설정 → 배경음): every deck (one already fading out over longer too) and the sting fade out over <see cref="OffFade"/> s and are freed, the chiptune too; what was asked for is kept.</summary>
         void TurnOff()
         {
             Say("off");
             Demote(current, OffFade);
             foreach (var d in decks.Where(x => !x.dying).ToList()) Demote(d, OffFade);
-            // (the sting's duck folded into what they keep: they fade from where they were heard)
-            foreach (var d in decks) d.hold *= sduck.v;
+            foreach (var d in decks)
+            {
+                // (the sting's duck folded into what they keep: they fade from where they were heard)
+                d.hold *= sduck.v;
+                // (a deck already going, or waiting for the one it was crossfading to, over OffFade s at most)
+                if (d.outAfter >= 0f) d.outAfter = Mathf.Min(d.outAfter, OffFade);
+                else if (d.fade.to <= 0f && d.fade.dur - d.fade.t > OffFade) d.fade.Go(0f, OffFade);
+            }
             CutSting(OffFade);
             stingWaiting = false;
             stingReleased = true;
             sduck = Ramp.At(1f);
             Chip(false, OffFade);
+            if (chipGain.to <= 0f && chipGain.dur - chipGain.t > OffFade) chipGain.Go(0f, OffFade);   // (one already going down over longer)
         }
 
         /// <summary>Switched back on: the cue last asked for, at the levels last asked for.</summary>

@@ -1,8 +1,8 @@
 # 변경 기록 (CHANGELOG)
 
 - **이 문서가 다루는 것**: 지금까지 들어간 기능을 기능 단위로 묶어 "무엇이 추가/변경되었는지" 정리
-- **관련 코드**: `Assets/Scripts/` 전체, `Assets/Shaders/`, `Assets/Editor/`, `Tools/Blender/`
-- **관련 문서**: [README](README.md) · [구조](Docs/architecture.md) · [낚시 플레이](Docs/fishing_gameplay.md) · [수족관](Docs/aquarium.md) · [아트 파이프라인](Docs/art_pipeline.md) · [데이터 표](Docs/data_reference.md)
+- **관련 코드**: `Assets/Scripts/` 전체, `Assets/Shaders/`, `Assets/Editor/`, `Tools/Blender/`, `Tools/Music/`
+- **관련 문서**: [README](README.md) · [구조](Docs/architecture.md) · [낚시 플레이](Docs/fishing_gameplay.md) · [수족관](Docs/aquarium.md) · [아트 파이프라인](Docs/art_pipeline.md) · [데이터 표](Docs/data_reference.md) · [배경음](Docs/music.md)
 
 커밋 히스토리는 영역별(아트 파이프라인 → 렌더 결과물 → 에디터 도구 → 코어 → 낚시 → 전설어 → 수족관 → 테스트 → 사양서 → README)로
 한 번에 들어가 있어 기능별 세부 순서는 남아 있지 않습니다. 그래서 아래는 **날짜·버전 순이 아니라 기능별**로 묶었습니다.
