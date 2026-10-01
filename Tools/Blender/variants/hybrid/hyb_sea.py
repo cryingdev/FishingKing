@@ -521,8 +521,8 @@ def far_rims(idx, pal, kid):
         if k <= 0:
             continue
         m = np.isin(kid, kinds)
-        top = m & ~R.shift(m, 1, 0, False)
-        left = m & ~R.shift(m, 0, 1, False)
+        top = m & ~R.shift(m, 1, 0, True)            # (the canvas border is no edge: no rim along it)
+        left = m & ~R.shift(m, 0, 1, True)
         out, p2 = R.blend_idx(out, p2, top | left, rim["col"], k, lighter=True, snap=0.03)
     return out, p2
 
@@ -774,7 +774,7 @@ def render_front(rnd):
     gpos = stamp_gull(idx, pal, kid)
     # pale warm rim on the OUTER sun-side (left / top) silhouette of the solid props, before the outline
     solid_k = np.isin(kid, ["tet", "deck", "prop", "buoy"])
-    idx, pal = R.rim_light(idx, pal, PR, mask=solid_k)
+    idx, pal = R.rim_light(idx, pal, PR, mask=solid_k, edge=False)   # (none along the canvas border: the game pans to it)
     # selective outline (hue-shifted darker neighbour, never ink); light from the left
     ol = R.outer_outline(idx, pal, lit_steps=1, dark_steps=2, light=R.sun_side(PR))
     idx = ol

@@ -1,5 +1,5 @@
 """
-hybrid - preview composite of the SEA stage as the game shows it (central 480x270 of the 640x400 stage,
+hybrid - preview composite of the SEA stage as the game shows it (central 480x270 of the 800x400 stage,
 scaled 2x -> 960x540): back layer -> 3 fish top-shadows (lerp 70 % towards waterDeep, 0.8 alpha, like
 hyb_preview) -> front layer -> angler idle (feet on the projected feet point) -> rod line (sun-side
 highlight on the LEFT: the sea key light comes from the left).
@@ -20,6 +20,7 @@ import numpy as np  # noqa: E402
 import fk_persp as P  # noqa: E402
 
 SID = "sea"
+R.set_canvas(*P.stage_canvas(SID))     # (800 x 400 with overscan: the crop is the home view at its centre)
 W, H = P.W, P.H
 CX0, CY0, CW, CH = R.CROP
 LAYOUT = json.load(open(os.path.join(R.OUT, f"stage_{SID}.json"), encoding="utf-8"))

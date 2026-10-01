@@ -253,9 +253,9 @@ circle (`r` + margin). Stages have <= ~200 entries; no spatial index is needed.
 
 | Blender (front) | kind / mat | tags | notes |
 |---|---|---|---|
-| tetrapods: `Leg` x4 + `Hub` per unit, kind `tet`, grp per unit (34 units, two mounds x +-3.3..12, z -0.5..14.4) | solid concrete | tet, abrasive | tiers 3; `skirt` 0.8, `cover` 1.2 `tet` (the classic 우럭 / 감성돔 hole) |
+| tetrapods: `Leg` x4 + `Hub` per unit, kind `tet`, grp per unit (60 units: the 640 layout's 34, tet0..tet33, two mounds x +-3.3..12, z -0.5..14.4; and the overscan's 26, tet34..tet59, the ridges running on into the 800 px canvas's lower corners beyond the home view, x +-8.4..18.1, z 0.7..15.4; 56 exported: tet0, tet17, tet34, tet47 never touch the fishable water) | solid concrete | tet, abrasive | tiers 3; the 34: `skirt` 0.8, `cover` 1.2 `tet` (the classic 우럭 / 감성돔 hole); the overscan's 26: solids only (no skirt, no cover: a cover-seeking fish is never drawn out of the view and the cast fan) |
 | buoy (17, 44): Float, Body, Band, Mark, Lamp | solid hull | hull | tiers 3; no cover |
-| helpers | | | the underwater tetrapod field along both mounds' toes: a snag concrete band per side, e.g. x from +-3.0 to +-12.5, z 0.5..16, `top` -1.0, abrasive, `cover_for` tet (x1.4 grab from the mat) |
+| helpers | | | the underwater tetrapod field along both mounds' toes: a snag concrete band per side from the 34 (`tetfieldL` / `tetfieldR`, as before the overscan), e.g. x from +-3.0 to +-12.5, z 0.5..16, `top` -1.0, abrasive, `cover_for` tet (x1.4 grab from the mat); and one per side from the overscan's units (`tetfieldLX` / `tetfieldRX`, x +-7.9..18.7, z 0.2..16.3) |
 | Deck, Kerb, bollard, cooler, bucket, the far mole / lighthouse | not obstacles | | |
 
 ### 3.5 swamp (owner B1)

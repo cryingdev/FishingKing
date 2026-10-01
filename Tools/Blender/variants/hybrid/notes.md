@@ -46,6 +46,9 @@ the coast / headland / mole extensions, the tetrapod ridges running on into the 
 `hyb_overscan.py` puts the layout's back layer into the wide one's centre (a back layer's random dash dithering runs
 across the whole width and would re-roll), so the home view stays pixel-identical; then the front depth map, the
 obstacles and the review sheet. Tools that load several stages in one process call `R.set_canvas` per stage.
+`build_hybrid.ps1` (with `-Install`) and `build_periods.ps1` hand such a stage to `build_overscan.ps1` (rendered there
+as is, its home view would re-roll). The game's camera pans right up to the canvas border, so nothing may light it:
+rims stop there (`rim_light(..., edge=False)`, a stage's own edge masks shifted with fill True).
 
 | field | meaning |
 |---|---|

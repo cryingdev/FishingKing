@@ -10,6 +10,14 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
+# a stage rendered with OVERSCAN (Data/stage_<id>.json widthPx > 640, the sea) goes through build_overscan.ps1: rendered
+# here as is, its back layer's home view would re-roll. With -Install it is rendered, spliced and installed there;
+# without it, skipped (build_overscan.ps1 always installs).
+$dataDir = Join-Path (Resolve-Path (Join-Path $here "..\..\..\..")) "Assets\Resources\Data"
+function Wide([string]$id) {
+    $p = Join-Path $dataDir "stage_$id.json"
+    (Test-Path $p) -and ([int](Get-Content $p -Raw | ConvertFrom-Json).widthPx -gt 640)
+}
 $scripts = @("hyb_fish.py", "hyb_character.py",
     "hyb_lake.py", "hyb_preview.py",
     "hyb_stream.py", "hyb_preview_stream.py",
@@ -24,6 +32,11 @@ $scripts = @("hyb_fish.py", "hyb_character.py",
     "hyb_encounter.py")
 foreach ($s in $scripts) {
     Write-Host "== $s"
+    if ($s -match "^hyb_(lake|stream|sea|swamp|ice|ocean|cave)\.py$" -and (Wide $Matches[1])) {
+        if ($Install) { & (Join-Path $here "build_overscan.ps1") -Stage $Matches[1] -Target legacy -NoDepth -NoObstacles -Blender $Blender }
+        else { Write-Host "   skipped: an overscan stage (build_overscan.ps1 renders, splices and installs it)" }
+        continue
+    }
     # hyb_encounter.py builds every encounter_sets/<set>.py (the cave alone gives the legacy output)
     $extra = if ($s -eq "hyb_encounter.py") { @("--", "--all") } else { @() }
     & $Blender -b --python (Join-Path $here $s) @extra 2>&1 | Where-Object { $_ -cmatch "Error|Traceback|HYB |CHECK" } | ForEach-Object { Write-Host "   $_" }
@@ -34,6 +47,7 @@ if ($Install) {
     $out = Join-Path $root "Tools\Blender\_tmp\variants\hybrid"
     $res = Join-Path $root "Assets\Resources"
     foreach ($id in @("lake", "stream", "sea", "swamp", "ice", "ocean", "cave")) {
+        if (Wide $id) { continue }   # (installed by build_overscan.ps1 above)
         Copy-Item (Join-Path $out "$($id)_back.png"), (Join-Path $out "$($id)_front.png") (Join-Path $res "Sprites\Stages")
         Copy-Item (Join-Path $out "stage_$id.json") (Join-Path $res "Data")
     }

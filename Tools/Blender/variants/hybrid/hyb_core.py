@@ -1323,15 +1323,17 @@ _DIRS = {"r": (0, 1), "tr": (-1, 1), "t": (-1, 0), "tl": (-1, -1), "l": (0, -1),
          "br": (1, 1), "bl": (1, -1)}
 
 
-def rim_amount(idx, dirs, min_gap=3, min_thick=2, outer=None):
+def rim_amount(idx, dirs, min_gap=3, min_thick=2, outer=None, edge=True):
     """Per-pixel rim weight (0..1): opaque pixels whose neighbour towards the light (dirs: {'r': w, ...})
-    is OUTER empty space. min_thick=2 skips parts only 1 px thick along that direction."""
+    is OUTER empty space. min_thick=2 skips parts only 1 px thick along that direction. edge=False: beyond the canvas
+    is not empty space (a prop cut by the canvas border gets no rim along it: a stage canvas the game's camera pans
+    right up to, set_canvas overscan)."""
     a = idx >= 0
     oe = outer_empty(a, min_gap) if outer is None else outer
     k = np.zeros(a.shape)
     for key, wt in dirs.items():
         dy, dx = _DIRS[key]
-        nb = shift(oe, -dy, -dx, True)            # nb[y, x] = oe[y + dy, x + dx]
+        nb = shift(oe, -dy, -dx, edge)            # nb[y, x] = oe[y + dy, x + dx]
         if min_thick >= 2:
             nb &= shift(a, dy, dx, False)         # the pixel behind (away from the light) is opaque too
         k = np.maximum(k, nb * wt)
@@ -1353,14 +1355,14 @@ def rim_fn(rim_hex, s):
 
 
 def rim_light(idx, pal, pr=None, strength=None, dirs=None, mask=None, weight=None, min_gap=3, min_thick=2,
-              snap=0.018, levels=2):
+              snap=0.018, levels=2, edge=True):
     """Warm rim on the OUTER silhouette, sun-facing sides only (palette space): rim pixels get lighter and
     warmer (rim_fn) by strength (levels=2: a half-strength level where the direction weight is lower).
-    Returns (idx, pal)."""
+    edge=False: no rim along the canvas border (rim_amount). Returns (idx, pal)."""
     pr = pr or PR[0]
     rm = pr.rim
     s = rm["strength"] if strength is None else strength
-    k = rim_amount(idx, dirs or rm["dirs"], min_gap, min_thick)
+    k = rim_amount(idx, dirs or rm["dirs"], min_gap, min_thick, edge=edge)
     if mask is not None:
         k = k * mask
     if weight is not None:

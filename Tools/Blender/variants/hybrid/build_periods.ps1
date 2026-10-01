@@ -15,6 +15,14 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
+# a stage rendered with OVERSCAN (Data/stage_<id>.json widthPx > 640, the sea): its periods go through
+# build_overscan.ps1 (the 640 layout and the wide canvas, the back layer spliced so the home view stays as it is)
+$layoutPath = Join-Path (Resolve-Path (Join-Path $here "..\..\..\..")) "Assets\Resources\Data\stage_$Stage.json"
+if ([int](Get-Content $layoutPath -Raw | ConvertFrom-Json).widthPx -gt 640) {
+    if ($Dry) { throw "$Stage is an overscan stage: build_overscan.ps1 renders and installs (no -Dry)" }
+    & (Join-Path $here "build_overscan.ps1") -Stage $Stage -Target $Period -NoDepth -NoObstacles -Blender $Blender
+    return
+}
 $filter = { $_ -cmatch "Error|Traceback|HYB PERIOD|HYB PREVIEW|CHECK" }
 $extra = @(if ($Dry) { "--dry" })      # always an array: splatting a bare string would pass it letter by letter
 if ($Parallel) {

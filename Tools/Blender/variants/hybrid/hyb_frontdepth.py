@@ -4,7 +4,8 @@ hybrid - FRONT-LAYER DEPTH MAPS: per-pixel occlusion of the scene sprites the ga
 The game sorts the fighting / jumping fish (42), splashes (44), bait and the above-water line (45 / 46), the fight float
 ... ABOVE the painted front layer (StageView.OrderFront = 40), so a fish or a line that goes under the pier / rock / boat
 the angler stands on is drawn on top of it. This script renders, for every stage, a depth map aligned pixel for pixel
-with Sprites/Stages/<stage>_front.png (same camera, 640x400, same pixel grid): at every pixel where the front layer is
+with Sprites/Stages/<stage>_front.png (same camera, the stage's W x H = widthPx x heightPx of Data/stage_<id>.json:
+640x400, the sea 800x400 with overscan; same pixel grid): at every pixel where the front layer is
 opaque it stores the CAMERA DEPTH of the painted surface, so the game can hide any fragment that lies farther away.
 
 Builds the stage's front scene exactly as hyb_<stage>.py does (its own render_front(Random(31)), same seeds, like
@@ -20,7 +21,7 @@ surface:     d = (p.z + camBack) * cos(pitch) - (p.y - standH - camUp) * sin(pit
 distance, so "farther than the front layer here" is simply  d(fragment) > d(front) (+ a small bias).
 For an underwater point compare the point the game DRAWS: d of Persp.Apparent(p).
 
-ENCODING  <stage>_front_depth.png, RGBA8, 640x400, row 0 = top (exactly like <stage>_front.png):
+ENCODING  <stage>_front_depth.png, RGBA8, W x H (640x400; the sea 800x400), row 0 = top (exactly like <stage>_front.png):
   A = 255 where the front layer is opaque in ALL periods (the occluder coverage), 0 = no occluder
   code = R * 256 + G (16 bit);  d = near + code * (far - near) / 65535      (near / far: frontdepth_<stage>.json)
   empty pixels: R = G = 255, B = 0, A = 0 (read A first); opaque codes are clamped to 0..65534
@@ -28,9 +29,9 @@ ENCODING  <stage>_front_depth.png, RGBA8, 640x400, row 0 = top (exactly like <st
   +-0.12 m of the water, or a painted speck on the water plane),
   0 for a solid prop (optional: lets the game keep the float / splashes on top of pads)
 Texel of a game point p (Unity, v up, the sprite centred on the scene origin like the front layer):
-  (x, y) = Persp.ToPixel(p);  u = 0.5 + x / 640,  v = 0.5 + y / 400      (CPU: ix = floor(320 + x), iy = floor(200 + y))
+  (x, y) = Persp.ToPixel(p);  u = 0.5 + x / W,  v = 0.5 + y / H      (CPU: ix = floor(W / 2 + x), iy = floor(H / 2 + y))
 Inverse (pixel col, row top-down, depth d -> game point):
-  X = (col + 0.5 - 320) * d / f,  Yc = (200 - (row + 0.5)) * d / f
+  X = (col + 0.5 - W / 2) * d / f,  Yc = (H / 2 - (row + 0.5)) * d / f
   x = X,  y = standH + camUp + Yc * cos - d * sin,  z = -camBack + Yc * sin + d * cos
 Unity import: point filter, no mipmaps, uncompressed, sRGB OFF, alphaIsTransparency OFF, npotScale None, clamp.
 
@@ -730,7 +731,7 @@ def overlay(stage, cam, L, front, back, D, cover, cls, near, far, prb, info, pat
             marker(zoom, int((p["col"] - c0 + 0.5) * kz), int((p["row"] - r0 + 0.5) * kz), kz, p["n"], rad=12)
     zl = np.zeros((14, W * k, 4), np.float32)
     zl[..., 3] = 1.0
-    text(zl, 24, 2, "X8 ZOOM: COLS %d..%d, ROWS %d..%d (ROW 0 = TOP OF THE 640X400 CANVAS)" % (c0, c0 + zw - 1, r0, r0 + zh - 1),
+    text(zl, 24, 2, "X8 ZOOM: COLS %d..%d, ROWS %d..%d (ROW 0 = TOP OF THE %dX%d CANVAS)" % (c0, c0 + zw - 1, r0, r0 + zh - 1, W, H),
          (0.85, 0.85, 0.85), 1)
     # fill classes: rendered / outline ring / filled further / no depth / rendered-but-unpainted
     fc = np.zeros((H, W, 4), np.float32)
