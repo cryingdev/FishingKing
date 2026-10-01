@@ -7,6 +7,9 @@ Run:  blender -b --python Tools/Blender/fk_items.py [-- group ...]   groups: rod
        World/<id>_w.png 11 px) and the lure action chips (UI/act_*.png 12 px), plus the review sheet
        _tmp/legend_art/lure_sheet.png - the existing bait icons are not re-rendered;
        world = float sprites; worldreels = the small reel under the angler's rod, 2 handle frames per reel;
+       barehook = the bare hook a float rig comes home with once its bait is gone (World/hook_bare_w.png 11 px, the
+       paste sprite's scale) + the floats as item icons for the line-break loss toast (Items/float_stick.png,
+       float_ball.png 32 px), review sheets in _tmp/barehook;
        reelarrow = only the reel-gesture help arrows, which frames rebuilds too;
        castarrow = the flick-cast block arrow over the angler's head, frames cast_arrow_f0..f7 -> _tmp/castarrow4
        (+ preview); the game loads them from Sprites/UI, so copy cast_arrow_f*.png there);
@@ -730,6 +733,90 @@ def render_bait(bid):
         bpy.data.objects.remove(ob, do_unlink=True)
     render_icon(os.path.join(WORLD, bid + "_w.png"), size=11, margin=0)
     return os.path.join(ITEMS, bid + ".png")
+
+
+# ============================================================================ THE BARE HOOK + FLOAT ICONS
+# Group "barehook": the hook left on a float rig whose bait is gone (eaten at a bite the fish got off from, stolen,
+# torn off on a pad, or the line parted at a snag): World/hook_bare_w.png, drawn by the Tackle in place of the bait
+# sprite while it is reeled home; and the floats as 32 px item icons (Items/float_stick.png, float_ball.png) for the
+# line-break loss toast. Preview: _tmp/barehook/sheet.png.
+BARE_HOOK_WIRE = 0.07     # wire radius per unit of scale: a solid 1 px line at the bait sprites' scale (the paste's)
+BAREHOOK_OUT = os.path.join(C.TMP, "barehook")
+
+
+def build_float_stick():
+    """The slim freshwater stick float (찌), standing on z: the world sprite's geometry."""
+    objs = [C.tube_along("Body", [(0, 0, -0.9), (0, 0, -0.2), (0, 0, 0.5), (0, 0, 1.1)], [0.02, 0.16, 0.13, 0.03],
+                         C.pattern_material("Float", "#f4f0e8", "#e8402a", kind="stripes", scale=1.0, thresh=0.5, axis=2, shine=0.8), 10)]
+    objs.append(C.tube_along("Top", [(0, 0, 1.1), (0, 0, 1.7)], 0.03, M("Tip", "#ff6a2a"), 6))
+    objs.append(sphere("Tip", C.glow_material("TipG", "#ffd24a", 1.2), 0.06, (0, 0, 1.72), seg=8, rings=5))
+    return objs
+
+
+def build_float_ball():
+    """The round sea bobber: the world sprite's geometry."""
+    objs = [sphere("Ball", C.pattern_material("Ball", "#f4f4f0", "#e03a2a", kind="stripes", scale=1.0, thresh=0.5, axis=2, shine=1.0),
+                   0.5, (0, 0, 0))]
+    objs.append(C.tube_along("Top", [(0, 0, 0.45), (0, 0, 0.9)], 0.05, M("Tip", "#2a2a2a"), 6))
+    return objs
+
+
+def render_bare_hook():
+    """
+    World/hook_bare_w.png (11 px): the paste rig's hook at the paste sprite's scale (its camera's pixels per unit: the
+    bait sprites are all fitted to 11 px with no margin, render_bait), the dough left off. The frame is centred on the
+    hook's shank a third of the way down from its eye, so the sprite's centre (the hook point the Tackle places it at,
+    where the float's line ends) sits on the shank and the bend hangs below it. The wire is thicker than in the bait
+    sprites (there it vanishes under the bait at 11 px) so the bare hook reads as a 1 px line with its outline.
+    """
+    C.clear_objects()
+    build_bait("bait_paste")
+    for ob in [o for o in bpy.context.scene.objects if o.name.startswith("Fx")]:
+        bpy.data.objects.remove(ob, do_unlink=True)
+    bpy.context.view_layer.update()
+    x0, x1, z0, z1 = C.world_bounds([o for o in bpy.context.scene.objects if o.type == "MESH"])
+    size = 11
+    ppu = (size - 2) / max(x1 - x0, z1 - z0)        # = render_icon(size=11, margin=0) of the paste rig
+    C.clear_objects()
+    metal = M("Metal", "#c8d0da", shine=1.0)
+    bx, by, bz, s = 0.25, 0.3, 0.9, 1.3                # the paste rig's hook (build_bait)
+    hook(metal, (bx, by, bz), s, r=BARE_HOOK_WIRE)
+    C.ortho_camera(bx, bz - 0.25 * s, size, size, ppu)
+    path = os.path.join(WORLD, "hook_bare_w.png")
+    C.render_sprite(path)
+    print(f"bare hook -> {path} (ppu {ppu:.2f})")
+    return path
+
+
+def render_float_icons():
+    """
+    The floats as 32 px item icons, tilted like the rods (for the loss toast). The stick float is drawn twice as thick
+    as in the water (a 3 px sliver at 32 px otherwise: the icon's chunky style, as the rods' blanks).
+    """
+    paths = []
+    for name, build in (("float_stick", build_float_stick), ("float_ball", build_float_ball)):
+        C.clear_objects()
+        objs = build()
+        # (about the world origin: the tip sphere has its own origin up at the top)
+        k = 2.0 if name == "float_stick" else 1.0
+        T = Matrix.Rotation(math.radians(30), 4, "Y") @ Matrix.Diagonal((k, k, 1.0, 1.0))
+        for ob in objs:
+            ob.matrix_world = T @ ob.matrix_world
+        path = os.path.join(ITEMS, name + ".png")
+        render_icon(path)
+        paths.append(path)
+        print(f"float icon -> {path}")
+    return paths
+
+
+def bare_hook_art():
+    made = [render_bare_hook()] + render_float_icons()
+    world = [os.path.join(WORLD, b + "_w.png") for b in ("bait_paste", "bait_worm", "bait_corn", "bait_shrimp")]
+    C.contact_sheet(world + [made[0], os.path.join(WORLD, "float_stick.png"), os.path.join(WORLD, "float_ball.png")],
+                    os.path.join(BAREHOOK_OUT, "sheet_world.png"), scale=12, cols=7)
+    C.contact_sheet(made[1:] + [os.path.join(ITEMS, "bait_kona.png"), os.path.join(ITEMS, "bait_worm.png")],
+                    os.path.join(BAREHOOK_OUT, "sheet_icons.png"), scale=4, cols=4)
+    return made
 
 
 # ============================================================================ TANKS
@@ -4535,19 +4622,18 @@ def main():
     if "world" in groups:
         # floats (찌) seen from behind: a slim freshwater stick float and a round sea bobber
         C.clear_objects()
-        C.tube_along("Body", [(0, 0, -0.9), (0, 0, -0.2), (0, 0, 0.5), (0, 0, 1.1)], [0.02, 0.16, 0.13, 0.03],
-                     C.pattern_material("Float", "#f4f0e8", "#e8402a", kind="stripes", scale=1.0, thresh=0.5, axis=2, shine=0.8), 10)
-        C.tube_along("Top", [(0, 0, 1.1), (0, 0, 1.7)], 0.03, M("Tip", "#ff6a2a"), 6)
-        sphere("Tip", C.glow_material("TipG", "#ffd24a", 1.2), 0.06, (0, 0, 1.72), seg=8, rings=5)
+        build_float_stick()
         C.ortho_camera(0, 0.4, 7, 22, 8.0)
         C.render_sprite(os.path.join(WORLD, "float_stick.png"))
         C.clear_objects()
-        sphere("Ball", C.pattern_material("Ball", "#f4f4f0", "#e03a2a", kind="stripes", scale=1.0, thresh=0.5, axis=2, shine=1.0),
-               0.5, (0, 0, 0))
-        C.tube_along("Top", [(0, 0, 0.45), (0, 0, 0.9)], 0.05, M("Tip", "#2a2a2a"), 6)
+        build_float_ball()
         C.ortho_camera(0, 0.2, 12, 16, 11.0)
         C.render_sprite(os.path.join(WORLD, "float_ball.png"))
         made += [os.path.join(WORLD, "float_stick.png"), os.path.join(WORLD, "float_ball.png")]
+    if "barehook" in groups:
+        # the bare hook a float rig is reeled home with (the bait gone) + the floats' icons for the loss toast
+        for p in bare_hook_art():
+            print("barehook ->", p)
     if "worldreels" in groups:
         # the reel under the angler's rod, two handle frames per reel (own zoom sheet, not in items_sheet)
         for p in build_world_reels():
