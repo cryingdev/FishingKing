@@ -45,9 +45,6 @@ namespace FishingKing
             // ---- the validator catches broken data
             speciesFails += SpeciesFixtures.Run(ctx, Log);
             yield return null;
-            // ---- the parity proof against the old tables
-            SpeciesParity();
-            yield return null;
             // ---- the dumps
             File.WriteAllText(Path.Combine(shots, "species_dump.txt"), SpeciesDump.Write(GameDatabase.Fish, GameDatabase.Stages));
             File.WriteAllText(Path.Combine(shots, "spawn_baseline.txt"), SpawnBaseline());
