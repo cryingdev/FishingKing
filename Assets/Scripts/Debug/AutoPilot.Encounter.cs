@@ -153,7 +153,7 @@ namespace FishingKing
                 for (float w = 0f; w < 2f && ctl.State != FishingController.S.Ready; w += Time.deltaTime) yield return null;
                 yield return new WaitForSeconds(0.3f);
             }
-            // natural: the build-up needs the legend's spot: wait for it to blink and cast into it (off the ice: straight at
+            // natural: the build-up needs the legend's spot: wait for it to splash and cast into it (off the ice: straight at
             // it, the cast's real flight and landing; on the ice the hole is the spot and the usual drop lands in it)
             if (natural)
             {

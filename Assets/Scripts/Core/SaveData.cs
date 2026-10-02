@@ -106,7 +106,7 @@ namespace FishingKing
         public bool driftHint;           // the stream drift hint was shown
         public bool mendHint;            // the mending hint was shown
         public bool pinHint;             // the hint for a float the tide holds at the edge of the view was shown
-        public bool spotHint;            // the legend spot's one-time hint (cast into the blinking spot) was shown
+        public bool spotHint;            // the legend spot's one-time hint (cast into the splashing spot) was shown
 
         public static SaveData NewGame()
         {

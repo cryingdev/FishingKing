@@ -6,12 +6,13 @@ namespace FishingKing
 {
     /// <summary>
     /// -fkauto legendspot (Docs/lures_legend_spec.md 2.2.1), with -fkencounter natural on a stage with a legend (default
-    /// the lake's golden carp): the legend's blinking spot and the cast it asks for.
+    /// the lake's golden carp): the legend's splashing spot and the cast it asks for.
     /// <list type="number">
     /// <item>The first spot (the natural first cue's look let finish, then one offered now from the home view): the look
-    /// at it (<see cref="WatchLook"/>: legspot_look_0_before / _1_peak / _2_home); inside the home view, on open water,
-    /// within his cast; shot at both blink phases (legspot_1_blink_on / _2_blink_off); left alone it times out after its
-    /// window: no encounter, a miss.</item>
+    /// at it (<see cref="WatchLook"/>: legspot_look_0_before / _1_peak / _2_home) and its cue's shadow gliding by (legspot_shadow_1 /
+    /// _2, mid-glide); inside the home view, on open water,
+    /// within his cast; shot at a burst of spray (legspot_1_splash) and in its last seconds, the bursts quicker
+    /// (legspot_2_late); left alone it times out after its window: no encounter, a miss.</item>
     /// <item>Late: a cast into where it was, after it went: no claim, no build-up, no encounter.</item>
     /// <item>The retry: the next spot comes spotRetry s after the miss (looked at from the zoomed wait); the rig lying in
     /// it from before does not claim it.</item>
@@ -39,8 +40,28 @@ namespace FishingKing
         {
             var w = ctl.Watch;
             var fx = ctl.Stage.Water;
-            Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "[SPOT] {0}: blink {1} at {2:0.00}s, drawn {3} ({4} runs), spot px {5}",
-                what, w.SpotBlinkOn ? "on" : "off", w.SpotT, fx != null && fx.SpotDrawnOn ? "on" : "off", fx != null ? fx.SpotDrawnSegs : -1, w.Spot2D));
+            Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "[SPOT] {0}: spray {1} at {2:0.00}s (burst {6}, every {7:0.00}s), drawn {3} droplets ({4} runs), spot px {5}",
+                what, w.SpotSplashing ? "up" : "down", w.SpotT, fx != null ? fx.SpotDrawnSpray : -1, fx != null ? fx.SpotDrawnSegs : -1, w.Spot2D, w.SpotBursts, w.SpotBurstGap));
+        }
+
+        /// <summary>A cue's shadow gliding by: shot at 30 % and 55 % of its glide (legspot_shadow_1 / _2), drawn and moved between them.</summary>
+        IEnumerator ShadeShots(LegendWatch w)
+        {
+            for (float t = 0f; t < 3f && w.ShadeK < 0f; t += Time.deltaTime) yield return null;
+            var pos = new Vector2[2];
+            var shown = new bool[2];
+            for (int i = 0; i < 2; i++)
+            {
+                float at = i == 0 ? 0.3f : 0.55f;
+                for (float t = 0f; t < 3f && w.ShadeK >= 0f && w.ShadeK < at; t += Time.deltaTime) yield return null;
+                shown[i] = w.ShadeShown;
+                pos[i] = w.CueShade2D;
+                Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "[SPOT] shadow {0}: k {1:0.00}, shown {2}, at {3}", i + 1, w.ShadeK, shown[i], SV(pos[i])));
+                yield return Shot($"legspot_shadow_{i + 1}");
+            }
+            float moved = (pos[1] - pos[0]).magnitude * PixelView.PPU;
+            SpotCheck(string.Format(System.Globalization.CultureInfo.InvariantCulture, "the cue's shadow is drawn mid-glide ({0}, {1}) and glides {2:0.0} px between the shots", shown[0], shown[1], moved),
+                shown[0] && shown[1] && moved >= 2f);
         }
 
         static string SV(Vector2 v) => string.Format(System.Globalization.CultureInfo.InvariantCulture, "({0:0.0}, {1:0.0})", v.x, v.y);
@@ -50,7 +71,7 @@ namespace FishingKing
         /// within 0.2 s, reaches the step <paramref name="askedBefore"/> + LookSteps pixel exact with the spot centred (within
         /// 2 px of where the crop can centre it) for its hold, the camera no faster than ViewZoom.MaxCameraSpeed, takes
         /// LookIn + LookHold + at most LookBackMax, and leaves the view home (the ready) / the rod tip and the rig in frame
-        /// (waiting), the step back to the mode's. <paramref name="shots"/>: the peak (blink on) and home shots.
+        /// (waiting), the step back to the mode's. <paramref name="shots"/>: the peak (a burst's spray up) and home shots.
         /// </summary>
         IEnumerator WatchLook(FishingController ctl, string label, int askedBefore, bool shots)
         {
@@ -80,7 +101,7 @@ namespace FishingKing
                 peakStep = z.StepPx.y;
                 peakExact = z.PixelExact;
                 if (z.Level >= 1f && peakErr <= 2f) centredFor += Time.deltaTime;
-                if (!peakShot && Time.time - t0 >= FishingController.LookIn + 0.4f && w.SpotBlinkOn && water != null && water.SpotDrawnOn)
+                if (!peakShot && Time.time - t0 >= FishingController.LookIn + 0.4f && w.SpotSplashing && water != null && water.SpotDrawnSpray > 0)
                 {
                     peakShot = true;
                     Log($"[SPOT] look peak: {ZDesc(z)}");
@@ -163,13 +184,15 @@ namespace FishingKing
             var z = ZoomNow;
             Log($"[SPOT] zoom mode {mode0}");
 
-            // ---- 1. the first spot: where it is, its blink, left alone (and the look at it from the ready)
+            // ---- 1. the first spot: where it is, its splashing, left alone (and the look at it from the ready)
             // (the natural lurk's first cue comes 1.5 s in: its look let finish, then a spot of our own from the home view)
             for (float t = 0f; t < 6f && (ctl.SpotLooking || ctl.SpotLookBack || z.Level > 0f || !z.AtHome); t += Time.deltaTime) yield return null;
             Log($"[SPOT] before the look: {ctl.State}, {ZDesc(z)}");
             yield return Shot("legspot_look_0_before");
             int askedReady = z.StepPxAsked;
             w.DebugSpotNow();
+            // (the cue with it: its shadow shot twice mid-glide, alongside the look)
+            StartCoroutine(ShadeShots(w));
             yield return WaitSpot(ctl, 40f, 6f);
             if (w.SpotOn && mode0 != ZoomMode.Off) yield return WatchLook(ctl, "ready", askedReady, true);
             SpotCheck($"a spot came up (offers {w.SpotOffers})", w.SpotOn);
@@ -187,22 +210,35 @@ namespace FishingKing
                 "spot inside the home view on open water ({0:0.00}, {1:0.00}) r {2:0.0}: open {3}, {4:0.0} m from him (cast {5:0}), depth {6:0.0} m, {7:0.0} m from the lurk point",
                 s.x, s.z, r, open, reach, Game.I.Rod.castDist, L.DepthAt(s.z), new Vector2(s.x - w.Lurk.x, s.z - w.Lurk.z).magnitude),
                 open && reach <= Game.I.Rod.castDist && s.z > L.zNear);
-            // (the water effects draw a frame behind the watch: wait for the drawn phase, a few frames into it)
-            for (float t = 0f; t < 3f && !(water != null && water.SpotDrawnOn && w.SpotT > 0.5f); t += Time.deltaTime) yield return null;
-            for (int f = 0; f < 3; f++) yield return null;
-            LogSpotDraw(ctl, "blink_on");
-            yield return Shot("legspot_1_blink_on");
-            for (float t = 0f; t < 3f && water != null && water.SpotDrawnOn; t += Time.deltaTime) yield return null;
-            for (int f = 0; f < 3; f++) yield return null;
-            yield return null;
-            LogSpotDraw(ctl, "blink_off");
-            yield return Shot("legspot_2_blink_off");
-            float offerAt = Time.time - w.SpotT;
+            // (a new burst, its droplets well up: the water effects draw a frame behind the watch)
+            int b0 = w.SpotBursts;
+            for (float t = 0f; t < 3f && w.SpotOn && w.SpotBursts == b0; t += Time.deltaTime) yield return null;
+            for (float t = 0f; t < 0.18f; t += Time.deltaTime) yield return null;
+            LogSpotDraw(ctl, "splash");
+            int spray1 = water != null ? water.SpotDrawnSpray : 0;
+            float gap1 = w.SpotBurstGap;
+            yield return Shot("legspot_1_splash");
+            SpotCheck($"a burst of spray is drawn ({spray1} droplets in the air, {(water != null ? water.SpotDrawnSegs : -1)} runs), the bursts {gap1:0.00}s apart",
+                spray1 > 0 && Mathf.Abs(gap1 - 1.5f) <= 0.05f);
+            // the window's last seconds: the bursts come quicker
+            for (float t = 0f; t < 20f && w.SpotOn && w.SpotWindow - w.SpotT > 2.5f; t += Time.deltaTime) yield return null;
+            b0 = w.SpotBursts;
+            for (float t = 0f; t < 2f && w.SpotOn && w.SpotBursts == b0; t += Time.deltaTime) yield return null;
+            for (float t = 0f; t < 0.15f; t += Time.deltaTime) yield return null;
+            LogSpotDraw(ctl, "late");
+            int spray2 = water != null ? water.SpotDrawnSpray : 0;
+            yield return Shot("legspot_2_late");
+            float offerAt = Time.time - w.SpotT, gapEnd = w.SpotBurstGap;
+            int bursts = w.SpotBursts;
             while (w.SpotOn && Time.time - offerAt < 40f)
             {
                 if (ctl.State == FishingController.S.Encounter) break;
+                gapEnd = w.SpotBurstGap;
+                bursts = w.SpotBursts;
                 yield return null;
             }
+            SpotCheck($"the bursts quicken at the end: {bursts} in {w.SpotWindow:0}s, the last {gapEnd:0.00}s apart (first {gap1:0.00}s), late shot {spray2} droplets",
+                gapEnd < 0.8f && spray2 > 0);
             float lasted = Time.time - offerAt;
             SpotCheck($"ignored spot timed out after {lasted:0.0}s (window {w.SpotWindow:0}s): end '{w.SpotEnd}', misses {w.SpotMisses}, state {ctl.State}",
                 w.SpotEnd == "timeout" && Mathf.Abs(lasted - w.SpotWindow) <= 0.6f && ctl.State != FishingController.S.Encounter);
@@ -337,8 +373,8 @@ namespace FishingKing
             s = w.Spot;
             float castAtT = w.SpotT;
             yield return CastAt(ctl, s);
-            // (the claim's bright ring a moment into its swell, the splash still there)
-            for (float t = 0f; t < 0.15f; t += Time.deltaTime) yield return null;
+            // (the claim's wide splash ring a moment into its swell, its spray up)
+            for (float t = 0f; t < 0.3f; t += Time.deltaTime) yield return null;
             yield return Shot("legspot_3_land");
             landD = new Vector2(ctl.Tackle.Surface.x - s.x, ctl.Tackle.Surface.z - s.z).magnitude;
             SpotCheck($"the key ({Game.I.Bait.id}) {landD:0.0} m from the spot, thrown {castAtT:0.0}s in, claims it (end '{w.SpotEnd}', claims {w.SpotClaims})",

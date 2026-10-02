@@ -261,7 +261,7 @@ stateDiagram-v2
 | 10–19 | 물고기 그림자 (`10 + clamp(9 - z/6, 0, 9)`: 가까울수록 위) | `FishAgent` (`shadow.sortingOrder`) |
 | 12 | 물속 미끼/루어 스프라이트 | `Tackle` (`baitSr.sortingOrder = … : 12`) |
 | 13 | 루어 반짝임·흙먼지 | `Tackle.OrderUnder` |
-| 19 | 전설어 눈빛 단서 (물고기 그림자 대역) | `Legend/LegendWatch.cs` |
+| 19 | 전설어 신호의 그림자 (물고기 그림자 대역) | `Legend/LegendWatch.cs` |
 | 20 | 물속 줄 (`UnderLine`) | `Angler.OrderUnderLine` |
 | 21 | 물속으로 끌려 들어간 찌 | `Tackle` (`Angler.OrderUnderLine + 1`) |
 | 25 / 26 / 27 / 28 / 30 | 물결 / 물마루 / 거품 / 파문 링 / 찌 물살 V자 | `WaterFx.OrderWave`, `OrderCrest`, `OrderFoam`, `OrderRing`, `OrderWake` |
@@ -484,4 +484,4 @@ LateUpdate (1100)  EncounterHUD.LateUpdate
 | [lures_legend_spec.md](lures_legend_spec.md) 2.5 (3. Quads) | 배경 RT와 물고기 RT를 쿼드 두 개(`quadBack`, `quadFish`)로 표시 | 물고기 타깃은 세트의 림 재질을 거쳐 물속 합성 RT 안의 "fish layer"로 들어가고, 픽셀 뷰에는 쿼드 하나로 표시 (`EncounterView` 클래스 요약 주석: "That target is shown in the pixel view by one quad") |
 | [lures_legend_spec.md](lures_legend_spec.md) 1.1 | `LureInput`은 Waiting과 Encounter 상태에서 갱신 | Snagged에서도 갱신(톡으로 밑걸림을 풂), Waiting은 채비가 `Water` 또는 `Perched`일 때만 (`FishingController.Update`) — 장애물 사양([obstacles_spec.md](obstacles_spec.md) 6.5)이 더한 것 |
 
-위 외에 이 문서가 다룬 범위(상태 목록, `CanLeave`, 조우 진입 시 처리, 밑걸림 진입 상태, 앞/뒤 레이어 order 0/40, 눈빛 단서 order 19, 조준 윤곽 `Fx.OrderRipple + 1`, 얹힌 미끼 45, 조우 테두리 94·타이머 95)는 사양서와 코드가 일치합니다.
+위 외에 이 문서가 다룬 범위(상태 목록, `CanLeave`, 조우 진입 시 처리, 밑걸림 진입 상태, 앞/뒤 레이어 order 0/40, 전설어 신호의 그림자 order 19, 조준 윤곽 `Fx.OrderRipple + 1`, 얹힌 미끼 45, 조우 테두리 94·타이머 95)는 사양서와 코드가 일치합니다.

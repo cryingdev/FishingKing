@@ -426,7 +426,7 @@ namespace FishingKing
             e.lungeT = 0.45f;
             e.hitStop = 0.10f;
             e.biteText = "쪼옥!";
-            e.lurkText = "물속 깊은 곳에서 황금빛이 번뜩였다…";
+            e.lurkText = "물속 깊은 곳에서 묵직한 그림자가 스르륵 지나갔다…";
             e.eyesText = "물풀 너머에서 무언가 다가온다…";
             e.lostText = "황금잉어가 물풀 속으로 사라졌다…";
             e.failTips = new[] { "다음엔: 미끼는 아주 살짝만 끌기!", "다음엔: 톡 당기지 말고 끌기", "다음엔: 흥분하면 멈추기!", "다음엔: 맛볼 때는 참았다가 챔질" };
@@ -604,7 +604,7 @@ namespace FishingKing
             e.lungeT = 0.25f;
             e.hitStop = 0.10f;
             e.biteText = "콱!";
-            e.lurkText = "수평선 아래에서 푸른 빛이 번뜩였다…";
+            e.lurkText = "수평선 아래로 기다란 그림자가 빠르게 스쳐 갔다…";
             e.eyesText = "깊고 푸른 곳에서 무언가 치솟는다…";
             e.lostText = "청새치가 푸른 바다 너머로 사라졌다…";
             e.failTips = new[] { "다음엔: 경계할 땐 쉬지 말고 빠르게!", "다음엔: 감다가 짧게만 멈추기", "다음엔: 흥분하면 멈추기!", "다음엔: 부리로 칠 땐 참았다가 챔질" };

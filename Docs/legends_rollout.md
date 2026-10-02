@@ -34,7 +34,7 @@ set per legend).
    feels with its barbels, the marlin slashes with its bill and the great white bumps. A tap during a fake-out counts
    as the existing early tap (gauge 65, back to Tease). The fake-out has no gold flash and no "ting", so it is
    distinct from the real tell.
-7. **The surface cue stays generic:** bubble rings and a two-pixel eye glint in the legend's eye colour. On the ice it
+7. **The surface cue stays generic:** bubble rings and the legend's dark shadow gliding by under the surface. On the ice it
    is shown inside the hole (2.3).
 
 ---
@@ -56,7 +56,7 @@ These are additive. With the defaults, the coelacanth plays and renders exactly 
 | `fakeOutText` | – | caption of the fake-out |
 | `biteText` | "덥석!" | the bite caption |
 | `lungeT`, `hitStop`, `shake` | 0.30 / 0.12 / (0.15, 0.15) | lunge length (the full-screen grow stays 0.30 s), hit-stop, shake |
-| `lurkText` | "깊은 곳에서 무언가 눈을 떴다…" | the first appearance in a visit |
+| `lurkText` | "깊은 곳에서 거대한 그림자가 스쳐 지나갔다…" | the first appearance in a visit |
 | `eyesText` | "어둠 속에서 무언가 다가온다…" | the Eyes-beat caption |
 | `tellText` | "…노려본다" | the first tell caption (then "온다…!") |
 | `hookedText`, `lostText` | "{name}가 걸렸다! 원을 그려 감아요!" / "{name}가 어둠 속으로 사라졌다…" | results |
@@ -112,7 +112,7 @@ winding for > 0.5 s (the marlin) or > 1.0 s (the great white). The default `tooS
 - **Ice is allowed.**
   - The lurk is at `x = holeX ± 5`, `z = holeZ + 3 … holeZ + 11`, on the bottom.
   - Because the lure only lives in the hole, `nearLurk` 12 always holds.
-  - Cue: 3 bubble rings **inside the hole**, and the 0.5 s eye glint at the hole's centre (α 40 %).
+  - Cue: 3 bubble rings **inside the hole**, and the shadow gliding under the hole (a shorter glide, α 60 %).
 - `-fkencounter now` checks "the equipped bait is a key of a stage legend" instead of `isLure`.
 
 ### 1.4 Choreography profile and `Legend3D`
@@ -269,7 +269,7 @@ Pacing: 4 s + 6 s + 3.6 s ≈ **14 s of Tease**.
 
 **Texts:**
 - nameSub "백 년을 산 호수의 주인"
-- lurkText "물속 깊은 곳에서 황금빛이 번뜩였다…"
+- lurkText "물속 깊은 곳에서 묵직한 그림자가 스르륵 지나갔다…"
 - eyesText "물풀 너머에서 무언가 다가온다…"
 - tipWrongLure "바닥에 가만히 놓인 달콤한 먹이를 좋아하는 것 같다…"
 - lostText "황금잉어가 물풀 속으로 사라졌다…"
@@ -553,7 +553,7 @@ The keyboard wind (2.6 rev/s) fits both bands. Pacing ≈ 3.3 + 4.5 + 2.6 = **10
 
 **Texts:**
 - nameSub "대양을 가르는 푸른 창"
-- lurkText "수평선 아래에서 푸른 빛이 번뜩였다…"
+- lurkText "수평선 아래로 기다란 그림자가 빠르게 스쳐 갔다…"
 - eyesText "깊고 푸른 곳에서 무언가 치솟는다…"
 - tipWrongLure "빠르게 달아나는 먹이를 쫓는 것 같다…"
 - lostText "청새치가 푸른 바다 너머로 사라졌다…"

@@ -61,7 +61,7 @@ namespace FishingKing
         // ---- the legend spot's look (Docs/fishing_gameplay.md 9.4)
         /// <summary>Seconds the look takes to zoom in on a new spot (the zoom's own full ease: the step change eases as long).</summary>
         public const float LookIn = ViewZoom.EaseTime;
-        /// <summary>Seconds it then stays on the spot (at least one whole blink of the marker, 0.9 s).</summary>
+        /// <summary>Seconds it then stays on the spot: the first burst's ripples spreading and the second burst (1.5 s after the first) thrown up.</summary>
         public const float LookHold = 1.4f;
         /// <summary>Whole-pixel steps beyond the mode's own step the look zooms to (1080p: 1.25배 / 액티브 5 -> 6, 1.5배 6 -> 7).</summary>
         public const int LookSteps = 1;
@@ -197,14 +197,14 @@ namespace FishingKing
                 // the bite: in quickly, on the float / lure (the rod tip kept in frame)
                 zoomCue = 0;
                 bool bite = State == S.Biting;
-                // (a legend's blinking spot while he waits: in frame too, or out to 1x while it blinks)
+                // (a legend's splashing spot while he waits: in frame too, or out to 1x while it splashes)
                 bool spot = State == S.Waiting && Watch != null && Watch.SpotOn;
                 if (spot) z.Keep(Watch.Spot2D, ZoomCueMargin, true);
                 z.Want(!spot || z.KeepsFit, bite ? ZoomBiteIn : ViewZoom.EaseTime);
                 z.Focus(rig, bite ? ZoomBiteTau : ZoomWaitTau);
                 return;
             }
-            // a legend's cue while he waits (the rings and the glint over its lurk point, wherever it lies): turned to a
+            // a legend's cue while he waits (the rings over its lurk point and its shadow gliding by, wherever it lies): turned to a
             // moment before it plays, it stays in frame with the rod tip and the rig; too far from them for one frame, the
             // view eases out to 1x while it plays and back in after
             bool cue = State == S.Waiting && Watch != null && Watch.CueSoon(ZoomCueLead);
@@ -212,8 +212,9 @@ namespace FishingKing
             else
             {
                 z.Keep(Watch.CueRings2D, ZoomCueMargin, true);
-                z.Keep(Watch.CueEyes2D, ZoomCueMargin, true);
-                // (and the spot that blinks with it: the player has to see where to cast)
+                z.Keep(Watch.CueShadeFrom2D, ZoomCueMargin, true);
+                z.Keep(Watch.CueShadeTo2D, ZoomCueMargin, true);
+                // (and the spot that splashes with it: the player has to see where to cast)
                 if (Watch.SpotOn) z.Keep(Watch.Spot2D, ZoomCueMargin, true);
                 if (zoomCue == 0) zoomCue = z.KeepsFit ? 1 : -1;
             }
@@ -224,7 +225,7 @@ namespace FishingKing
         /// <summary>
         /// The legend spot's look: as a new spot comes up (with its cue) the view zooms one whole-pixel step beyond the
         /// mode's (<see cref="LookSteps"/>) onto it in <see cref="LookIn"/>, its pan glided (acceleration-limited), stays
-        /// there <see cref="LookHold"/> with the marker blinking, then eases back to the usual framing (the rod tip and the
+        /// there <see cref="LookHold"/> while the water splashes there, then eases back to the usual framing (the rod tip and the
         /// rig soft, glided: home by <see cref="LookBackMax"/>). The rod tip may leave the frame meanwhile. Not with 끔 (the
         /// spot always lies in the home view: nothing to bring into sight, and the player asked for no zoom), not on the ice
         /// (the spot is the hole he always fishes), not while he winds up or throws (casting is from the home view), and not

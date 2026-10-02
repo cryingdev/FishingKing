@@ -642,12 +642,16 @@ namespace FishingKing
         public struct SpotLook
         {
             public float x, z, radius;   // m
-            public bool on;              // the blink's bright phase
             public float alpha;          // 0..1 (fading in / out)
-            public float pulse;          // 0..1 through an expanding ring (a claim: wide and bright), < 0 none
+            public float swirl;          // radians round the swirl under the surface, < 0 none (the spot ended)
+            public float b0, b1, b2;     // s since its last three bursts, newest first (>= BurstLife: gone)
+            public int s0, s1, s2;       // their seeds (where each burst's droplets fly)
+            public float pulse;          // 0..1 through the claim's splash, < 0 none
             public bool claim;
-            public Color glow;           // the legend's eye glow
         }
+
+        /// <summary>Seconds a burst's spray is in the air / its ripples take to die out.</summary>
+        public const float SpraySecs = 0.55f, BurstLife = 1.7f;
 
         SpotLook spot;
         float spotStamp = -1f;
@@ -660,28 +664,30 @@ namespace FishingKing
         }
 
         /// <summary>
-        /// The legend's spot: a ring of its radius on the water (squashed like the rises, clipped to the play water),
-        /// in the legend's eye glow with some of the water's lit colour (so the period look tints it); the bright phase
-        /// thickens it to 2 px and adds an inner ring and a small sparkle cross at its centre, the dim phase leaves the outer ring faint. A pulse
-        /// ring expands out of it at every bright phase (a claim: one wide bright ring). Drawn a frame behind the watch
-        /// when this Update runs first (the test waits for <see cref="SpotDrawnOn"/>).
+        /// The legend's spot: water thrown about by something big just under the surface, in the water effects' own
+        /// colours (foam, the lit water: the period look tints and moonlights them), squashed like the rises and clipped
+        /// to the play water. A swirl turns slowly over it (two short arcs on half its radius); every burst throws a ring
+        /// of spray droplets up and out from its centre over a churn of foam, and two ripple rings spread from there out
+        /// to about its radius (so its extent reads) and die out. The bursts come every 1.5 s, quickening to 0.55 s over
+        /// the window's last 4 s (LegendWatch): the countdown. A claim: one wide splash ring and a big burst of spray.
+        /// Drawn a frame behind the watch when this Update runs first (the test waits for <see cref="SpotDrawnSpray"/>).
         /// </summary>
         void DrawSpot()
         {
             int used0 = used;
+            SpotDrawnSpray = 0;
             DrawSpotRuns();
             SpotDrawnSegs = used - used0;
         }
 
-        /// <summary>The spot as last drawn (the test log): its blink phase and the runs it took.</summary>
-        public bool SpotDrawnOn { get; private set; }
+        /// <summary>The spot as last drawn (the test log): its spray droplets in the air and the runs it took.</summary>
+        public int SpotDrawnSpray { get; private set; }
         public int SpotDrawnSegs { get; private set; }
 
         void DrawSpotRuns()
         {
             if (spotStamp < 0f || Time.time - spotStamp > 0.1f) return;
             var s = spot;
-            SpotDrawnOn = s.on;
             // (kept readable at night: the period's dimming only takes it down to 0.8)
             float a = s.alpha * Mathf.Max(0.8f, fxAlpha);
             if (a < 0.05f) return;
@@ -689,46 +695,97 @@ namespace FishingKing
             Proj(s.x, 0, s.z, out float cc, out float rr, out float ppm);
             float squash = Mathf.Clamp(P.Foreshorten(p) * 1.3f, 0.12f, 1f);
             int cx = Mathf.RoundToInt(cc), cy = Mathf.FloorToInt(rr);
-            // the legend's glow, a little of the water's lit colour in it (the ring) / lifted towards the foam (the hot
-            // parts): both follow the period look (the foam is moonlit at night)
-            var ring = Color.Lerp(s.glow, lighter, 0.3f);
-            var hot = Color.Lerp(Color.Lerp(s.glow, Color.white, 0.55f), foam, 0.2f);
-            float rx = Mathf.Max(2f, s.radius * ppm), ry = rx * squash;
-            if (s.pulse >= 0f)
+            float rx = Mathf.Max(2f, s.radius * ppm);
+            // the swirl: two short arcs turning over it
+            if (s.swirl >= 0f && rx >= 4f)
+                for (int k = 0; k < 2; k++)
+                    Arc(cx, cy, rx * 0.5f, rx * 0.5f * squash, s.swirl + k * Mathf.PI, 1.1f, SA(lighter, 0.5f * a), OrderRing);
+            // the bursts, oldest first (the newest spray on top)
+            Burst(s.b2, s.s2, s, cx, cy, rx, squash, a, 1f, 10);
+            Burst(s.b1, s.s1, s, cx, cy, rx, squash, a, 1f, 10);
+            Burst(s.b0, s.s0, s, cx, cy, rx, squash, a, 1f, 10);
+            if (s.claim && s.pulse >= 0f)
             {
-                float k = s.pulse;
-                float pr = rx * (s.claim ? Mathf.Lerp(0.8f, 1.9f, 1f - (1f - k) * (1f - k)) : Mathf.Lerp(0.35f, 1.25f, k));
-                float pa = (s.claim ? 1f : 0.75f) * (1f - k);
-                if (pa >= 0.125f) Ellipse(cx, cy, pr, pr * squash, SA(s.claim ? hot : ring, pa * a), SA(s.claim ? hot : ring, pa * a * 0.8f), OrderRing);
+                // the claim: one wide splash ring, a second inside it, and a big burst of spray
+                float k = s.pulse, e = 1f - (1f - k) * (1f - k);
+                float pr = rx * Mathf.Lerp(0.6f, 2f, e);
+                if (1f - k >= 0.125f) Ellipse(cx, cy, pr, pr * squash, SA(foam, (1f - k) * a), SA(foam, 0.8f * (1f - k) * a), OrderRing);
+                float k2 = Mathf.Clamp01((k - 0.2f) / 0.8f), e2 = 1f - (1f - k2) * (1f - k2);
+                float pr2 = rx * Mathf.Lerp(0.3f, 1.3f, e2);
+                if (k > 0.2f && 0.75f * (1f - k2) >= 0.125f) Ellipse(cx, cy, pr2, pr2 * squash, SA(lighter, 0.75f * (1f - k2) * a), SA(lit, 0.75f * (1f - k2) * a), OrderRing);
+                Burst(k, 7919, s, cx, cy, rx, squash, Mathf.Max(0.8f, fxAlpha), 1.6f, 16);
             }
-            if (s.claim) return;
-            if (!s.on)
+        }
+
+        /// <summary>
+        /// One burst <paramref name="t"/> s old: its droplets thrown up and out (seeded), the churn of foam at its centre,
+        /// two ripple rings spreading to about the spot's radius and fading (<paramref name="big"/>: the claim's, bigger).
+        /// </summary>
+        void Burst(float t, int seed, SpotLook s, int cx, int cy, float rx, float squash, float a, float big, int n)
+        {
+            if (t < 0f || t >= BurstLife) return;
+            // the ripples: the first from the splash, the second from the water falling back
+            if (big <= 1f)
+                for (int k = 0; k < 2; k++)
+                {
+                    float t0 = k == 0 ? 0.05f : 0.4f, life = k == 0 ? 1.6f : 1.3f;
+                    float q = (t - t0) / life;
+                    if (q < 0f || q >= 1f) continue;
+                    float e = 1f - (1f - q) * (1f - q);
+                    float r = rx * (k == 0 ? Mathf.Lerp(0.25f, 1.1f, e) : Mathf.Lerp(0.15f, 0.75f, e));
+                    float ra = (k == 0 ? 0.9f : 0.7f) * (1f - q) * a;
+                    if (ra < 0.125f) continue;
+                    if (r < 1.2f) Run(cy, cx, cx, SA(lit, ra), OrderRing);
+                    else Ellipse(cx, cy, r, Mathf.Max(1f, r * squash), SA(q < 0.3f ? foam : lighter, ra), SA(lit, ra * 0.8f), OrderRing);
+                }
+            // the churn: broken foam over the centre, shrinking away
+            if (t < 0.5f)
             {
-                // the dim phase: the outer ring alone, faint, and its centre
-                Ellipse(cx, cy, rx, ry, SA(ring, 0.5f * a), SA(ring, 0.4f * a), OrderRing);
-                Run(cy, cx, cx, SA(ring, 0.5f * a), OrderRing);
-                return;
+                float w = Mathf.Max(1f, rx * 0.35f * big * (1f - t / 0.5f));
+                float fa = (t < 0.35f ? 1f : 0.75f) * a;
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    int half = Mathf.RoundToInt(w * (dy == 0 ? 1f : 0.6f));
+                    for (int c = -half; c <= half; c++)
+                        if (Hash(seed + dy * 31, c + (int)(t * 12f)) < 0.62f) Run(cy + dy, cx + c, cx + c, SA(dy == 0 ? foam : lighter, fa), OrderRing);
+                }
             }
-            // the bright phase: a 2 px outer ring (its inner line a step fainter), an inner ring, the sparkle
-            Ellipse(cx, cy, rx, ry, SA(hot, a), SA(ring, a), OrderRing);
-            if (rx >= 4f) Ellipse(cx, cy, rx - 1f, Mathf.Max(1f, ry - (ry > 2.5f ? 1f : 0f)), SA(ring, 0.75f * a), SA(ring, 0.75f * a), OrderRing);
-            float ir = rx * 0.5f;
-            if (ir >= 2f) Ellipse(cx, cy, ir, ir * squash, SA(hot, 0.75f * a), SA(ring, 0.75f * a), OrderRing);
-            // the sparkle: a cross (3 px arms near, 2 far off) with short diagonals, its centre the brightest
-            int arm = ppm >= 9f ? 3 : 2;
-            Run(cy, cx - arm, cx + arm, SA(hot, 0.75f * a), OrderRing);
-            for (int d = 1; d <= arm; d++)
+            // the spray: droplets thrown up and out around it, arcing back down
+            if (t >= SpraySecs * big) return;
+            float R = s.radius;
+            for (int i = 0; i < n; i++)
             {
-                float da = (d == 1 ? 1f : d == 2 ? 0.75f : 0.5f) * a;
-                Run(cy + d, cx, cx, SA(hot, da), OrderRing);
-                Run(cy - d, cx, cx, SA(hot, da), OrderRing);
+                float ang = (i + 0.6f * Hash(seed, i)) / n * Mathf.PI * 2f;
+                float fly = SpraySecs * big * (0.65f + 0.35f * Hash(seed, i + 101));
+                float tau = t / fly;
+                if (tau >= 1f) continue;
+                float d = R * (0.12f * Hash(seed, i + 202) + (0.4f + 0.45f * Hash(seed, i + 303)) * big * tau);
+                float h = R * big * (0.3f + 0.35f * Hash(seed, i + 404)) * 4f * tau * (1f - tau);
+                float x = s.x + Mathf.Cos(ang) * d, z = s.z + Mathf.Sin(ang) * d;
+                Proj(x, h, z, out float dc, out float dr, out _);
+                int c = Mathf.FloorToInt(dc), r = Mathf.FloorToInt(dr);
+                float da = (tau < 0.7f ? 1f : 0.75f) * a;
+                Run(r, c, c, SA(foam, da), OrderRing);
+                // (rising fast: a 2 px streak)
+                if (tau < 0.35f) Run(r - 1, c, c, SA(lighter, 0.75f * da), OrderRing);
+                SpotDrawnSpray++;
             }
-            for (int dx = -1; dx <= 1; dx += 2)
+        }
+
+        /// <summary>1 px arc of the ellipse (cx, cy, rx, ry) from <paramref name="from"/> over <paramref name="span"/> radians.</summary>
+        void Arc(int cx, int cy, float rx, float ry, float from, float span, Color col, int order)
+        {
+            int steps = Mathf.Max(3, Mathf.CeilToInt(rx * span));
+            int lc = int.MinValue, lr = int.MinValue;
+            for (int i = 0; i <= steps; i++)
             {
-                Run(cy + 1, cx + dx, cx + dx, SA(hot, 0.5f * a), OrderRing);
-                Run(cy - 1, cx + dx, cx + dx, SA(hot, 0.5f * a), OrderRing);
+                float t = from + span * i / steps;
+                int c = cx + Mathf.RoundToInt(Mathf.Cos(t) * rx), r = cy + Mathf.RoundToInt(Mathf.Sin(t) * ry);
+                if (c == lc && r == lr) continue;
+                lc = c;
+                lr = r;
+                Run(r, c, c, col, order);
             }
-            Run(cy, cx, cx, SA(Color.Lerp(hot, Color.white, 0.5f), a), OrderRing);
         }
 
         /// <summary>The front layer covers this point of the pixel scene (scene units; false off the canvas or without a mask).</summary>

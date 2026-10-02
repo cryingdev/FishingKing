@@ -396,7 +396,7 @@ namespace FishingKing
         public string biteText = "덥석!";
         public float lungeT = 0.3f, hitStop = 0.12f;
         public Vector2 shake = new Vector2(0.15f, 0.15f);
-        public string lurkText = "깊은 곳에서 무언가 눈을 떴다…";
+        public string lurkText = "깊은 곳에서 거대한 그림자가 스쳐 지나갔다…";
         public string eyesText = "어둠 속에서 무언가 다가온다…";
         public string tellText = "…노려본다";
         public string hookedText = "{name} 걸렸다! 원을 그려 감아요!";   // {name} = the name with its subject particle
@@ -419,9 +419,9 @@ namespace FishingKing
         /// <summary>A mood just entered is kept this long before the gauge can drop it back (0 = the hysteresis alone).</summary>
         public float moodHold;
 
-        // ---- the spot (Docs/lures_legend_spec.md 2.2.1): with each cue a spot on the water near the lurk point blinks;
+        // ---- the spot (Docs/lures_legend_spec.md 2.2.1): with each cue the water splashes at a spot near the lurk point;
         // a new cast must come down within spotRadius of it inside spotWindow s for the meter to run at all
-        public float spotWindow = 12f;            // s the spot blinks (the blink quickens over its last 4 s)
+        public float spotWindow = 12f;            // s the spot splashes (its bursts quicken over its last 4 s)
         public float spotRadius = 1.5f;           // m: a landing this close to it claims it
         public float spotRetry = 8f;              // s after a miss (or a claim lost) before the next spot (no cooldown, no pity)
         public float spotHold;                    // m the claimed rig may move from it (0 = nearLurk: worked lures travel)

@@ -8,13 +8,13 @@ namespace FishingKing
     /// The stage's legends on the surface and their trigger (Docs/lures_legend_spec.md 2.2, Docs/legends_rollout.md 1.3,
     /// 5), ticked by the controller. While a legend is off cooldown a lurk point sits somewhere in the deep water (it
     /// appears appear.x..y s after the stage opens or a cooldown ends and moves every relocate.x..y s), cued every 15-25 s
-    /// by bubble rings on the surface above it (on the ice: inside the hole) and a glint of two eyes. Every legend of the
+    /// by bubble rings on the surface above it (on the ice: inside the hole) and its shadow gliding by. Every legend of the
     /// stage (the ocean has two) shares that lurk point and its cues, but has its own meter, cooldown and pity: with one
     /// of its key lures worked the way it likes near the lurk point, its meter fills; the tells (a flash at 0.4, the
     /// ordinary fish scattering at 0.5, the line trembling at 0.7) follow the fullest meter, and the first meter to
     /// reach 1.0 rolls to start that legend's encounter. Without a line strong enough a legend's meter stops at 0.7.
-    /// <para>The spot (Docs/lures_legend_spec.md 2.2.1): with each cue a spot near the lurk point blinks on the water (in
-    /// the home view, within his cast; on the ice the hole) for spotWindow s, quickening at the end. Only a new cast that
+    /// <para>The spot (Docs/lures_legend_spec.md 2.2.1): with each cue the water splashes at a spot near the lurk point (in
+    /// the home view, within his cast; on the ice the hole) for spotWindow s, its bursts quickening at the end. Only a new cast that
     /// comes down within spotRadius of it in time, with a rig some legend here wants, claims it, and the meters run only
     /// while it is claimed (the rig in the water within spotHold, default nearLurk, of it); every other condition still
     /// applies. A miss (the window out, a landing outside it, a wrong rig) or a claim lost brings the next spot spotRetry
@@ -43,7 +43,7 @@ namespace FishingKing
         readonly List<Entry> entries = new List<Entry>();
         /// <summary>The stage's encounter legends (the ocean: the marlin, then the great white).</summary>
         public IReadOnlyList<FishSpecies> Legends { get; }
-        /// <summary>The legend whose meter is fullest (the first on a tie): the one the tells and the glint are about.</summary>
+        /// <summary>The legend whose meter is fullest (the first on a tie): the one the tells and the shadow are about.</summary>
         public FishSpecies Legend => Lead.sp;
         public EncounterDef Def => Legend.encounter;
         /// <summary>The legend whose roll succeeded (set when <see cref="Tick"/> returns true).</summary>
@@ -67,19 +67,19 @@ namespace FishingKing
         bool announced, wrongTold, mixTold, told4, told5, told7;
         int cueRings;
         float cueRingT, cueAge = 99f;
-        SpriteRenderer glintA, glintB;
-        float glintT = -1f;
+        SpriteRenderer shade;
+        float shadeT = -1f, shadeDir, nextDir;   // the cue's shadow: s into its glide (-1 none); its heading / the next cue's
         bool wasAway;
 
         // ---- the spot (Docs/lures_legend_spec.md 2.2.1)
-        /// <summary>A spot blinks now, waiting for a cast (its window running).</summary>
+        /// <summary>A spot splashes now, waiting for a cast (its window running).</summary>
         public bool SpotOn { get; private set; }
         /// <summary>A new cast came down in the spot in time and the rig is still near it: the meters may run.</summary>
         public bool SpotClaimed { get; private set; }
         /// <summary>The spot's surface point (the last one offered, kept after it ends for the log / test).</summary>
         public Vector3 Spot { get; private set; }
         public float SpotRadius { get; private set; }
-        /// <summary>Seconds the current spot has blinked / its window.</summary>
+        /// <summary>Seconds the current spot has been up / its window.</summary>
         public float SpotT { get; private set; }
         public float SpotWindow { get; private set; }
         /// <summary>How the last spot ended: "", "claim", "timeout", "outside", "rig", "lost", "away", "busy".</summary>
@@ -90,16 +90,22 @@ namespace FishingKing
         public int SpotMisses { get; private set; }
         /// <summary>Time.time the last spot ended (the retry test).</summary>
         public float SpotEndedAt { get; private set; } = -1f;
-        /// <summary>The blink's bright phase now (the test's two-phase shots).</summary>
-        public bool SpotBlinkOn { get; private set; }
+        /// <summary>The newest burst's spray is in the air now (the test's shots).</summary>
+        public bool SpotSplashing { get; private set; }
+        /// <summary>Bursts the current spot has thrown so far (the test: they quicken over its last 4 s).</summary>
+        public int SpotBursts { get; private set; }
+        /// <summary>Seconds from the newest burst to the next (1.5 s, down to 0.55 s at the window's end).</summary>
+        public float SpotBurstGap { get; private set; }
         public Vector2 Spot2D => P.To2D(new Vector3(Spot.x, 0f, Spot.z));
         /// <summary>Test hook (-fkauto zoom's cue cases): this watch's cues offer no spot.</summary>
         bool spotsOff;
-        float blinkPh, fadeT = -1f, fadeLen = 0.6f, hintAt = -99f;
+        float burstIn, swirlPh, fadeT = -1f, fadeLen = 0.6f, hintAt = -99f;
+        float burst0 = 99f, burst1 = 99f, burst2 = 99f;   // s since the spot's last three bursts, newest first
+        int seed0, seed1, seed2;
         bool fadeClaim, flyingAtEnd;
 
-        /// <summary>Seconds a cue plays: three rings 0.25 s apart, 0.8 s each (the glint: its first 0.5 s).</summary>
-        public const float CueLength = 1.3f;
+        /// <summary>Seconds a cue plays: three rings 0.25 s apart, 0.8 s each, and the shadow's glide (ShadeLen, the longer).</summary>
+        public const float CueLength = ShadeLen;
 
         /// <summary>A cue plays now.</summary>
         public bool CuePlaying => HasLurk && !Away && cueAge < CueLength;
@@ -109,9 +115,6 @@ namespace FishingKing
 
         /// <summary>Where a cue's rings come up in the pixel scene (over the lurk point; on the ice: the hole).</summary>
         public Vector2 CueRings2D => L.IsIce ? P.To2D(new Vector3(L.holeX, 0f, L.holeZ)) : P.To2D(new Vector3(Lurk.x, 0f, Lurk.z));
-
-        /// <summary>Where its eye glint shows (the lurk point seen through the surface; on the ice: the hole).</summary>
-        public Vector2 CueEyes2D => L.IsIce ? P.To2D(new Vector3(L.holeX, 0f, L.holeZ)) : P.To2D(P.Apparent(Lurk));
 
         StageLayout L => ctl.Stage.L;
         Persp P => ctl.Stage.P;
@@ -136,8 +139,7 @@ namespace FishingKing
             Legends = legends;
             foreach (var sp in legends) entries.Add(new Entry { sp = sp });
             appearT = Random.Range(Primary.appear.x, Primary.appear.y);
-            glintA = Glint("LegendGlintA");
-            glintB = Glint("LegendGlintB");
+            shade = Shade();
             if (DebugMode == "natural") PlaceNatural();
         }
 
@@ -195,15 +197,6 @@ namespace FishingKing
             if (Away) HasLurk = false;
         }
 
-        SpriteRenderer Glint(string name)
-        {
-            var sr = new GameObject(name).AddComponent<SpriteRenderer>();
-            sr.sprite = Art.Pixel;
-            sr.sortingOrder = 19; // the fish-shadow band
-            sr.enabled = false;
-            return sr;
-        }
-
         /// <summary>A new cast landed: a fresh soak and a new chance.</summary>
         public void OnCast()
         {
@@ -219,7 +212,7 @@ namespace FishingKing
 
         /// <summary>
         /// The new cast's rig came down in the water at <paramref name="at"/> (a landing, a bounce that settled, a perched
-        /// rig knocked in): inside the blinking spot in time with a rig some legend here wants, it claims the spot; anywhere
+        /// rig knocked in): inside the splashing spot in time with a rig some legend here wants, it claims the spot; anywhere
         /// else, or with a wrong rig, the spot is missed. A rig already in the water when the spot came up never counts.
         /// </summary>
         public void OnRigLanded(Vector3 at)
@@ -233,7 +226,7 @@ namespace FishingKing
                 at.x, at.z, d, SpotRadius, SpotT, SpotWindow, bait != null ? bait.id : "-", keyed ? " (a key)" : " (no key)"));
             if (d > SpotRadius)
             {
-                ctl.Flash("빗나갔다… 빛나는 곳 안으로 던져야 해요", UIKit.Cream, 1.8f);
+                ctl.Flash("빗나갔다… 물보라가 이는 곳 안에 던져야 해요", UIKit.Cream, 1.8f);
                 EndSpot("outside", true);
                 return;
             }
@@ -248,7 +241,7 @@ namespace FishingKing
             SpotClaims++;
             SpotEnd = "claim";
             fadeT = 0f;
-            fadeLen = 0.7f;
+            fadeLen = 1f;
             fadeClaim = true;
             Sfx.Play(Sfx.Drone, 0.25f);
             ctl.Flash("바로 그 자리! 가만히 기다려 봐요…", new Color32(0xb8, 0xff, 0x8a, 0xff), 2.0f);
@@ -268,8 +261,9 @@ namespace FishingKing
             if (miss) SpotMisses++;
             if (was)
             {
+                // (no new bursts: the ripples spread on and die out)
                 fadeT = 0f;
-                fadeLen = 0.6f;
+                fadeLen = 1.2f;
                 fadeClaim = false;
             }
             if (HasLurk && why != "away") cueT = Mathf.Max(0.5f, Primary.spotRetry);
@@ -360,7 +354,9 @@ namespace FishingKing
             SpotWindow = d.spotWindow;
             SpotEnd = "";
             SpotOffers++;
-            blinkPh = 0f;
+            burstIn = 0f;
+            swirlPh = Random.value * Mathf.PI * 2f;
+            SpotBursts = 0;
             fadeT = -1f;
             flyingAtEnd = false;
             Debug.Log(string.Format(System.Globalization.CultureInfo.InvariantCulture,
@@ -372,10 +368,10 @@ namespace FishingKing
                 Game.I.Save();
                 // (after the announcement, which shows 2.2 s)
                 float wait = Mathf.Max(0f, hintAt + 2.3f - Time.time);
-                if (wait <= 0f) ctl.Flash("빛나는 곳으로 던져 보세요", UIKit.Sky, 2.8f);
+                if (wait <= 0f) ctl.Flash("물보라가 이는 곳으로 던져 보세요", UIKit.Sky, 2.8f);
                 else Tween.After(wait, () =>
                 {
-                    if (ctl != null && SpotOn) ctl.Flash("빛나는 곳으로 던져 보세요", UIKit.Sky, 2.8f);
+                    if (ctl != null && SpotOn) ctl.Flash("물보라가 이는 곳으로 던져 보세요", UIKit.Sky, 2.8f);
                 });
             }
         }
@@ -396,7 +392,7 @@ namespace FishingKing
                     if (SpotT - dt < SpotWindow && st == FishingController.S.Casting) flyingAtEnd = true;
                     if (!(flyingAtEnd && st == FishingController.S.Casting))
                     {
-                        ctl.Flash("빛이 사라졌다…", UIKit.Cream, 1.6f);
+                        ctl.Flash("물보라가 잦아들었다…", UIKit.Cream, 1.6f);
                         EndSpot("timeout", true);
                     }
                 }
@@ -417,22 +413,37 @@ namespace FishingKing
             // the marker
             var water = ctl.Stage.Water;
             if (water == null) return;
-            var look = new WaterFx.SpotLook { x = Spot.x, z = Spot.z, radius = L.IsIce ? SpotRadius * 0.8f : SpotRadius, glow = Art.Hex(Lead.sp.encounter.eyeGlow, 1f), pulse = -1f };
+            var look = new WaterFx.SpotLook { x = Spot.x, z = Spot.z, radius = L.IsIce ? SpotRadius * 0.8f : SpotRadius, pulse = -1f, swirl = -1f };
+            // (the bursts' ripples spread on through the fade, as they would)
+            burst0 += dt;
+            burst1 += dt;
+            burst2 += dt;
             if (SpotOn)
             {
-                // the blink quickens over the last 4 s (0.9 s -> 0.3 s a blink): the countdown
-                float left = SpotWindow - SpotT;
-                float period = Mathf.Lerp(0.3f, 0.9f, Mathf.Clamp01(left / 4f));
-                blinkPh += dt / period;
-                float ph = blinkPh - Mathf.Floor(blinkPh);
-                SpotBlinkOn = ph < 0.55f;
-                look.on = SpotBlinkOn;
+                // a burst of spray every 1.5 s, quickening over the last 4 s to one every 0.55 s (the countdown), the
+                // swirl under it turning faster with them
+                float hurry = Mathf.Clamp01((SpotWindow - SpotT) / 4f);
+                if ((burstIn -= dt) <= 0f)
+                {
+                    SpotBurstGap = Mathf.Lerp(0.55f, 1.5f, hurry);
+                    burstIn += SpotBurstGap;
+                    burst2 = burst1;
+                    seed2 = seed1;
+                    burst1 = burst0;
+                    seed1 = seed0;
+                    burst0 = 0f;
+                    seed0 = SpotOffers * 97 + SpotBursts;
+                    SpotBursts++;
+                }
+                swirlPh += dt * Mathf.Lerp(4.5f, 1.6f, hurry);
+                SpotSplashing = burst0 < WaterFx.SpraySecs;
                 look.alpha = Mathf.Clamp01(SpotT / 0.3f);
-                look.pulse = ph < 0.55f ? ph / 0.55f : -1f;
+                look.swirl = Mathf.Repeat(swirlPh, Mathf.PI * 2f);
+                Bursts(ref look);
                 water.ShowSpot(look);
                 return;
             }
-            SpotBlinkOn = false;
+            SpotSplashing = false;
             if (fadeT >= 0f)
             {
                 fadeT += dt;
@@ -443,11 +454,22 @@ namespace FishingKing
                     return;
                 }
                 look.claim = fadeClaim;
-                look.on = false;
-                look.alpha = 1f - k;
+                // (a miss: the last ripples die out; a claim: its splash near full strength, then gone)
+                look.alpha = fadeClaim ? 1f - k * k : 1f - k;
                 look.pulse = fadeClaim ? k : -1f;
+                Bursts(ref look);
                 water.ShowSpot(look);
             }
+        }
+
+        void Bursts(ref WaterFx.SpotLook look)
+        {
+            look.b0 = burst0;
+            look.b1 = burst1;
+            look.b2 = burst2;
+            look.s0 = seed0;
+            look.s1 = seed1;
+            look.s2 = seed2;
         }
 
         /// <summary>The encounter this cast started (win or lose, one per cast): every meter starts over.</summary>
@@ -475,7 +497,7 @@ namespace FishingKing
         internal void DebugLurk(Vector3? at, float cueIn = 1.5f)
         {
             cueRings = 0;
-            glintT = -1f;
+            shadeT = -1f;
             cueAge = 99f;
             // (these cue checks want the cue alone: no spot with it)
             spotsOff = true;
@@ -490,7 +512,7 @@ namespace FishingKing
             cueT = cueIn;
         }
 
-        /// <summary>Test hook (-fkauto legendspot, the look's cases): the blinking spot, if any, goes (no miss), and the next cue with its spot plays on the next frame.</summary>
+        /// <summary>Test hook (-fkauto legendspot, the look's cases): the splashing spot, if any, goes (no miss), and the next cue with its spot plays on the next frame.</summary>
         internal void DebugSpotNow()
         {
             if (SpotOn || SpotClaimed)
@@ -559,14 +581,14 @@ namespace FishingKing
             {
                 cueRings = 0;
                 cueAge = 99f;
-                glintT = -1f;
-                TickGlint(dt);
+                shadeT = -1f;
+                TickShade(dt);
                 EndSpot("busy", false);
                 TickSpot(dt);
                 foreach (var e in entries) e.meter = Mathf.MoveTowards(e.meter, 0f, dt * 0.5f / e.sp.encounter.fillTime);
                 return false;
             }
-            TickGlint(dt);
+            TickShade(dt);
             if (Away)
             {
                 wasAway = true;
@@ -591,7 +613,7 @@ namespace FishingKing
             }
             else
             {
-                // (not while a spot blinks or is held: it lies over the lurk point)
+                // (not while a spot splashes or is held: it lies over the lurk point)
                 if (DebugMode == null && (relocateT -= dt) <= 0f && Meter < 0.4f && !SpotOn && !SpotClaimed) Place(Vector3.zero, false);
                 cueAge += dt;
                 if ((cueT -= dt) <= 0f)
@@ -599,9 +621,11 @@ namespace FishingKing
                     cueT = Random.Range(15f, 25f);
                     cueRings = 3;
                     cueRingT = 0f;
-                    glintT = 0f;
+                    shadeT = 0f;
+                    shadeDir = nextDir;
+                    nextDir = NewShadeDir();
                     cueAge = 0f;
-                    // with the cue a spot near it blinks, unless one is out or held (never in the -fkencounter now test)
+                    // with the cue a spot near it splashes, unless one is out or held (never in the -fkencounter now test)
                     if (!SpotOn && !SpotClaimed && !spotsOff && DebugMode != "now") OfferSpot();
                 }
                 if (cueRings > 0 && (cueRingT -= dt) <= 0f)
@@ -789,34 +813,107 @@ namespace FishingKing
             }
         }
 
-        /// <summary>The eye glint of a cue: two pixels 2 px apart over the lurk point (on the ice: the hole's centre) for 0.5 s.</summary>
-        void TickGlint(float dt)
+        /// <summary>Seconds a cue's shadow takes to glide by / metres it glides (on the ice: under the hole, less).</summary>
+        public const float ShadeLen = 2.2f, ShadeGlide = 3f;
+
+        /// <summary>The cue's shadow is drawn now (the test).</summary>
+        public bool ShadeShown => shade != null && shade.enabled;
+        /// <summary>How far through its glide the cue's shadow is (0..1; -1 none).</summary>
+        public float ShadeK => shadeT < 0f ? -1f : Mathf.Clamp01(shadeT / ShadeLen);
+
+        /// <summary>A heading for a cue's shadow: across the view more than towards or away from him (±35° off the sides).</summary>
+        static float NewShadeDir() => (Random.value < 0.5f ? 0f : Mathf.PI) + Random.Range(-0.6f, 0.6f);
+
+        /// <summary>The middle of the shadow's glide (the lurk point; on the ice: the hole) and its depth under the surface.</summary>
+        Vector3 ShadeMid
         {
-            bool on = glintT >= 0f && HasLurk && !Away;
+            get
+            {
+                var c = L.IsIce ? new Vector3(L.holeX, 0f, L.holeZ) : new Vector3(Lurk.x, 0f, Lurk.z);
+                c.y = -(L.IsIce ? 1f : Mathf.Clamp(-Lurk.y, 0.5f, 1.2f));
+                return c;
+            }
+        }
+
+        /// <summary>A point of the shadow's glide, <paramref name="k"/> 0..1 along heading <paramref name="dir"/> (in the water: the depth).</summary>
+        Vector3 ShadeAt(float k, float dir)
+        {
+            float len = L.IsIce ? Mathf.Min(ShadeGlide, L.holeR * 2f + 1f) : ShadeGlide;
+            float s = (k - 0.5f) * len;
+            var m = ShadeMid;
+            return new Vector3(m.x + Mathf.Cos(dir) * s, m.y, m.z + Mathf.Sin(dir) * s);
+        }
+
+        float CueDir => shadeT >= 0f ? shadeDir : nextDir;
+
+        /// <summary>Where the cue's shadow is now in the pixel scene (seen through the surface; between cues: the middle of the next glide).</summary>
+        public Vector2 CueShade2D => P.To2D(P.Apparent(ShadeAt(shadeT >= 0f ? ShadeK : 0.5f, CueDir)));
+        /// <summary>Where the cue's shadow glides from / to (the zoomed view keeps both in frame).</summary>
+        public Vector2 CueShadeFrom2D => P.To2D(P.Apparent(ShadeAt(0f, CueDir)));
+        public Vector2 CueShadeTo2D => P.To2D(P.Apparent(ShadeAt(1f, CueDir)));
+
+        SpriteRenderer Shade()
+        {
+            var root = new GameObject("LegendShade").transform;
+            var sr = new GameObject("Sprite").AddComponent<SpriteRenderer>();
+            sr.transform.SetParent(root, false);
+            sr.sortingOrder = 19; // the fish-shadow band
+            sr.enabled = false;
+            nextDir = NewShadeDir();
+            return sr;
+        }
+
+        /// <summary>
+        /// A cue's shadow: the legend's own top-down silhouette (its size, as an ordinary fish's shadow is drawn: FishAgent)
+        /// gliding <see cref="ShadeGlide"/> m across the lurk point just under the surface over <see cref="ShadeLen"/> s,
+        /// fading in and out. Dark: the fish-shadow tint of the water (the period look's) taken well down, so it reads as a
+        /// shape in the water and never as a light.
+        /// </summary>
+        void TickShade(float dt)
+        {
+            bool on = shadeT >= 0f && HasLurk && !Away;
             if (on)
             {
-                glintT += dt;
-                if (glintT > 0.5f) glintT = -1f;
+                shadeT += dt;
+                if (shadeT > ShadeLen) shadeT = -1f;
             }
-            on &= glintT >= 0f;
-            glintA.enabled = glintB.enabled = on;
+            on &= shadeT >= 0f;
+            shade.enabled = on;
             if (!on) return;
-            var p = L.IsIce ? P.To2D(new Vector3(L.holeX, 0f, L.holeZ)) : P.To2D(P.Apparent(Lurk));
-            const float px = 1f / PixelView.PPU;
-            float x = Mathf.Round(p.x * PixelView.PPU) / PixelView.PPU, y = Mathf.Round(p.y * PixelView.PPU) / PixelView.PPU;
-            // blink out halfway through
-            float a = glintT > 0.22f && glintT < 0.3f ? 0f : L.IsIce ? 0.4f : 0.7f;
-            // the eye colour of the legend whose meter is higher (the first on a tie)
-            var c = Art.Hex(Lead.sp.encounter.eyeCore, a);
-            glintA.transform.position = new Vector3(x - px + px * 0.5f, y + px * 0.5f, 0f);
-            glintB.transform.position = new Vector3(x + px + px * 0.5f, y + px * 0.5f, 0f);
-            glintA.color = glintB.color = c;
+            var sp = Lead.sp;
+            int frame = (int)(shadeT / 0.36f) % 2;
+            var spr = Art.Get($"Fish/{sp.id}_t{frame}") ?? Art.Fish(sp.id, frame);
+            if (spr == null)
+            {
+                shade.enabled = false;
+                return;
+            }
+            float k = ShadeK;
+            var at = ShadeAt(k, shadeDir);
+            var seen = P.Apparent(at);
+            var pos2 = P.To2D(seen);
+            float ppm = P.PixelsPerMetre(seen);
+            float vis = FishAgent.VisualLength(Mathf.Lerp(sp.minCm, sp.maxCm, 0.6f));
+            float scale = Mathf.Max(10f, ppm * vis) / Mathf.Max(8f, spr.rect.width);
+            float squash = P.ShadowSquash(seen);
+            var root = shade.transform.parent;
+            root.position = new Vector3(Mathf.Round(pos2.x * 16) / 16, Mathf.Round(pos2.y * 16) / 16, 0);
+            root.localScale = new Vector3(scale, scale * squash, 1);
+            shade.transform.localRotation = Quaternion.Euler(0, 0, shadeDir * Mathf.Rad2Deg);
+            shade.sprite = spr;
+            // in over its first third, out over its last
+            float fade = Mathf.SmoothStep(0f, 1f, k / 0.33f) * Mathf.SmoothStep(0f, 1f, (1f - k) / 0.4f);
+            var c = ctl.Stage.FishShadowTint(-at.y, 0.5f, fade);
+            c.r *= 0.3f;
+            c.g *= 0.3f;
+            c.b *= 0.3f;
+            c.a *= L.IsIce ? 0.6f : 0.75f;
+            shade.color = c;
         }
 
         public void Destroy()
         {
-            if (glintA != null) Object.Destroy(glintA.gameObject);
-            if (glintB != null) Object.Destroy(glintB.gameObject);
+            if (shade != null) Object.Destroy(shade.transform.parent.gameObject);
         }
     }
 }

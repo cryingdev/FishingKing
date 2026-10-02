@@ -473,7 +473,7 @@ namespace FishingKing
 
         // ------------------------------------------------------------------ 3c. the legend's cue while he waits, zoomed
         /// <summary>
-        /// The legend's lurk point off the zoomed frame while he waits: its cue (the rings and the eye glint) must show every
+        /// The legend's lurk point off the zoomed frame while he waits: its cue (the rings and the shadow gliding by) must show every
         /// frame it plays. A little off the frame's side (the rig in front): the view turns to it, still at the step, pixel
         /// exact, the rod tip and the float in frame. Across the whole view from the rig (the rig far right, the lurk far
         /// left: no frame at the step holds both): out to 1x before it plays, back in after. Shots zoom_cue_pan, zoom_cue_out.
@@ -530,8 +530,8 @@ namespace FishingKing
             yield return new WaitForEndOfFrame();
             var ring0 = z.WorldToPx(w.CueRings2D);
             bool wasOut = !InCropPx(z, ring0, 0f);
-            Log(string.Format(CIz, "[ZOOM] {0}: rig {1} tip {2}, the lurk at ({3:0.00}, {4:0.0}) m: rings {5} eyes {6}, outside the crop {7} {8}; cue in 1.2 s",
-                tag, ZV(z.WorldToPx(ctl.RigShown2D)), ZV(z.WorldToPx(ctl.RodTip2D)), lx, lz, ZV(ring0), ZV(z.WorldToPx(w.CueEyes2D)), z.CropPx, wasOut));
+            Log(string.Format(CIz, "[ZOOM] {0}: rig {1} tip {2}, the lurk at ({3:0.00}, {4:0.0}) m: rings {5} shadow {6}, outside the crop {7} {8}; cue in 1.2 s",
+                tag, ZV(z.WorldToPx(ctl.RigShown2D)), ZV(z.WorldToPx(ctl.RodTip2D)), lx, lz, ZV(ring0), ZV(z.WorldToPx(w.CueShade2D)), z.CropPx, wasOut));
             int frames = 0, ringOut = 0, eyesOut = 0, tipOut = 0, rigOut = 0, notStep = 0, inexact = 0, border = 0;
             float t0 = Time.time, cueStart = -1f, cueEnd = -1f, startLvl = -1f, backIn = -1f, minLvl = 1f;
             Vector2 panCue = default;
@@ -550,7 +550,7 @@ namespace FishingKing
                     }
                     frames++;
                     if (!InCrop(z, w.CueRings2D, 0f)) ringOut++;
-                    if (!InCrop(z, w.CueEyes2D, 0f)) eyesOut++;
+                    if (!InCrop(z, w.CueShade2D, 0f)) eyesOut++;
                     if (!far)
                     {
                         if (z.Level < 1f) notStep++;
@@ -575,7 +575,7 @@ namespace FishingKing
                     }
                 }
             }
-            string nums = string.Format(CIz, "{0} cue frames: rings out {1}, eyes out {2}; level {3:0.00} as it began (lowest {4:0.00}), the step again {5:0.00} s after it; pan {6} -> {7}",
+            string nums = string.Format(CIz, "{0} cue frames: rings out {1}, shadow out {2}; level {3:0.00} as it began (lowest {4:0.00}), the step again {5:0.00} s after it; pan {6} -> {7}",
                 frames, ringOut, eyesOut, startLvl, minLvl, backIn, ZV(crop0.center), ZV(panCue));
             if (!far)
                 ZCheck(tag, wasOut && frames > 30 && ringOut == 0 && eyesOut == 0 && notStep == 0 && inexact == 0 && tipOut == 0 && rigOut == 0 && border == 0 && minLvl >= 1f,
