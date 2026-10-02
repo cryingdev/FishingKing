@@ -13,10 +13,11 @@ namespace FishingKing
     /// -fkecosecs game seconds (default 30) at every spot of the reference fan (yaw -36..36 every 8 degrees x from zNear +
     /// 2.5 every 2 m out to the cast, from the walk's middle, moved off pads and weed / snag zones) on a fixed 1/60 s step;
     /// Random.InitState(1515) as each stage opens; a fresh stock every -fkecorestock spots (default 10) and at every rig (the
-    /// stage reopened, Random.InitState(1515 + 1000 n)). Every bite is counted (species, cm, price) and let go. [ECO] spot / cell
-    /// lines (pooled by hand across the processes: one per mode and period); with the bed also the estimator's prediction
-    /// for the same spots and rigs ([ECO] predict, LakeEconomy via FishHabitat's job) and the frames a fish stood in water
-    /// shallower than it swims in. Quits itself.
+    /// stage reopened, Random.InitState(1515 + 1000 n)); -fkecorestock 0: one stock per rig, the long single-bait session
+    /// (Docs/lake_phase2_spec.md 13.7). Every bite is counted (species, cm, price) and let go. [ECO] spot / cell lines (each
+    /// spot with the game minutes since its stock was drawn; pooled by hand across the processes: one per mode and period);
+    /// with the bed also the estimator's prediction for the same spots and rigs ([ECO] predict, LakeEconomy via FishHabitat's
+    /// job) and the frames a fish stood in water shallower than it swims in. Quits itself.
     /// </summary>
     public partial class AutoPilot
     {
@@ -143,9 +144,13 @@ namespace FishingKing
             // (the stock is drawn afresh every -fkecorestock spots (default 10) and at every rig: a bite's fish is let go and
             // swims off, its place taken by a new draw, and a species that never takes the bait (a bass on paste) is never
             // taken out, so over a long soak it fills the stock (the 8-fish lake's paste on the bottom died that way); the
-            // estimator models the stock as drawn, so the soak keeps it close to that)
-            int restock = Mathf.Max(1, Mathf.RoundToInt(ArgF("-fkecorestock") ?? 10f));
+            // estimator models the stock as drawn, so the soak keeps it close to that; 0 keeps one stock per rig, the long
+            // single-bait session whose drift that hides, reported beside the gate: Docs/lake_phase2_spec.md 13.7)
+            int restockArg = Mathf.RoundToInt(ArgF("-fkecorestock") ?? 10f);
+            int restock = restockArg <= 0 ? int.MaxValue : restockArg;
+            string stockHow = restock == int.MaxValue ? "one stock per rig (no restock)" : $"a fresh stock every {restock} spots";
             int opens = 0;
+            float stockT0 = 0f;
             foreach (int pi in periods)
             {
                 if (broken) break;
@@ -175,8 +180,8 @@ namespace FishingKing
                 }
                 FishAgent.ShallowFrames = FishAgent.UnderBedFrames = 0;
                 int perShallow = 0;
-                Log(string.Format(CIc, "[ECO] stage {0} period {1}: {2} fish, population {3}, feeding chance {4}; a fresh stock every {5} spots", mode, GameClock.Id(period), ctl.Spawner.Fish.Count,
-                    ctl.Stage.Def.population, ctl.Habitat != null ? ctl.Habitat.FeedP.ToString("0.000", CIc) + (job != null ? string.Format(CIc, " (the estimate's {0:0.000})", job.F) : " (default)") : "1 (no bed)", restock));
+                Log(string.Format(CIc, "[ECO] stage {0} period {1}: {2} fish, population {3}, feeding chance {4}; {5}", mode, GameClock.Id(period), ctl.Spawner.Fish.Count,
+                    ctl.Stage.Def.population, ctl.Habitat != null ? ctl.Habitat.FeedP.ToString("0.000", CIc) + (job != null ? string.Format(CIc, " (the estimate's {0:0.000})", job.F) : " (default)") : "1 (no bed)", stockHow));
                 var spots = new List<Vector3>();
                 foreach (var (yaw, dist) in fan) spots.Add(SoakSpot(ctl, anchorX, yaw, dist));
                 for (int ri = 0; ri < rigs.Length; ri++)
@@ -213,6 +218,7 @@ namespace FishingKing
                                 }
                             }
                             EquipTest(rig.bait, ctl);
+                            stockT0 = Time.time;
                             rolls0 = ctl.ApproachRolls;
                             appr0 = ctl.Approaches;
                             fr0 = ctl.FeedRolls;
@@ -287,7 +293,7 @@ namespace FishingKing
                         cellBites += bites;
                         cellSoak += soak;
                         cellIncome += income;
-                        Log(string.Format(CIc, "[ECO] spot {0} {1} {2} {3} {4:0.00} {5:0.00} bites {6} soak {7:0.0} income {8}", mode, pi, rig.id, si, spot.x, spot.z, bites, soak, income));
+                        Log(string.Format(CIc, "[ECO] spot {0} {1} {2} {3} {4:0.00} {5:0.00} bites {6} soak {7:0.0} income {8} stockMin {9:0.00}", mode, pi, rig.id, si, spot.x, spot.z, bites, soak, income, (start - stockT0) / 60f));
                         if (broken) break;
                     }
                     if (broken) break;

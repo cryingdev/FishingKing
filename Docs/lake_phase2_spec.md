@@ -272,7 +272,8 @@ drift) a diagnostic run gave ×0.97 catches and ×1.04 income. The estimator mod
 it there. **Finding for the user**: in long sessions with one bait the stock fills with the species that do not take it,
 today's 8-fish lake faster than the new one: the new lake gives more bites than today's in a long single-bait session
 (about ×1.6 for paste after 35 minutes), as much over a fresh stock. A natural turnover of the stock (fish that come and go)
-would bound that; it is not part of this change.
+would bound that; it is not part of this change. Measured again on the integrated lake (13.7): both lakes drift, and with
+the six new species the new lake's long-session ratio is ×0.87 catches / ×0.81 income, not ×1.6.
 
 ## A9. Docs
 
@@ -469,7 +470,7 @@ steed 16, 0.75/0.67/0.77/0.78; yellow catfish 16, 0.77/0.98/0.82/1.02; eel 3.5, 
 ### 13.5 The live soak (`-fkauto economy`, 24 processes)
 
 Seven configurations of section 11's soak (rigs paste2 / pasteB / worm1 / cornB, 30 game s per spot, a fresh stock every
-10 spots, each period its own process; bamboo 70 spots, carbon 110): today's lake (legacy) with the bamboo and the carbon,
+10 spots (without it: 13.7), each period its own process; bamboo 70 spots, carbon 110): today's lake (legacy) with the bamboo and the carbon,
 the new lake on seed 1 with both rods, and with the bamboo on D11′'s lowest-F seed (13, F 0.511) and highest-F seed (40,
 F 0.559). Pooled with the test's rules (periods by length, rigs equally; catches by the point estimate, both sides over
 1000 bites; income also by a paired bootstrap over the yaw blocks, 2000 draws), against the legacy run of the same rod:
@@ -505,3 +506,44 @@ the lake's map dialog with 11 species in 6 × 2, the encyclopedia 42/42) 20 shot
 lakes for the overlay shots. The lake's other scenarios, whose stock now holds the new species: `obstacles`, `hold` and
 `lure` 0 failed. Not rerun: `steer` (the stream) and `tidebites` (the sea), whose stages and code paths this part does not
 touch (section 12 has step-2-code's runs).
+
+### 13.7 The long single-bait session (`-fkecorestock 0`, the review's fix round)
+
+The soak's fresh stock every 10 spots (A8) keeps the stock as the estimator draws it. Without it a fish that bites (and is
+let go) is replaced by a new draw, while a fish that never takes the rig, or is not feeding, keeps its place, so the stock
+fills with the species that do not take the bait, in today's lake as well. `-fkecorestock 0` keeps one stock per rig: 35
+game minutes of one bait on the bamboo's 70 spots, the stock drawn once. The `[ECO] spot` lines now carry `stockMin`, the
+game minutes since the stock was drawn. Eight processes (today's lake and seed 1, the bamboo, the four rigs, each period
+its own process), the fix round's build. This is information beside the gate, not a gate.
+
+| Bamboo, one stock per rig | Today's lake | New lake, seed 1 | New / today's (95 %) |
+|---|---|---|---|
+| Catches / min, the whole 35 min | 1.378 (745 bites) | 1.192 (675) | **×0.87** (0.79–0.95) |
+| Income / min, the whole 35 min | 72.1 | 58.3 | **×0.81** (0.68–0.94) |
+| Catches / min, minutes 0–10 / 10–20 / 20–35 | 1.67 / 1.71 / 1.01 | 1.66 / 1.36 / 0.82 | ×0.99 / ×0.80 / ×0.81 |
+| Income / min, minutes 0–10 / 10–20 / 20–35 | 86.4 / 88.3 / 54.1 | 83.7 / 62.8 / 40.6 | ×0.97 / ×0.71 / ×0.75 |
+| The whole 35 min over 13.5's fresh-stock soak (same spots, rigs, periods) | ×0.66 catches, ×0.66 income | ×0.64, ×0.63 | |
+
+Bites per minute by rig, new / today's, over minutes 0–10, 10–20 and 20–35 (periods by length): paste2 1.47 / 1.47,
+1.01 / 1.55, 0.35 / 0.56; pasteB 1.71 / 1.88, 1.21 / 1.84, 0.47 / 0.91; worm1 2.47 / 2.07, 2.89 / 3.05, 2.30 / 2.15;
+cornB 0.97 / 1.26, 0.32 / 0.38, 0.14 / 0.41. The spots are visited in the fan's order, so the minutes also stand for the
+yaw (the first 10 minutes are the fan's left); the last row of the table compares each lake with itself on the same spots.
+0 frames of a fish in water shallower than it swims in and "economy test done: 0 failed" in all eight logs.
+
+Reading: both lakes lose about a third of their bites over 35 minutes of one bait, so the drift is the game's, not the new
+lake's. The new lake's stock, with more species that do not take paste or corn, drains a little faster after the first
+10 minutes: the ratio goes from ×0.99 to about ×0.8, and the whole session is ×0.87 / ×0.81 against the fresh stock's
+×0.90 / ×0.85. The A8 calibration run's ×1.6 (paste, 35 minutes) was step-2-code's four-species lake at F 0.486; with the
+six new species the direction reversed. Late in a session, paste and corn on the bottom are the weak spots (×0.52 and ×0.34
+at 20–35 minutes); worm holds (×1.07).
+
+**Open, for the user.** (a) A natural turnover of the stock in `FishSpawner` (for example, a wandering fish that has gone N
+minutes without engaging swims off and is redrawn) would lift both lakes' long sessions back toward the fresh-stock rates
+and make the estimator's fresh stock hold in play. `FishSpawner` is shared by every stage, so it changes every stage's
+long sessions, not only the lake's. (b) Or the drift stays as the game has it today, and the lake's long-session ratio
+stays near the band (×0.87 catches, ×0.81 income). This change decides neither.
+
+The same build: `-fkauto species` 0 failed (56 of 56 fixtures); `-fkauto depth` 0 failed; `-fkauto tour` with
+`-fkrecords all -fkdetail freshwater_eel` ran without an exception. Its encyclopedia page for the eel now reads "주로 밤에
+나온다" above "활동: 밤"; the eel comes at dawn (0.2) and in the evening (0.4) too, so "밤에만" was wrong. The tour's bait
+picker shot was skipped: under the eight soaks' load the lake had not opened within the tour's 2.2 s.
