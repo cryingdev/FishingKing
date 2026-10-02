@@ -52,6 +52,10 @@ namespace FishingKing
             var go = new GameObject("[AutoPilot]");
             DontDestroyOnLoad(go);
             var ap = go.AddComponent<AutoPilot>();
+            // the simulated pointer from the start, not pressed: a real mouse on a shared desktop never reaches the game
+            // (a scenario may still hand it back)
+            PointerInput.SimActive = true;
+            PointerInput.SimDown = false;
             int s = Array.IndexOf(args, "-fkshots");
             ap.shots = s >= 0 && s + 1 < args.Length ? args[s + 1] : Path.Combine(Application.persistentDataPath, "shots");
             Directory.CreateDirectory(ap.shots);
@@ -66,7 +70,8 @@ namespace FishingKing
                 : scenario == "zoom" ? ap.ZoomTest() : scenario == "legcool" ? ap.LegendCoolTest()
                 : scenario == "panmeasure" ? ap.PanMeasure() : scenario == "pan" ? ap.PanTest()
                 : scenario == "breaks" ? ap.BreaksTest() : scenario == "legendspot" ? ap.LegendSpotTest()
-                : scenario == "music" ? ap.MusicTest() : scenario == "hold" ? ap.HoldTest() : ap.Fish());
+                : scenario == "music" ? ap.MusicTest() : scenario == "hold" ? ap.HoldTest()
+                : scenario == "depth" ? ap.DepthTest() : scenario == "habitat" ? ap.HabitatSoakTest() : ap.Fish());
         }
 
         /// <summary>-fkflick &lt;speed&gt;[:&lt;deg&gt;]: the flick of the fish / walk scenarios' casts (angle null = not given).</summary>
@@ -865,7 +870,7 @@ namespace FishingKing
             yield return null;
             var st = ctl.State;
             for (float w = 0; w < 5f && ctl.State == FishingController.S.Casting; w += Time.deltaTime) yield return null;
-            float want = Mathf.Lerp(0.6f, L.DepthAt(L.holeZ) - 0.3f, 0.25f / 0.3f);
+            float want = Mathf.Lerp(0.6f, L.DepthAt(L.holeX, L.holeZ) - 0.3f, 0.25f / 0.3f);
             Log($"ice drag: aim power {power:0.00} depth {depth:0.00} m (expected {want:0.00}) -> {st} -> {ctl.State}, float depth {ctl.Tackle.FloatDepth:0.00} m");
             Log($"CHECK {(st == FishingController.S.Casting && Mathf.Abs(depth - want) < 0.05f && Mathf.Abs(ctl.Tackle.FloatDepth - depth) < 0.01f ? "PASS" : "FAIL")} ice: pull down + let go drops the jig at the drag's depth");
             yield return BackToReady(ctl);

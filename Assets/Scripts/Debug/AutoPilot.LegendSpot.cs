@@ -208,8 +208,15 @@ namespace FishingKing
             bool open = water == null || (water.OpenWater(s.x, s.z) && water.OpenWater(s.x - r, s.z) && water.OpenWater(s.x + r, s.z));
             SpotCheck(string.Format(System.Globalization.CultureInfo.InvariantCulture,
                 "spot inside the home view on open water ({0:0.00}, {1:0.00}) r {2:0.0}: open {3}, {4:0.0} m from him (cast {5:0}), depth {6:0.0} m, {7:0.0} m from the lurk point",
-                s.x, s.z, r, open, reach, Game.I.Rod.castDist, L.DepthAt(s.z), new Vector2(s.x - w.Lurk.x, s.z - w.Lurk.z).magnitude),
+                s.x, s.z, r, open, reach, Game.I.Rod.castDist, L.DepthAt(s.x, s.z), new Vector2(s.x - w.Lurk.x, s.z - w.Lurk.z).magnitude),
                 open && reach <= Game.I.Rod.castDist && s.z > L.zNear);
+            if (L.Terrain)
+            {
+                // the generated bed (Docs/terrain_depth_spec.md 10): deep enough over 0.6 x its radius for the legend's rule
+                float need = w.Def.depthMin + 0.3f, disc = L.Bathy.MinDepthDisc(s.x, s.z, 0.6f * r);
+                SpotCheck(string.Format(System.Globalization.CultureInfo.InvariantCulture, "the bed under the spot: least water {0:0.00} m over 0.6 r (>= {1:0.00}); lurk ({2:0.0}, {3:0.0}) on {4} {5:0.00} m",
+                    disc, need, w.Lurk.x, w.Lurk.z, L.Bathy.KindAt(w.Lurk.x, w.Lurk.z), L.DepthAt(w.Lurk.x, w.Lurk.z)), disc >= need);
+            }
             // (a new burst, its droplets well up: the water effects draw a frame behind the watch)
             int b0 = w.SpotBursts;
             for (float t = 0f; t < 3f && w.SpotOn && w.SpotBursts == b0; t += Time.deltaTime) yield return null;
