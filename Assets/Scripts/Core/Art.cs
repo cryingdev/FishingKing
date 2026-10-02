@@ -31,7 +31,28 @@ namespace FishingKing
         /// </summary>
         public static float TideOffset;
 
-        public float DepthAt(float z) => BaseDepthAt(z) + TideOffset;
+        /// <summary>
+        /// The stage's generated bed (Docs/terrain_depth_spec.md 3): the lake's grid, null elsewhere (and with -fkbathy off).
+        /// The layout is shared by every StageView of the stage (Art.Data caches it): StageView.Init sets it every time.
+        /// </summary>
+        [NonSerialized] public Bathymetry Bathy;
+
+        /// <summary>The water's depth is the generated bed's (the lake): the ecology, the lying float and the depth guards run.</summary>
+        public bool Terrain => Bathy != null;
+
+        /// <summary>
+        /// The water's depth at a plan point (m, + the tide): the grid where it covers the point, else the distance profile
+        /// (every other stage: exactly the old DepthAt(z), the same float operations).
+        /// </summary>
+        public float DepthAt(float x, float z) => (Bathy != null && Bathy.Covers(x, z) ? Bathy.Depth(x, z) : BaseDepthAt(z)) + TideOffset;
+
+        public float DepthAt(Vector3 p) => DepthAt(p.x, p.z);
+
+        /// <summary>The old distance profile (+ the tide): what DepthAt(z) was before the terrain.</summary>
+        public float ProfileDepth(float z) => BaseDepthAt(z) + TideOffset;
+
+        /// <summary>The profile without the tide: the generator's base.</summary>
+        public float ProfileMeanDepth(float z) => BaseDepthAt(z);
 
         float BaseDepthAt(float z)
         {

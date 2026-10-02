@@ -1,0 +1,300 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace FishingKing
+{
+    /// <summary>The bed's material under a grid node (Docs/terrain_depth_spec.md 4.2, step 11).</summary>
+    public enum BedMat : byte { Mud, Sand, Gravel, Weed }
+
+    /// <summary>The bed's form under a grid node; its index is the column of the habitat tables (FishHabitat).</summary>
+    public enum BedKind : byte { Open, Shelf, Flat, Shoal, Dropoff, Hump, Hole, Channel, Basin }
+
+    /// <summary>Per-node flags: on a slope (Edge), on a drop-off beside weed (WeedEdge), in a pin's core, in the lane.</summary>
+    [Flags] public enum BedFlag : byte { None = 0, Edge = 1, WeedEdge = 2, Pinned = 4, Lane = 8 }
+
+    /// <summary>A named part of the bed (얕은 턱, 수중 둔덕 1, ...): its nodes and their stats.</summary>
+    public sealed class BedZone
+    {
+        public string id, name;
+        public BedKind kind;
+        public Vector2 c;
+        public float area, minD, maxD;
+        public Rect box;
+        public int[] nodes;
+    }
+
+    /// <summary>
+    /// A stage's bed as data (Docs/terrain_depth_spec.md 3.2): a 0.5 m grid of depths (whole cm), kinds, materials, zones
+    /// and flags over the fishable water and the art's overscan, generated at runtime from the save's world seed
+    /// (<see cref="BathyGen"/>, the stage's <see cref="TerrainRecipe"/>). Nothing of it is drawn: the painted water stays as
+    /// rendered, the grid keeps the old distance profile as its base. Only the lake has a recipe; every other stage (and
+    /// every point off the grid) keeps <see cref="StageLayout"/>'s profile exactly. Callers read depths through
+    /// <see cref="StageLayout.DepthAt(float, float)"/>, which adds the tide; <see cref="Depth"/> is the mean water.
+    /// </summary>
+    public sealed class Bathymetry
+    {
+        // ------------------------------------------------------------------ switches (spec 13)
+        /// <summary>-fkbathy off | log | show | dump (comma-separated; parsed in Game.DebugBoot).</summary>
+        public static bool Off, Show, Dump, Log;
+
+        static bool seedRead;
+        static int? seedOverride;
+
+        /// <summary>
+        /// The world seed the terrain uses instead of the save's: -fkbathyseed &lt;n&gt;; else 1 whenever -fkauto is given
+        /// (every test run sees the same lake); else null. Read from the command line itself (no boot-order race with the
+        /// title scene); never written to the save.
+        /// </summary>
+        public static int? SeedOverride
+        {
+            get
+            {
+                if (!seedRead)
+                {
+                    seedRead = true;
+                    var args = Environment.GetCommandLineArgs();
+                    int i = Array.IndexOf(args, "-fkbathyseed");
+                    if (i >= 0 && i + 1 < args.Length && int.TryParse(args[i + 1], out int s)) seedOverride = s;
+                    else if (Array.IndexOf(args, "-fkauto") >= 0) seedOverride = 1;
+                }
+                return seedOverride;
+            }
+        }
+
+        static Bathymetry cached;
+        static string cacheKey;
+
+        /// <summary>
+        /// The stage's grid for this world seed: null with -fkbathy off or for a stage without a recipe (every stage but the
+        /// lake). Built once and cached (the last one only: key stage, world seed, recipe version).
+        /// </summary>
+        public static Bathymetry For(StageLayout L, int worldSeed)
+        {
+            if (Off || L == null) return null;
+            var r = TerrainRecipes.For(L.id);
+            if (r == null) return null;
+            string key = L.id + "/" + worldSeed + "/" + r.version;
+            if (cached != null && cacheKey == key)
+            {
+                cached.L = L;
+                return cached;
+            }
+            var b = BathyGen.Build(L, r, worldSeed, Obstacles.ReadSet(L.id));
+            cached = b;
+            cacheKey = key;
+            Debug.Log(b.Summary());
+            return b;
+        }
+
+        /// <summary>Forgets the cached grid (the determinism test builds the same seed twice).</summary>
+        public static void ClearCache()
+        {
+            cached = null;
+            cacheKey = null;
+        }
+
+        /// <summary>The kind's name in the texts.</summary>
+        public static string Name(BedKind k) => k switch
+        {
+            BedKind.Shelf => "얕은 턱",
+            BedKind.Flat => "수초 평지",
+            BedKind.Shoal => "수초 둔덕",
+            BedKind.Dropoff => "브레이크라인",
+            BedKind.Hump => "수중 둔덕",
+            BedKind.Hole => "깊은 웅덩이",
+            BedKind.Channel => "물골",
+            BedKind.Basin => "깊은 바닥",
+            _ => "열린 바닥",
+        };
+
+        // ------------------------------------------------------------------ the grid
+        public string StageId { get; internal set; }
+        public int WorldSeed { get; internal set; }
+        public int Attempt { get; internal set; }
+        public uint StageSeed { get; internal set; }
+        public uint Hash { get; internal set; }
+        public bool Fallback { get; internal set; }
+        public float BuildMs { get; internal set; }
+        public const float Cell = 0.5f;
+        public float X0 { get; internal set; }
+        public float Z0 { get; internal set; }
+        public float X1 { get; internal set; }
+        public float Z1 { get; internal set; }
+        public int Nx { get; internal set; }
+        public int Nz { get; internal set; }
+        /// <summary>Over all nodes (m).</summary>
+        public float DepthMin { get; internal set; }
+        public float DepthMax { get; internal set; }
+        public float DepthMean { get; internal set; }
+        /// <summary>The validation's failures per attempt (for the log and the test).</summary>
+        public string Checks { get; internal set; } = "";
+
+        internal ushort[] cm, edgeCm, weedEdgeCm;
+        internal byte[] kind, mat, zone, flags;
+        internal List<BedZone> zones = new List<BedZone>();
+        /// <summary>The layout it was built for (the off-grid fallback and the tide in the along / disc queries).</summary>
+        internal StageLayout L;
+
+        public IReadOnlyList<BedZone> Zones => zones;
+
+        public BedZone Zone(string id)
+        {
+            foreach (var z in zones) if (z.id == id) return z;
+            return null;
+        }
+
+        public bool Covers(float x, float z) => x >= X0 && x <= X1 && z >= Z0 && z <= Z1;
+
+        /// <summary>The mean water's depth (m): bilinear over the nodes' cm; no tide (callers use StageLayout.DepthAt).</summary>
+        public float Depth(float x, float z)
+        {
+            float fx = (x - X0) / Cell, fz = (z - Z0) / Cell;
+            if (fx < 0f) fx = 0f;
+            if (fz < 0f) fz = 0f;
+            int i = Mathf.Min((int)fx, Nx - 2), j = Mathf.Min((int)fz, Nz - 2);
+            float tx = Mathf.Min(1f, fx - i), tz = Mathf.Min(1f, fz - j);
+            int k = j * Nx + i;
+            float a = cm[k] + (cm[k + 1] - (float)cm[k]) * tx;
+            float b = cm[k + Nx] + (cm[k + Nx + 1] - (float)cm[k + Nx]) * tx;
+            return (a + (b - a) * tz) * 0.01f;
+        }
+
+        public int NodeCount => Nx * Nz;
+
+        /// <summary>The nearest node (-1 off the grid).</summary>
+        public int NodeAt(float x, float z)
+        {
+            if (!Covers(x, z)) return -1;
+            int i = Mathf.Clamp(Mathf.RoundToInt((x - X0) / Cell), 0, Nx - 1);
+            int j = Mathf.Clamp(Mathf.RoundToInt((z - Z0) / Cell), 0, Nz - 1);
+            return j * Nx + i;
+        }
+
+        public Vector2 NodePos(int k) => new Vector2(X0 + (k % Nx) * Cell, Z0 + (k / Nx) * Cell);
+        public float NodeDepth(int k) => cm[k] * 0.01f;
+        public BedMat NodeMat(int k) => (BedMat)mat[k];
+        public BedKind NodeKind(int k) => (BedKind)kind[k];
+        public BedFlag NodeFlags(int k) => (BedFlag)flags[k];
+        public int NodeZone(int k) => zone[k];
+
+        public BedMat MatAt(float x, float z)
+        {
+            int k = NodeAt(x, z);
+            return k < 0 ? BedMat.Mud : (BedMat)mat[k];
+        }
+
+        public BedKind KindAt(float x, float z)
+        {
+            int k = NodeAt(x, z);
+            return k < 0 ? BedKind.Open : (BedKind)kind[k];
+        }
+
+        public BedZone ZoneAt(float x, float z)
+        {
+            int k = NodeAt(x, z);
+            return k < 0 || zone[k] >= zones.Count ? null : zones[zone[k]];
+        }
+
+        public BedFlag FlagsAt(float x, float z)
+        {
+            int k = NodeAt(x, z);
+            return k < 0 ? BedFlag.None : (BedFlag)flags[k];
+        }
+
+        /// <summary>(dD/dx, dD/dz): central differences at +-<see cref="Cell"/>; points deeper.</summary>
+        public Vector2 Gradient(float x, float z)
+        {
+            float x0 = Mathf.Max(X0, x - Cell), x1 = Mathf.Min(X1, x + Cell);
+            float z0 = Mathf.Max(Z0, z - Cell), z1 = Mathf.Min(Z1, z + Cell);
+            float gx = x1 > x0 ? (Depth(x1, z) - Depth(x0, z)) / (x1 - x0) : 0f;
+            float gz = z1 > z0 ? (Depth(x, z1) - Depth(x, z0)) / (z1 - z0) : 0f;
+            return new Vector2(gx, gz);
+        }
+
+        public float Slope(float x, float z) => Gradient(x, z).magnitude;
+
+        /// <summary>The way down the slope (unit); zero where it is flatter than 0.02.</summary>
+        public Vector2 DeeperDir(float x, float z)
+        {
+            var g = Gradient(x, z);
+            float m = g.magnitude;
+            return m < 0.02f ? Vector2.zero : g / m;
+        }
+
+        /// <summary>Metres to the nearest Edge node (99 off the grid).</summary>
+        public float EdgeDist(float x, float z)
+        {
+            int k = NodeAt(x, z);
+            return k < 0 ? 99f : Mathf.Min(99f, edgeCm[k] * 0.01f);
+        }
+
+        /// <summary>Metres to the nearest WeedEdge node (99 off the grid).</summary>
+        public float WeedEdgeDist(float x, float z)
+        {
+            int k = NodeAt(x, z);
+            return k < 0 ? 99f : Mathf.Min(99f, weedEdgeCm[k] * 0.01f);
+        }
+
+        internal float EdgeDistNode(int k) => Mathf.Min(99f, edgeCm[k] * 0.01f);
+
+        /// <summary>The water's depth anywhere (the grid, off it the profile; the tide added).</summary>
+        float Water(float x, float z) => L != null ? L.DepthAt(x, z) : Depth(x, z);
+
+        /// <summary>The least water along a-b, sampled every 0.25 m (ends included).</summary>
+        public float MinDepthAlong(Vector2 a, Vector2 b)
+        {
+            float len = (b - a).magnitude;
+            int n = Mathf.Max(1, Mathf.CeilToInt(len / 0.25f));
+            float m = float.MaxValue;
+            for (int i = 0; i <= n; i++)
+            {
+                var p = Vector2.Lerp(a, b, i / (float)n);
+                m = Mathf.Min(m, Water(p.x, p.y));
+            }
+            return m;
+        }
+
+        /// <summary>The first point along a-b (every 0.25 m) with less than <paramref name="d"/> of water.</summary>
+        public bool FirstShallower(Vector2 a, Vector2 b, float d, out Vector2 at)
+        {
+            float len = (b - a).magnitude;
+            int n = Mathf.Max(1, Mathf.CeilToInt(len / 0.25f));
+            for (int i = 0; i <= n; i++)
+            {
+                var p = Vector2.Lerp(a, b, i / (float)n);
+                if (Water(p.x, p.y) < d)
+                {
+                    at = p;
+                    return true;
+                }
+            }
+            at = b;
+            return false;
+        }
+
+        static readonly Vector2[] Ring8 =
+        {
+            new Vector2(1f, 0f), new Vector2(0.70710678f, 0.70710678f), new Vector2(0f, 1f), new Vector2(-0.70710678f, 0.70710678f),
+            new Vector2(-1f, 0f), new Vector2(-0.70710678f, -0.70710678f), new Vector2(0f, -1f), new Vector2(0.70710678f, -0.70710678f),
+        };
+
+        /// <summary>The least water of the centre and 8 points round it at <paramref name="r"/> (0, 45, ... 315 degrees).</summary>
+        public float MinDepthDisc(float x, float z, float r)
+        {
+            float m = Water(x, z);
+            foreach (var u in Ring8) m = Mathf.Min(m, Water(x + u.x * r, z + u.y * r));
+            return m;
+        }
+
+        /// <summary>The [BATHY] line of a build.</summary>
+        public string Summary()
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var z in zones) sb.Append(' ').Append(z.id).Append(':').Append(z.nodes.Length);
+            return string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "[BATHY] {0}: world seed {1} stage seed {2} attempt {3}{4} hash 0x{5:x8} built {6:0.0} ms depth min/mean/max {7:0.00}/{8:0.00}/{9:0.00} zones{10}",
+                StageId, WorldSeed, StageSeed, Attempt, Fallback ? " fallback" : "", Hash, BuildMs, DepthMin, DepthMean, DepthMax, sb);
+        }
+    }
+}

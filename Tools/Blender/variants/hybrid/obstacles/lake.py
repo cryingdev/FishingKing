@@ -24,6 +24,10 @@ cut_waterline, reed_clumps, waterline_check, shared_check.
 Checks (check()): solids above the waterline (the front layer paints the parts under the water too), per pad the
 exported footprint vs its painted pixels (IoU, edge distance), per reed zone the share of the clump's painted waterline
 pixels inside the zone, the helpers' depths.
+
+The game's lake bed is generated at runtime over this profile (Docs/terrain_depth_spec.md): TerrainRecipes.Lake pins
+mirror these baked tops (sunklog bed 6.225, weedbed top -1.2): change both together. _depth_at stays the profile (the
+exporter's only depth); the pads, reeds and boat get their water from the game's pins, not from here.
 """
 import math
 
@@ -249,6 +253,7 @@ def extra(ctx):
         oid = "reed%+.0f_%.0f" % (cx, cy)
         hs.append(_prism(ctx, "weed", oid, [tuple(p) for p in ring], -1.0, -0.05, mat="reed", tags="reed",
                          top=-0.05, bot=-99.0, cover=1.0, cover_for="reed"))
+    # (TerrainRecipes.Lake pins mirror these baked tops (sunklog bed 6.225, weedbed top -1.2): change both together)
     # ---- a sunken log on the bed in open water, left of the middle (-4.5, 21) - (-1.8, 23.5)
     a, b = (-4.5, 21.0), (-1.8, 23.5)
     c = ((a[0] + b[0]) / 2, (a[1] + b[1]) / 2)

@@ -100,6 +100,11 @@ namespace FishingKing
             StageLayout.TideOffset = 0f;
             Current = new CurrentField(L);
             Obstacles = FishingKing.Obstacles.Load(L);
+            // the generated bed (Docs/terrain_depth_spec.md 12.3): the lake's grid for the save's world seed, null elsewhere;
+            // set on every Init (the layout is shared by every view of the stage, the title's lake included)
+            L.Bathy = Bathymetry.For(L, Bathymetry.SeedOverride ?? (Game.I != null ? Game.I.WorldSeed : 1));
+            if (L.Bathy != null && Bathymetry.Dump) BathyOverlay.WriteDump(L.Bathy);
+            if (L.Bathy != null && Bathymetry.Show) BathyOverlay.Create(this);
             if (Current.K == CurrentField.Kind.Stream) CurrentField.AlignRocks(Obstacles.PocketRocks());
             else if (Current.K == CurrentField.Kind.Sea) Current.SetPile(Obstacles.PileDiscs());
             horizonY = L.focalPx * Mathf.Tan(L.pitch * Mathf.Deg2Rad) / PixelView.PPU;
