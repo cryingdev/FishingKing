@@ -318,6 +318,7 @@ namespace FishingKing
         void SetState(S s)
         {
             if (s == S.Ready && State != S.Ready && State != S.Aiming) walkLatch = true;
+            if (s == S.Retrieving && State != S.Retrieving) stallT = -1f;   // (the stall watch starts afresh: UpdateRetrieving)
             State = s;
             if (s != S.Aiming)
             {
@@ -1079,6 +1080,8 @@ namespace FishingKing
         void UpdateRetrieving(float dt)
         {
             Angler.LineTarget = Tackle.LineEnd;
+            // (not while the float lies still after the fish came off)
+            if (retrieveWait <= 0f && RetrieveStalled(dt)) return;
             if (Tackle.State == Tackle.Mode.Perched)
             {
                 UpdatePerched(dt, true);
@@ -1107,6 +1110,42 @@ namespace FishingKing
             autoRevs += m / Game.I.Reel.retrieve;
             bool home = L.IsIce ? Tackle.Depth <= 0.05f : Tackle.Surface.z <= L.zNear + 0.3f;
             if (home) FinishRetrieve();
+        }
+
+        /// <summary>The rig must come this much nearer home (m; through the ice: up) within <see cref="StallTime"/> s of winding.</summary>
+        const float StallGain = 0.3f, StallTime = 2f;
+        float stallT = -1f, stallRef;
+        /// <summary>Rigs wound in that stopped coming home and were taken in by the stall watch (for the tests).</summary>
+        public int RetrieveStalls { get; private set; }
+        /// <summary>Test hook (-fkauto stallhunt -fkhuntsweep): the stall watch's time instead of <see cref="StallTime"/> (0: as usual).</summary>
+        internal static float DebugStallTime;
+
+        /// <summary>
+        /// The stall watch: a rig being wound in (by him or after a break) that has not come <see cref="StallGain"/> nearer
+        /// home in <see cref="StallTime"/> s is taken in as if it had come home, so he is never left winding forever. Logged
+        /// with where and how the rig lay, to find what held it.
+        /// </summary>
+        bool RetrieveStalled(float dt)
+        {
+            var tk = Tackle;
+            float at = L.IsIce ? tk.Depth : tk.LineEnd.z;
+            if (stallT < 0f || at <= stallRef - StallGain)
+            {
+                stallT = 0f;
+                stallRef = at;
+                return false;
+            }
+            stallT += dt;
+            if (stallT < (DebugStallTime > 0f ? DebugStallTime : StallTime)) return false;
+            RetrieveStalls++;
+            var e = tk.LineEnd;
+            Debug.Log(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "[BREAK] retrieve stalled: the rig at ({0:0.00}, {1:0.00}, {2:0.00}) came {3:0.00} m nearer in {4:0.0} s (home z {5:0.00}); tackle {6}, surface ({7:0.00}, {8:0.00}), depth {9:0.00}, spent {10}, bare hook {11}, snag {12}, pad {13}, perched on {14}; taken in",
+                e.x, e.y, e.z, stallRef - at, stallT, L.zNear + 0.3f, tk.State, tk.Surface.x, tk.Surface.z, tk.Depth, spentRig, tk.BareHook,
+                tk.Snag != null ? tk.Snag.zone.id : "none", tk.OnPad != null ? "on" : tk.PadSliding ? "sliding" : "no",
+                tk.State == Tackle.Mode.Perched ? (tk.PerchO != null ? tk.PerchO.id : "the bank") : "-"));
+            FinishRetrieve();
+            return true;
         }
 
         void FinishRetrieve()

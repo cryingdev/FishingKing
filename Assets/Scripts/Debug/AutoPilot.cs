@@ -65,7 +65,7 @@ namespace FishingKing
             ap.StartCoroutine(scenario == "tour" ? ap.Tour() : scenario == "walk" ? ap.Walk() : scenario == "flick" ? ap.FlickTest()
                 : scenario == "windup" ? ap.WindupShots() : scenario == "lure" ? ap.LureTest() : scenario == "encounter" ? ap.EncounterTest()
                 : scenario == "steer" ? ap.SteerTest() : scenario == "periods" ? ap.PeriodsTest() : scenario == "current" ? ap.CurrentTest()
-                : scenario == "tidebites" ? ap.TideBitesTest()
+                : scenario == "tidebites" ? ap.TideBitesTest() : scenario == "stallhunt" ? ap.StallHunt()
                 : scenario == "obstacles" ? ap.ObstaclesTest() : scenario == "occlusion" ? ap.OcclusionTest()
                 : scenario == "zoom" ? ap.ZoomTest() : scenario == "legcool" ? ap.LegendCoolTest()
                 : scenario == "panmeasure" ? ap.PanMeasure() : scenario == "pan" ? ap.PanTest()

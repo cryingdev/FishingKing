@@ -57,6 +57,9 @@ namespace FishingKing
             }
         }
 
+        /// <summary>-fkmute: every sound off for the run (many test clients side by side), whatever the save says.</summary>
+        public static bool Muted => System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-fkmute") >= 0;
+
         /// <summary>Reads the save's sliders and mute, sets the listener and the effect / ambience sources (the music reads its gain every frame).</summary>
         public static void Apply()
         {
@@ -66,7 +69,8 @@ namespace FishingKing
             Bgm = Curve(d.musicVol);
             Effects = Curve(d.sfxVol);
             Amb = Curve(d.ambVol);
-            AudioListener.volume = d.soundOn ? Master : 0f;
+            AudioListener.volume = d.soundOn && !Muted ? Master : 0f;
+            if (Muted) Debug.Log($"[AUDIO] -fkmute: the listener at {AudioListener.volume}");
             Sfx.ApplyMix();
         }
     }

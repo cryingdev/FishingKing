@@ -117,6 +117,8 @@ namespace FishingKing
                 };
             var runs = new Dictionary<string, TideRun>();
             bool broken = false;
+            // rigs wound in that stopped coming home (FishingController's stall watch took them in), over all the runs
+            int stalls = 0;
             foreach (var spec in specs)
             {
                 FishingController.DebugOldTide = spec.old;
@@ -124,6 +126,7 @@ namespace FishingKing
                 GameClock.TidePhase = spec.phase;
                 Random.InitState(1515);
                 var prev = ctl;
+                stalls += prev.RetrieveStalls;
                 yield return GoStage(stage, 3f);
                 // the scene loads in real time while the fixed step runs ahead of it: wait for the new scene's controller
                 float load0 = Time.realtimeSinceStartup;
@@ -252,10 +255,10 @@ namespace FishingKing
                 runs[spec.key] = r;
                 var tide = GameClock.Tide;
                 var we = cf != null ? cf.Water(r.end.x, r.end.z) : Vector2.zero;
-                Log(string.Format(CIc, "[TIDE] {0} {1}: tide s {2:0.00}, bite x{3:0.00}, reach x{4:0.00} ({5:0.00} m) at the end: {6} bites in {7:0} s of soak = {8:0.00}/min; approaches {9} of {10} rolls; fish in reach while none comes {11:0.00}; recasts {12} ({13} held at an edge, {14} stopped in slack water), laid again {15} (snags); the float at the end ({16:0.00}, {17:0.00}) water {18:0.00} m/s, in the tetrapods' slack {19:0}% of the soak, mean depth under it {20:0.0} m, at rest from {21:0} s; pin hint {22}; {23:0} game s in {24:0} real s",
+                Log(string.Format(CIc, "[TIDE] {0} {1}: tide s {2:0.00}, bite x{3:0.00}, reach x{4:0.00} ({5:0.00} m) at the end: {6} bites in {7:0} s of soak = {8:0.00}/min; approaches {9} of {10} rolls; fish in reach while none comes {11:0.00}; recasts {12} ({13} held at an edge, {14} stopped in slack water), laid again {15} (snags); the float at the end ({16:0.00}, {17:0.00}) water {18:0.00} m/s, in the tetrapods' slack {19:0}% of the soak, mean depth under it {20:0.0} m, at rest from {21:0} s; pin hint {22}; retrieve stalls {25}; {23:0} game s in {24:0} real s",
                     stage, spec.label, tide.S, ctl.TideMult(), ctl.TideReach(), ctl.SenseRange(), r.bites, r.soak, r.PerMin, r.approaches, r.rolls,
                     r.free > 0f ? r.inReach / r.free : 0f, r.recasts, r.held, r.stopped, r.relays, r.end.x, r.end.z, we.magnitude, 100f * r.SlackShare,
-                    r.MeanDepth, r.restT, r.pin ? "shown" : "no", game, r.real));
+                    r.MeanDepth, r.restT, r.pin ? "shown" : "no", game, r.real, ctl.RetrieveStalls));
                 yield return ToReady(ctl);
             }
             FishingController.DebugOldTide = false;
@@ -263,6 +266,8 @@ namespace FishingKing
             if (broken || ctl == null) TCheck($"{stage} scene for every run", false);
             else
             {
+                stalls += ctl.RetrieveStalls;
+                TCheck($"every rig wound in came home (the stall watch took in {stalls}; see the [BREAK] retrieve stalled lines)", stalls == 0);
                 float Ratio(TideRun p, TideRun s) => p.PerMin / Mathf.Max(1e-3f, s.PerMin);
                 // the tide's factors at the two phases, read off the controller (no rig out: the open water's)
                 GameClock.TidePhase = 0.5f;
