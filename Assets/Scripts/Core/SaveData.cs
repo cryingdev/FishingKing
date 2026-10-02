@@ -107,10 +107,15 @@ namespace FishingKing
         public bool mendHint;            // the mending hint was shown
         public bool pinHint;             // the hint for a float the tide holds at the edge of the view was shown
         public bool spotHint;            // the legend spot's one-time hint (cast into the splashing spot) was shown
+        // the generated lake bed (Docs/terrain_depth_spec.md 12): its world seed (a new game is a new lake; 0 = a save from
+        // before the terrain: Game.Boot mints one, once) and the lying float's one-time hint
+        public int worldSeed;
+        public bool lieHint;
 
         public static SaveData NewGame()
         {
             var d = new SaveData();
+            d.worldSeed = SaveSystem.NewSeed();
             d.ownedItems.AddRange(new[] { GameDatabase.StarterRod, GameDatabase.StarterReel, GameDatabase.StarterLine, GameDatabase.StarterBait, "tank_0" });
             d.baits.Add(new BaitCount { id = "bait_worm", count = 10 });
             d.aquariumCollectedAt = SaveSystem.Now;
@@ -133,6 +138,22 @@ namespace FishingKing
         }
 
         public static long Now => DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+
+        /// <summary>A new world seed: positive, never 0 (0 marks a save from before the terrain). Not UnityEngine.Random.</summary>
+        public static int NewSeed()
+        {
+            int s;
+            do { s = Guid.NewGuid().GetHashCode() & 0x7fffffff; } while (s == 0);
+            return s;
+        }
+
+        /// <summary>A save from before the terrain gets its world seed (once: it is then saved). True when one was minted.</summary>
+        internal static bool EnsureWorldSeed(SaveData d)
+        {
+            if (d.worldSeed != 0) return false;
+            d.worldSeed = NewSeed();
+            return true;
+        }
 
         public static SaveData Load()
         {

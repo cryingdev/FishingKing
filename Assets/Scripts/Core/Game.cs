@@ -21,6 +21,8 @@ namespace FishingKing
     {
         public static Game I { get; private set; }
         public static SaveData Data => I.data;
+        /// <summary>The save's world seed: the generated lake bed's (Bathymetry; -fkbathyseed / -fkauto override it there).</summary>
+        public int WorldSeed => data.worldSeed;
 
         public event Action Changed;
         public event Action<int> LeveledUp;
@@ -36,6 +38,12 @@ namespace FishingKing
             DontDestroyOnLoad(go);
             I = go.AddComponent<Game>();
             I.data = SaveSystem.Load();
+            // a save from before the terrain keeps one lake from now on (Docs/terrain_depth_spec.md 12.2)
+            if (SaveSystem.EnsureWorldSeed(I.data))
+            {
+                SaveSystem.Save(I.data);
+                Debug.Log("[BATHY] world seed minted for an old save");
+            }
             go.AddComponent<Sfx>();
             go.AddComponent<Music>();
             go.AddComponent<SceneFlow>();
@@ -75,6 +83,9 @@ namespace FishingKing
         // -fkmusic off|chiptune  no background music / the old chiptune for every cue; -fkmusiclog a [MUSIC] line for every
         //                    music event (read by Music itself at boot: see Music)
         // -fkhand right|left  설정 → 조작 → 손잡이 forced (into the save); -fkrodpos side|centre the rod's position likewise
+        // -fkbathy off|log|show|dump  the lake's generated bed (Docs/terrain_depth_spec.md 13): off = none (the old profile
+        //                    everywhere), log = a [BATHY] CHECK line per validation item, show = the contour overlay, dump = a
+        //                    top-down PNG into -fkshots; -fkbathyseed <n> its world seed (never saved; -fkauto implies 1)
         static string Arg(string key)
         {
             var args = Environment.GetCommandLineArgs();
@@ -176,6 +187,17 @@ namespace FishingKing
             if (float.TryParse(Arg("-fksnag"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float snag))
                 Obstacles.SnagMult = Mathf.Max(0f, snag);
             if (int.TryParse(Arg("-fkobstseed"), out int oseed)) Obstacles.Rnd = new System.Random(oseed);
+            // -fkbathy off|log|show|dump (comma-separated; -fkbathyseed is read by Bathymetry itself)
+            string bathy = Arg("-fkbathy");
+            if (!string.IsNullOrEmpty(bathy))
+                foreach (var part in bathy.Split(','))
+                    switch (part.Trim())
+                    {
+                        case "off": Bathymetry.Off = true; break;
+                        case "log": Bathymetry.Log = true; break;
+                        case "show": Bathymetry.Show = true; break;
+                        case "dump": Bathymetry.Dump = true; break;
+                    }
             string jump = Arg("-fkjump");
             if (!string.IsNullOrEmpty(jump) && Enum.TryParse(jump, true, out FightModel.JumpKind kind)) FightModel.ForceJump = kind;
             string scene = Arg("-fkscene");
