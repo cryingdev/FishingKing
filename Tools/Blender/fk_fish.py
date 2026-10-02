@@ -64,6 +64,48 @@ fish("golden_carp", px=36, h=0.18, peak=0.48, nose=1.8, ped=0.34, arch=0.22, mou
      col=dict(back="#d8901a", side="#ffcf3e", belly="#fff1a6", fin="#ff8f1a"), shine=1.0, emit=1.15,
      barbels=[dict(z=-0.25, len=0.07, ang=-30)],
      pat=[dict(type="scales", color="#c9780f", scale=22, width=0.1, alpha=0.8)])
+fish("white_crucian", px=24, h=0.25, peak=0.52, nose=1.6, ped=0.3, arch=0.32, mouth=-0.04,
+     tail=dict(type="fork", len=0.26, span=1.0),
+     dorsal=[dict(t0=0.26, t1=0.62, h=0.55, shape="low", rake=0.1)],
+     anal=[dict(t0=0.17, t1=0.29, h=0.5, shape="tri")], pelvic=dict(t=0.52, h=0.4), pect=0.35,
+     col=dict(back="#46504a", side="#a8ab98", belly="#e8e6d6", fin="#6a6e62"), shine=0.5,
+     pat=[dict(type="scales", color="#6e7262", scale=26, width=0.09, alpha=0.6)])
+fish("three_lips", px=23, h=0.14, peak=0.55, nose=1.25, ped=0.3, mouth=0.12, mouth_line=0.12,
+     tail=dict(type="fork", len=0.26, span=1.05),
+     dorsal=[dict(t0=0.42, t1=0.54, h=0.8, shape="tri")],
+     anal=[dict(t0=0.16, t1=0.36, h=0.9, shape="tri", rake=0.2)], pelvic=dict(t=0.5, h=0.4), pect=0.4,
+     col=dict(back="#2a4650", side="#b4b8c4", belly="#f2ece6", fin="#c87a5a"), shine=0.7,
+     pat=[dict(type="bands", color="#352e5e", count=8, width=0.45, t0=0.18, t1=0.74, v0=0.28, v1=0.82, wave=0.2)])
+fish("barbel_steed", px=28, h=0.14, peak=0.55, nose=1.35, ped=0.32, arch=0.1, mouth=-0.22,
+     tail=dict(type="fork", len=0.25, span=1.0),
+     dorsal=[dict(t0=0.46, t1=0.6, h=0.8, shape="tri")],
+     anal=[dict(t0=0.18, t1=0.28, h=0.55, shape="tri")], pelvic=dict(t=0.48, h=0.4), pect=0.4,
+     barbels=[dict(z=-0.55, len=0.06, ang=-45)],
+     col=dict(back="#55594a", side="#bcbcac", belly="#f0eee4", fin="#8a8a78"), shine=0.6,
+     pat=[dict(type="bands", color="#3e4036", count=9, width=0.4, t0=0.16, t1=0.8, v0=0.42, v1=0.6),
+          dict(type="scales", color="#8a8a78", scale=22, width=0.1, alpha=0.6)])
+fish("yellow_catfish", px=21, h=0.13, peak=0.7, nose=2.2, ped=0.32, arch=0.05, taper=0.85, head_w=0.6,
+     tail=dict(type="fork", len=0.22, span=1.0, notch=0.55),
+     dorsal=[dict(t0=0.6, t1=0.68, h=1.0, shape="tri"), dict(t0=0.14, t1=0.3, h=0.3, shape="low")],
+     anal=[dict(t0=0.12, t1=0.36, h=0.45, shape="low")], pelvic=dict(t=0.48, h=0.35), pect=0.55,
+     eye=0.08, mouth_line=0.1,
+     barbels=[dict(z=0.15, len=0.24, ang=10, curve=-0.3), dict(z=-0.35, len=0.1, ang=-35), dict(z=-0.5, len=0.08, ang=-60)],
+     col=dict(back="#6a5424", side="#d2a83c", belly="#f2e4a8", fin="#a88438"),
+     pat=[dict(type="bands", color="#3a2a10", count=4, width=0.42, t0=0.12, t1=0.78, v0=0.3, v1=1.0, wave=0.4)])
+fish("freshwater_eel", px=40, h=0.05, w=0.85, peak=0.72, nose=1.7, ped=0.6, taper=0.5, mouth=-0.03,
+     tail=dict(type="round", len=0.08, span=1.3),
+     dorsal=[dict(t0=0.02, t1=0.6, h=0.75, shape="low")],
+     anal=[dict(t0=0.02, t1=0.52, h=0.7, shape="low")], pect=0.45, pect_t=0.86,
+     eye=0.07, mouth_line=0.08,
+     col=dict(back="#2c3420", side="#6a6c3c", belly="#e4dcae", fin="#3c4228"), shine=0.6,
+     top=dict(tail="taper", wave=2, amp=2.0, stub=0.5))
+fish("redfin_culter", px=38, h=0.13, w=0.4, peak=0.5, nose=1.3, ped=0.28, arch=-0.12, mouth=0.45,
+     tail=dict(type="deep", len=0.22, span=1.0),
+     dorsal=[dict(t0=0.5, t1=0.6, h=0.6, shape="tri", rake=0.2)],
+     anal=[dict(t0=0.12, t1=0.38, h=0.4, shape="low")], pelvic=dict(t=0.56, h=0.3), pect=0.45,
+     mouth_line=0.1,
+     col=dict(back="#3c4e5c", side="#ccd4d4", belly="#f4f4ee", fin="#a8786c"), shine=0.9,
+     pat=[dict(type="scales", color="#9aa6aa", scale=20, width=0.1, alpha=0.6)])
 
 # ---- Stream
 fish("pale_chub", px=17, h=0.13, peak=0.5, nose=1.5, ped=0.34,
