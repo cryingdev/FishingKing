@@ -33,7 +33,7 @@
 - 추가: `SaveData.worldSeed`(새 게임 = 새 호수, 옛 세이브는 처음 읽을 때 한 번 뽑음), `lieHint`.
 - 추가: 어종별 서식지(`HabitatDef`: 선호 깊이·바닥 종류/재질·브레이크라인·층·시간대 이동 — 새벽·저녁엔 얕게, 낮엔 깊게, 잉어는 밤에 평지로). 목표·등장 위치를 서식지로 뽑되(거리마다 예전 몫은 그대로, 같은 거리 안에서만 옮김), 같은 미끼·채비·시간대·낚싯대의 분당 입질은 감지 거리 배율(0.82–1.22, 물고기가 실제로 시간을 보내는 곳을 흉내 낸 추정기로 계산, 스테이지를 열 때 작업 스레드에서 미리)로 예전의 0.8–1.25배에 맞춤. 물고기는 몸보다 얕은 물에 안 들어가고(톡톡 입질·미끼를 물고 갈 때도), 큰 잉어·배스·황금잉어는 질주의 30%를 깊은 쪽으로.
 - 추가: **누운 찌** — 찌 수심이 물보다 깊으면 미끼가 바닥에 닿고 찌가 기울었다 눕고(새 스프라이트 `float_stick_lie`·`float_stick_tilt`), HUD가 금색 "찌 누움", 처음 한 번 힌트. 찌 수심을 늘리고 줄여 그 자리 수심을 잴 수 있음(호수에선 9 m까지).
-- 변경: 황금잉어 은신처는 수초 옆 브레이크라인, 빛나는 자리는 닿는 칸 중 충분히 깊은 곳(대나무 낚싯대로도).
+- 변경: 황금잉어 은신처는 수초 옆 브레이크라인, 물보라 자리는 닿는 칸 중 충분히 깊은 곳(대나무 낚싯대로도).
 - 테스트: `-fkbathy off|log|show|dump`, `-fkbathyseed`, `-fkauto depth`, `-fkauto habitat [-fkhabsecs] [-fkhabmode] [-fkhabperiods] [-fkhabrigs]`. 자세히: [terrain_depth_spec.md](Docs/terrain_depth_spec.md), [fishing_gameplay.md 11절](Docs/fishing_gameplay.md), [data_reference.md 2.6절](Docs/data_reference.md)
 
 ### 손잡이·낚싯대 위치 (설정 → 조작)
