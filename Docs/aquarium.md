@@ -131,8 +131,14 @@
 |---|---|---|---|---|
 | 호수 | 붕어 (`crucian_carp`) | 일반 | 사료 | Grab |
 | 호수 | 블루길 (`bluegill`) | 일반 | 사료·생새우 | Grab |
+| 호수 | 떡붕어 (`white_crucian`) | 일반 | 사료 | Grab |
+| 호수 | 끄리 (`three_lips`) | 일반 | 사료·생새우 | Grab |
 | 호수 | 잉어 (`carp`) | 고급 | 사료·생새우 | Bottom |
 | 호수 | 큰입배스 (`largemouth_bass`) | 고급 | 생새우 | Grab |
+| 호수 | 누치 (`barbel_steed`) | 고급 | 사료·생새우 | Bottom |
+| 호수 | 동자개 (`yellow_catfish`) | 고급 | 생새우 | Bottom |
+| 호수 | 뱀장어 (`freshwater_eel`) | 희귀 | 생새우 | Bottom |
+| 호수 | 강준치 (`redfin_culter`) | 영웅 | 생새우·정어리 | Surge |
 | 호수 | 황금잉어 (`golden_carp`) | 전설 | 사료·생새우 | Bottom |
 | 계곡 | 피라미 (`pale_chub`) | 일반 | 사료 | Grab |
 | 계곡 | 산천어 (`cherry_salmon`) | 일반 | 사료·생새우 | Grab |
@@ -166,7 +172,7 @@
 | 동굴 | 초롱아귀 (`anglerfish`) | 영웅 | 정어리 | Bottom |
 | 동굴 | 실러캔스 (`coelacanth`) | 전설 | 정어리 | Surge |
 
-먹이별 어종 수(표에서 셈): 사료 16종, 생새우 25종, 정어리 10종 (전체 36종, 두 가지를 먹는 잡식성 포함). 희귀도 이름은 `RarityInfo.Names`.
+먹이별 어종 수(표에서 셈): 사료 19종, 생새우 30종, 정어리 11종 (전체 42종, 두 가지를 먹는 잡식성 포함; `-fkaqua live`가 로그에 셈). 희귀도 이름은 `RarityInfo.Names`.
 
 **먹이 안내 문구**(`AquariumScene.FeedHint`, 배고픈 물고기가 있을 때 상단 힌트):
 

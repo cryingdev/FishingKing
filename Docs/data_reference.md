@@ -1,6 +1,6 @@
 # 데이터 표 (스테이지 · 어종 · 장비 · 수족관 · 세이브)
 
-- **이 문서가 다루는 것**: 정적 게임 데이터 전체(어종·스테이지는 데이터 파일, 나머지는 코드; 스테이지 7, 어종 36, 낚싯대·릴·줄 각 6, 미끼 8·루어 10, 수조 5, 사료 4, 장식 17, 청소 도구 3, 장식 슬롯 10)와 각 열의 단위·의미, `SaveData`의 모든 필드와 버전·마이그레이션 동작
+- **이 문서가 다루는 것**: 정적 게임 데이터 전체(어종·스테이지는 데이터 파일, 나머지는 코드; 스테이지 7, 어종 42, 낚싯대·릴·줄 각 6, 미끼 8·루어 10, 수조 5, 사료 4, 장식 17, 청소 도구 3, 장식 슬롯 10)와 각 열의 단위·의미, `SaveData`의 모든 필드와 버전·마이그레이션 동작
 - **관련 코드**: `Assets/Resources/Data/Fish/<id>.json`, `Assets/Resources/Data/stages.json`, `Assets/Scripts/Data/SpeciesData.cs`, `Assets/Scripts/Data/SpeciesCheck.cs`, `Assets/Scripts/Data/LegendEncounters.cs`, `Assets/Scripts/Data/GameDatabase.cs`, `Assets/Scripts/Data/Models.cs`, `Assets/Scripts/Data/TimeActivity.cs`, `Assets/Scripts/Core/SaveData.cs`, `Assets/Scripts/Core/Game.cs`, `Assets/Scripts/Core/AquaCare.cs`, `Assets/Scripts/Core/AquaTank.cs` (보조: `Assets/Resources/Data/stage_*.json`, `Assets/Resources/Data/aquarium_tank_*.json`, `Assets/Scripts/Fishing/CurrentField.cs`, `Assets/Scripts/Fishing/FishSpawner.cs`, `Assets/Scripts/Core/GameClock.cs`, `Assets/Scripts/Core/ViewZoom.cs`)
 - **관련 문서**: [README](../README.md) · [구조](architecture.md) · [낚시 규칙과 상수](fishing_gameplay.md) · [수족관 규칙과 공식](aquarium.md) · [아트 파이프라인](art_pipeline.md) · [테스트 스위치](testing.md) · [루어·전설어 사양](lures_legend_spec.md) · [전설어 확장](legends_rollout.md) · [시간대·물살](time_currents_spec.md) · [장애물](obstacles_spec.md) · [변경 기록](../CHANGELOG.md)
 
@@ -103,7 +103,7 @@
 
 | 스테이지 | 어종 id (가중치) |
 |---|---|
-| `lake` | `crucian_carp` (40) · `bluegill` (40) · `carp` (16) · `largemouth_bass` (16) · `golden_carp` (1.2, 조우) — 괄호는 희귀도의 기본값, 실제는 지형에서 (위) |
+| `lake` | `crucian_carp` (40) · `bluegill` (40) · `white_crucian` (40) · `three_lips` (40) · `carp` (16) · `largemouth_bass` (16) · `barbel_steed` (16) · `yellow_catfish` (16) · `freshwater_eel` (3.5) · `redfin_culter` (1.5) · `golden_carp` (1.2, 조우) — 괄호는 희귀도의 기본값, 실제는 지형에서 (위) |
 | `stream` | `pale_chub` 40 · `cherry_salmon` 30 · `rainbow_trout` 18 · `mandarin_fish` 8 · `lenok` 3 |
 | `sea` | `horse_mackerel` 35 · `mackerel` 30 · `rockfish` 20 · `flounder` 14 · `black_porgy` 8 · `red_seabream` 3 |
 | `swamp` | `piranha` 35 · `catfish` 28 · `snakehead` 20 · `arowana` 7 · `arapaima` 1.5 (조우) |
@@ -111,7 +111,7 @@
 | `ocean` | `yellowtail` 34 · `mahi_mahi` 26 · `bluefin_tuna` 14 · `ocean_sunfish` 7 · `blue_marlin` 2.5 (조우) · `great_white` 1.2 (조우) |
 | `cave` | `cave_tetra` 40 · `crystal_koi` 12 · `anglerfish` 10 · `coelacanth` 2 (조우) |
 
-합계 5 + 5 + 6 + 5 + 5 + 6 + 4 = **36종** (README의 "어종 36종"과 같음). 한 어종은 한 스테이지에만 나옵니다
+합계 11 + 5 + 6 + 5 + 5 + 6 + 4 = **42종** (README의 "어종 42종"과 같음; 호수 11 = 일반 어종 10 + 전설 1). 한 어종은 한 스테이지에만 나옵니다
 (`GameDatabase.StageOfFish`는 처음 찾은 스테이지를 돌려줌; 검사기가 두 스테이지에 적힌 어종을 오류로 봅니다).
 
 ### 1.3 스테이지 특성
@@ -208,8 +208,14 @@
 |---|---|---|---|---|---|---|---|---|---|
 | `crucian_carp` | 붕어 | lake | 일반 | 12–35 | 1.6 | 0.03–0.69 | 35 | 21–53 | 소형~소형 |
 | `bluegill` | 블루길 | lake | 일반 | 10–25 | 2.0 | 0.02–0.31 | 26 | 16–39 | 소형~소형 |
+| `white_crucian` | 떡붕어 | lake | 일반 | 15–45 | 1.8 | 0.06–1.64 | 40 | 24–60 | 소형~중형 |
+| `three_lips` | 끄리 | lake | 일반 | 15–38 | 1.0 | 0.03–0.55 | 30 | 18–45 | 소형~소형 |
 | `carp` | 잉어 | lake | 고급 | 35–90 | 1.5 | 0.64–10.94 | 150 | 90–225 | 소형~중형 |
 | `largemouth_bass` | 큰입배스 | lake | 고급 | 25–60 | 1.4 | 0.22–3.02 | 180 | 108–270 | 소형~중형 |
+| `barbel_steed` | 누치 | lake | 고급 | 20–60 | 1.1 | 0.09–2.38 | 130 | 78–195 | 소형~중형 |
+| `yellow_catfish` | 동자개 | lake | 고급 | 10–32 | 1.3 | 0.01–0.43 | 120 | 72–180 | 소형~소형 |
+| `freshwater_eel` | 뱀장어 | lake | 희귀 | 40–100 | 0.2 | 0.13–2.00 | 400 | 240–600 | 중형~대형 |
+| `redfin_culter` | 강준치 | lake | 영웅 | 45–100 | 0.7 | 0.64–7.00 | 900 | 540–1350 | 중형~대형 |
 | `golden_carp` | 황금잉어 | lake | 전설 | 50–100 | 1.5 | 1.88–15.00 | 3000 | 1800–4500 | 중형~대형 |
 | `pale_chub` | 피라미 | stream | 일반 | 8–18 | 1.0 | 0.01–0.06 | 15 | 9–23 | 소형~소형 |
 | `cherry_salmon` | 산천어 | stream | 일반 | 15–35 | 1.1 | 0.04–0.47 | 45 | 27–68 | 소형~소형 |
@@ -248,15 +254,21 @@
 커버 열은 각 어종 파일 `cover`의 `seek / reach / dig · types` 순서입니다. 우럭·감성돔의 `rock`과 가물치·피라루쿠의 `weed`는
 데이터 파일로 옮길 때 뺐습니다: 방파제에는 rock 커버가, 늪에는 weed 커버 구역이 없어 한 번도 맞은 적이 없는 종류였습니다
 (커버 짝짓기 `Obstacles.CoverMatch`는 그 스테이지의 커버 구역만 봄 — 게임 동작은 그대로).
-점프 스타일: `Shaker`는 `largemouth_bass`, `rainbow_trout`, `cherry_salmon`, `lenok`, `snakehead`, `arowana`,
+점프 스타일: `Shaker`는 `largemouth_bass`, `redfin_culter`, `rainbow_trout`, `cherry_salmon`, `lenok`, `snakehead`, `arowana`,
 `northern_pike`, `arctic_char`, `arapaima`, `TailWalker`는 `blue_marlin`, `mahi_mahi`, 나머지는 `Hopper`입니다.
 
 | id | 힘 (kgf) | 체력 (s) | 속도 (m/s) | 공격성 | 점프 | 점프 스타일 | 수심 (m) | 커버 | 조우 |
 |---|---|---|---|---|---|---|---|---|---|
 | `crucian_carp` | 1.6 | 6 | 2.0 | 0.3 | 0 | Hopper | 2–7 | — | — |
 | `bluegill` | 1.2 | 5 | 2.4 | 0.5 | 0 | Hopper | 1–5 | — | — |
+| `white_crucian` | 2.0 | 7 | 2.2 | 0.3 | 0 | Hopper | 0.8–3 | 0.15 / 6 / 0.8 · weed, pad | — |
+| `three_lips` | 1.6 | 6 | 3.6 | 0.65 | 0.3 | Hopper | 0.3–2 | — | — |
 | `carp` | 5.0 | 14 | 2.6 | 0.45 | 0.05 | Hopper | 3–7 | 0.30 / 8 / 1.0 · weed, reed, pad | — |
 | `largemouth_bass` | 3.8 | 10 | 3.4 | 0.7 | 0.35 | Shaker | 1–6 | 0.55 / 10 / 1.2 · post, pad, reed, weed, boat, log | — |
+| `barbel_steed` | 3.6 | 12 | 3.0 | 0.5 | 0 | Hopper | 2–6 | — | — |
+| `yellow_catfish` | 1.8 | 7 | 2.0 | 0.45 | 0 | Hopper | 3–8 | 0.35 / 6 / 1.1 · log, post, boat | — |
+| `freshwater_eel` | 4.0 | 14 | 2.4 | 0.55 | 0 | Hopper | 4–9 | 0.70 / 8 / 1.6 · log, weed, boat | — |
+| `redfin_culter` | 6.0 | 16 | 3.8 | 0.65 | 0.2 | Shaker | 1.5–5 | — | — |
 | `golden_carp` | 7.0 | 20 | 3.0 | 0.5 | 0.1 | Hopper | 4–7 | 0.45 / 10 / 1.3 · weed, pad, reed | 조우 |
 | `pale_chub` | 0.8 | 4 | 3.0 | 0.5 | 0.1 | Hopper | 0.5–3 | — | — |
 | `cherry_salmon` | 1.8 | 7 | 3.2 | 0.55 | 0.2 | Shaker | 1–4 | — | — |
@@ -307,8 +319,14 @@
 |---|---|---|---|---|---|---|
 | `crucian_carp` | 붕어 | `paste:1,corn:0.8,worm:0.7,golden:0.3` | 1.3 / 0.8 / 1.3 / 0.9 | 활동: 새벽 · 저녁 | 사료 | Grab |
 | `bluegill` | 블루길 | `worm:1,paste:0.5,shrimp:0.6,spinner:0.6,spoon:0.3,golden:0.3` | 1.0 / 1.3 / 1.0 / 0.4 | 활동: 낮 | 사료 + 생새우 | Grab |
+| `white_crucian` | 떡붕어 | `paste:1,corn:0.6,worm:0.4,golden:0.3` | 1.2 / 1.2 / 1.3 / 0.5 | 활동: 저녁 | 사료 | Grab |
+| `three_lips` | 끄리 | `spinner:1,minnow:0.9,spoon:0.8,popper:0.5,crank:0.5,worm:0.5,golden:0.3,@steady:0.8,@twitch:0.7,@topwater:0.5` | 1.5 / 1.0 / 1.4 / 0.3 | 활동: 새벽 · 저녁 | 사료 + 생새우 | Grab |
 | `carp` | 잉어 | `corn:1,paste:0.9,worm:0.4,golden:0.4` | 1.2 / 0.7 / 1.2 / 1.4 | 활동: 밤 | 사료 + 생새우 | Bottom |
 | `largemouth_bass` | 큰입배스 | `minnow:1,crank:1,softworm:1,frog:0.9,popper:0.9,spinner:0.6,spoon:0.6,worm:0.4,golden:0.4,@twitch:0.8,@topwater:0.8,@bottom:0.8,@steady:0.7` | 1.5 / 0.6 / 1.5 / 0.7 | 활동: 새벽 · 저녁 | 생새우 | Grab |
+| `barbel_steed` | 누치 | `worm:1,corn:0.5,shrimp:0.5,paste:0.4,softworm:0.4,golden:0.4,@bottom:0.5` | 1.2 / 1.1 / 1.2 / 0.8 | 하루 종일 | 사료 + 생새우 | Bottom |
+| `yellow_catfish` | 동자개 | `worm:1,shrimp:0.9,glow:0.5,softworm:0.3,golden:0.4,@bottom:0.4` | 0.2 / 0 / 0.6 / 1.9 | 활동: 밤 | 생새우 | Bottom |
+| `freshwater_eel` | 뱀장어 | `worm:1,shrimp:0.8,glow:0.6,golden:0.5` | 0.2 / 0 / 0.4 / 2.0 | 활동: 밤 | 생새우 | Bottom |
+| `redfin_culter` | 강준치 | `minnow:1,spoon:0.9,spinner:0.7,crank:0.7,popper:0.5,jig:0.5,shrimp:0.4,golden:0.6,@twitch:0.8,@steady:0.7,@topwater:0.5,@vertical:0.5` | 1.5 / 0.6 / 1.5 / 0.6 | 활동: 새벽 · 저녁 | 생새우 + 정어리 | Surge |
 | `golden_carp` | 황금잉어 | `golden:1,corn:0.5,softworm:0.4` | 1.4 / 0.7 / 1.4 / 1.0 | 활동: 새벽 · 저녁 | 사료 + 생새우 | Bottom |
 | `pale_chub` | 피라미 | `worm:1,paste:0.6,spinner:0.4,golden:0.3` | 1.0 / 1.3 / 1.0 / 0.3 | 활동: 낮 | 사료 | Grab |
 | `cherry_salmon` | 산천어 | `worm:1,spinner:1,spoon:0.7,minnow:0.5,shrimp:0.4,golden:0.3` | 1.5 / 0.8 / 1.4 / 0.4 | 활동: 새벽 · 저녁 | 사료 + 생새우 | Grab |
@@ -343,7 +361,7 @@
 | `coelacanth` | 실러캔스 | `egi:1,softworm:0.6,jig:0.4` | 1.0 / 0.8 / 1.0 / 1.4 | 활동: 밤 | 정어리 | Surge |
 
 밤에만 나오는 종(모든 낮 시간대 a = 0): `mandarin_fish` 쏘가리, `catfish` 메기, `burbot` 모캐. 밤에 안 나오는 종: `ocean_sunfish`
-개복치 (밤 a = 0).
+개복치 (밤 a = 0). 낮(08–17시)에만 안 나오는 종(낮 a = 0, 새벽·저녁은 조금): `yellow_catfish` 동자개, `freshwater_eel` 뱀장어.
 
 ### 2.5 전설어 조우 요약 (`EncounterDef`)
 
@@ -407,6 +425,12 @@
 | `bluegill` 블루길 | p5–p50 | 중층 | 0.75 | 0 / +10 / 0 / +20 | 얕은 턱 1.8(낮 ×1.2), 평지 1.6, 둔덕 1.5, 모래 1.3·자갈 1.2·수초 1.3; 밤 브레이크라인 ×1.5 |
 | `carp` 잉어 | p55–p100 | 바닥 | 0.65 | −20 / +10 / −20 / −40 | 낮 웅덩이·물골 ×1.5, 깊은 바닥 1.3, 진흙 1.4; 밤 평지 ×3.0·둔덕 ×2.6 (밤엔 얕은 평지로); `runDeep` |
 | `largemouth_bass` 배스 | p20–p75 | 중층 | 0.8 | −8 / +25 / −8 / −5 | 브레이크라인 1.8(낮 ×1.5), 수중 둔덕 1.6(낮 ×1.8), 둔덕 1.5(낮 ×1.3), 자갈 1.3; 새벽 평지 ×1.8·얕은 턱 ×1.6; `runDeep` |
+| `white_crucian` 떡붕어 | p10–p50 | 중층 | 0.7 | −8 / +12 / −8 / −5 | 수초 평지 1.6, 얕은 턱 1.5, 둔덕 1.4, 수초 재질 1.7; 낮 브레이크라인 ×1.4·둔덕 ×1.3, 저녁 평지 ×1.3 |
+| `three_lips` 끄리 | p20–p70 | 중층 | 0.7 | −20 / +12 / −20 / +5 | 수중 둔덕 1.6(낮 ×1.5), 브레이크라인 1.5, 둔덕·열린 바닥 1.3, 자갈 1.5·모래 1.3; 새벽 평지 ×1.5, 저녁 얕은 턱 ×1.5 |
+| `barbel_steed` 누치 | p35–p80 | 바닥 | 0.75 | −10 / +5 / −10 / −15 | 물골 1.8(낮 ×1.4), 수중 둔덕 1.4, 열린 바닥 1.3, 자갈 1.7·모래 1.6; 밤 둔덕 ×1.4; `runDeep` |
+| `yellow_catfish` 동자개 | p60–p95 | 바닥 | 0.7 | 0 / 0 / −5 / −10 | 깊은 웅덩이 1.6, 깊은 바닥 1.5, 물골 1.4, 진흙 1.5; 밤 브레이크라인 ×1.5·열린 바닥 ×1.3 |
+| `freshwater_eel` 뱀장어 | p75–p100 | 바닥 | 0.85 | 0 / 0 / 0 / −10 | 깊은 웅덩이 2.2, 깊은 바닥 1.4, 물골 1.3, 진흙 1.6; 밤 물골 ×1.4·브레이크라인 ×1.3; `runDeep` |
+| `redfin_culter` 강준치 | p65–p100 | 중층 | 0.85 | −20 / +10 / −20 / −5 | 물골 2.0, 깊은 바닥 1.5, 웅덩이·브레이크라인 1.3, 자갈 1.2; 새벽 브레이크라인 ×1.5, 저녁 수중 둔덕 ×1.5; `runDeep` |
 | `golden_carp` 황금잉어 | – | – | – | – | `runDeep`만 (걸린 뒤 질주) |
 
 정확한 문자열은 각 어종 파일의 `habitat`. 예전 미터 띠는 50개 호수를 합친 분포에서 붕어 1.2–4.0 m ≈ p5–p63, 블루길
@@ -927,11 +951,11 @@
   `eyes0 = (1.6, -2.9, 9.5)`, `eyes1 = (1.4, -2.1, 5.6)` (`LegendEncounters.GreatWhite`).
 - **[legends_rollout.md](legends_rollout.md) 2** — "공통" 목록에 없는 `moodHold` 2.5가 `LegendEncounters.Row`로 5종에 들어가 있습니다
   (실러캔스는 0).
-- **[time_currents_spec.md](time_currents_spec.md) 6.2** — 활동도 표 36행은 어종 파일의 `activity`와 모두 같습니다(다른 점 없음).
+- **[time_currents_spec.md](time_currents_spec.md) 6.2** — 활동도 표 36행은 어종 파일의 `activity`와 모두 같습니다(다른 점 없음). 그 뒤에 더한 호수 6종(떡붕어·끄리·누치·동자개·뱀장어·강준치)은 표에 없고 어종 파일에만 있습니다(2.4절).
 - **[time_currents_spec.md](time_currents_spec.md) 13** — 세이브 필드 6개는 코드와 같습니다. 다만 13절은 시계 필드만 다루고,
   `SaveData`에는 그 뒤로 수족관(`aquaVer`, `feed`, `feedTornOnce`, `tank`, `capVer`, `aquaCarry`), 줌(`zoomMode`),
   힌트(`sweepHint`, `sideHint`) 필드가 더 생겼습니다(5.1절).
-- **[obstacles_spec.md](obstacles_spec.md) 7.1 / 7.5** — 줄 `tough` 6개는 코드와 같습니다. 커버는 어종 파일의 `cover` 24종이고, 사양서와 달리 우럭·감성돔에 `rock`, 가물치·피라루쿠에 `weed`가 없습니다(그 스테이지에 그 커버 구역이 없어 한 번도 맞지 않던 종류라 데이터 파일로 옮길 때 뺌; 2.3절). 방어 `hull, rock`, 만새기 `weed`, 참다랑어 `hull, weed`도 데이터 그대로입니다. 사양서의 얼음 종
+- **[obstacles_spec.md](obstacles_spec.md) 7.1 / 7.5** — 줄 `tough` 6개는 코드와 같습니다. 커버는 어종 파일의 `cover` 27종이고(호수 신종 떡붕어·동자개·뱀장어 포함), 사양서와 달리 우럭·감성돔에 `rock`, 가물치·피라루쿠에 `weed`가 없습니다(그 스테이지에 그 커버 구역이 없어 한 번도 맞지 않던 종류라 데이터 파일로 옮길 때 뺌; 2.3절). 방어 `hull, rock`, 만새기 `weed`, 참다랑어 `hull, weed`도 데이터 그대로입니다. 사양서의 얼음 종
   `reach` "-"는 코드에서 `0f` (주석: "0 = the ice hole's rim")입니다.
-- **[README.md](../README.md)** — "스테이지 7곳", "어종 36종", "루어 10종 · 액션 5가지", "전설어 조우 6종", "5단계 수조"는 코드와
+- **[README.md](../README.md)** — "스테이지 7곳", "어종 42종", "루어 10종 · 액션 5가지", "전설어 조우 6종", "5단계 수조"는 코드와
   같습니다.

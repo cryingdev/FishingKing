@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 $steps = @(
-    @("fk_fish.py", @()),                                   # 36 species: side view (2 frames) + top view shadows
+    @("fk_fish.py", @()),                                   # 42 species: side view (2 frames) + top view shadows
     @("fk_items.py", @()),                                  # rods, reels, lines, baits, tanks, UI icons, 9-slice frames, floats
     @("fk_character.py", @()),                              # angler seen from behind, 7 poses + rod anchors
     @("fk_stages.py", @("--", "lake", "stream", "sea", "swamp", "ice", "ocean", "cave", "clouds")),

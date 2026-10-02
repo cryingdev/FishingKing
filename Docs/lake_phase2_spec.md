@@ -8,7 +8,8 @@ the fish follow whatever lake a seed draws, and bounds only the economy:
   lake, spawn weights derived from the bed, a bigger stock with a per-encounter feeding roll, the economy estimator and
   its gate, the tests. It builds and passes with today's 36 species.
 - **(B) art**: six new lake species' models and sprites (a separate branch).
-- **(C) integration**: the six species' files, the roster, the UI's capacity, the docs, the full test plan.
+- **(C) integration**: the six species' files, the roster, the UI's capacity, the docs, the full test plan (section 13: as
+  built, measured with the lake's ten ordinary species).
 
 The user's balance rule: per-species, per-rig and per-spot differences are allowed and wanted (finding where each fish
 lives is the game); averaged over the reference player's casting fan, every rig and period, the lake's catches per minute
@@ -357,3 +358,150 @@ and `lure` 0 failed; `tour` 19 shots, no exception; `steer` (stream) 3 failed, t
 graze, the edge sweep, the bent 회수). `tidebites` (sea) measured its first soak at 4.42 bites/min (the earlier run in
 `Logs/mg2_tidebites.log`: 4.87) and then stalled in Retrieving after line cuts at the hook, as that earlier run did; it
 was stopped there. The sea has no habitat, so nothing in this change runs on it.
+
+---
+
+## 13. Integration (C): the six new species, as built
+
+Branch `step2-integration`: the tip of `step2-code` with `step2-art` merged (`--no-ff`). The species, roster, UI and test
+code are one commit, the docs another; two builds (the second for the feeding chance's new defaults and the two D7′ gate
+fixes below), the full test plan on the second.
+
+### 13.1 What went in
+
+- **Species files** `Assets/Resources/Data/Fish/<id>.json`, verbatim from the species design with the habitat tokens in the
+  adopted syntax: `white_crucian` 떡붕어 (common), `three_lips` 끄리 (common), `barbel_steed` 누치 (uncommon),
+  `yellow_catfish` 동자개 (uncommon), `freshwater_eel` 뱀장어 (rare), `redfin_culter` 강준치 (epic). The validator: 0 errors,
+  0 warnings, 42 species (E7 sprites, E9 p-bands, E11 Blender models all pass).
+- **Roster** (`stages.json`, lake, no weights, population 15): crucian, bluegill, white crucian, three-lips, carp, bass,
+  barbel steed, yellow catfish, eel, culter, golden carp — the encyclopedia, map and spawn order.
+- **Art** (`step2-art`, d79df79): the six models in `fk_fish.py`, the eel's tapering top shadow in `hyb_fish.py`, 24 sprites;
+  their `.meta` files from the first import.
+- **Map dialog** (`MapScene.ShowStage`): a stage with more than 10 species gets 6 × 2 cells of 86 × 88 (picture 76 × 38,
+  name 14 pt in 84); the others keep 5 × 2 of 104 × 88. The encyclopedia (6 columns, scrolling), the catch card, the
+  aquarium and the shop needed no change.
+- **`FishHabitat.FDefault`**: D11′'s 50-seed medians with the ten species: bamboo 0.537, carbon 0.483, dragon 0.435 (the
+  others lerped by cast: glass 0.510, big game 0.471, surf 0.443). `GoldenHash[2]` stays 0xc778575c (D1 passes; the bed
+  does not depend on the species).
+- **Tests**: D7′'s step-2 niche gates (13.3); `-fkrecords <stage|all>` (screenshots: the encyclopedia filled);
+  `-fkauto cards [-fkcards ids]` (`AutoPilot.Cards.cs`: each species hooked on a float with the test hook, landed at once,
+  its first catch card shot); `-fkaqua live` ends with the six diets and styles, the diet counts in the log, a redfin culter
+  and a yellow catfish in the tank (a sardine: the culter surges and gulps it; a shrimp: the catfish takes it off the
+  gravel).
+
+### 13.2 Two D7′ gates changed from the spec, and why
+
+The first build's depth test failed two D7′ checks; both are fixed in the test, not in the data:
+
+1. **The redfin culter's channel** was judged on the bamboo's water (z ≤ 30), where the uniform targets' channel share is
+   0.003 (about 6 of 2000): the old creek starts at z 17–20 and runs 28–38 m out, and its banks classify as drop-off
+   (A1 as built), so only its narrow core is "channel". Dawn came out ×0.67 and evening ×1.83 on a handful of targets. It is
+   now judged on the dragon's water (z ≤ 50) with 4000 targets per period against the region's exact uniform share
+   (0.0028): dawn ×1.54, day ×1.72, evening ×2.63, night ×2.09. The core is still small; the numbers are deterministic.
+2. **The cross-lake spread** (every species' mean rank within 10 points across seed 1, the shallowest and the deepest lake)
+   measured 11.5 for the barbel steed by day (three-lips 10.0). Their bed-material weights (gravel 1.7 / sand 1.6, gravel
+   1.5) follow where a lake of that character keeps those beds, which moves their depth rank with it; the relative band
+   alone holds the four phase-1 species within 9.8. The gate is now 10 for the phase-1 species and 12.5 for the step-2
+   species.
+
+### 13.3 Measured (`-fkauto depth`, the second build)
+
+0 failed (49 checks). D1–D6, D8–D10, D12–D14 as in section 10 (the bed is the same: seed 1 0x13d2afc1, seed 12345
+0xc778575c); D14 959 of 2000 feeding at F 0.467.
+
+**D7′** mean target rank (seed 1 / shallowest seed 16 / deepest seed 26; uniform 39 / 40 / 37):
+
+| Species | dawn | day | evening | night |
+|---|---|---|---|---|
+| crucian | 33/33/32 | 46/47/42 | 34/34/33 | 34/35/32 |
+| bluegill | 31/30/29 | 33/34/32 | 31/32/29 | 39/39/35 |
+| white crucian | 30/30/29 | 35/35/33 | 28/29/28 | 30/31/30 |
+| three-lips | 36/37/32 | 46/49/39 | 36/38/33 | 43/46/38 |
+| carp | 46/47/44 | 52/56/50 | 47/46/44 | 33/33/35 |
+| bass | 35/36/33 | 50/54/45 | 39/39/34 | 40/41/34 |
+| barbel steed | 44/48/38 | 50/54/42 | 45/48/39 | 42/45/36 |
+| yellow catfish | 55/57/53 | 56/57/53 | 53/54/48 | 52/54/49 |
+| eel | 60/62/56 | 60/62/56 | 58/60/54 | 58/60/54 |
+| culter | 51/55/46 | 58/61/53 | 52/55/48 | 57/60/52 |
+
+Seed 1's niches against the uniform targets: barbel steed on gravel + sand ×1.59 (≥ 1.4), white crucian on weed ×1.56
+(≥ 1.4), eel at night in holes ×2.08 (≥ 2), culter in the channel (z ≤ 50) at dawn ×1.54 and evening ×2.63 (≥ 1.5), yellow
+catfish at night mean rank 52 (≥ 50). The phase-1 kind shifts are unchanged (bass by day ×1.73 …).
+
+**D11′** (seeds 1..50 × bamboo / carbon / dragon, 113 s): F never clamped; F bamboo 0.511–0.559 (median 0.537), carbon
+0.458–0.505 (0.483), dragon 0.412–0.463 (0.435). After F: catches ×1.007–1.037 / income ×0.964–0.993 (bamboo),
+×1.019–1.046 / ×0.956–0.982 (carbon), ×1.036–1.063 / ×0.941–0.966 (dragon). Seeds 1 and 37 recomputed: identical. The
+mean price ratio π is now just under 1 (the cheap three-lips takes a fifth of the catches), so catches end slightly above
+today's and income slightly below.
+
+Seed 1, bamboo (new × F over today): per rig paste2 0.77, pasteB 0.69, worm1 1.13, wormB 0.85, cornB 0.68, shrimp2 1.06,
+spinner 1.00, spoon 1.07, crank 2.71, minnow 2.00, softworm 1.40, popper 2.67, frog 2.42 — the lures that the three-lips
+and the culter take now catch far more than on today's lake (484 of the 1950 rig fan ratios over 50 seeds are outside
+×0.5–×2, information only; the user's rule allows per-rig differences). Per period (catches / income) dawn 1.12/0.97,
+day 1.03/0.94, evening 1.12/1.02, night 0.94/0.99. Share of catches (income): crucian 0.15 (0.08), bluegill 0.23 (0.08),
+white crucian 0.11 (0.06), three-lips 0.22 (0.09), carp 0.05 (0.11), bass 0.14 (0.35), barbel steed 0.05 (0.09), yellow
+catfish 0.04 (0.06), eel and culter under 0.005 each (0.02, 0.06; on the dragon's water 0.01 each). XP ×1.03. Golden paste ×0.97 catches / ×1.07 income of today's
+golden paste (×0.99 / ×1.10 on the carbon and dragon); the dragon's luck ×1.04 / ×1.00.
+
+The positive gate (every species' best 10 % of casts on its best rig over its own fan mean, bamboo / carbon): crucian
+paste2 2.42 / 2.67, bluegill spinner 1.95 / 2.36, white crucian paste2 2.35 / 2.37, three-lips minnow 1.94 / 2.10, carp
+paste2 2.30 / 2.42, bass minnow 1.92 / 1.96, barbel steed softworm 2.21 / 2.34, yellow catfish softworm 2.54 / 2.67, eel
+shrimp2 3.26 / 3.10, culter minnow 2.23 / 2.52.
+
+**D11b**: A at its clamp in 138 of 1900 (7.3 %, ≤ 10 %), mostly the eel at the floor 0.6 (its p75–p100 holes are scarce on
+most lakes; on seed 1 all four periods); the stock's mean multiplier 0.999–1.008. Seed 1's derived weights (base, A dawn /
+day / evening / night): crucian 40, 1.17/1.05/1.19/1.09; bluegill 40, 1.11/1.22/1.14/1.27; white crucian 40,
+0.80/0.91/0.73/0.85; three-lips 40, 0.98/0.96/0.98/1.13; carp 16, 1.03/0.84/1.05/0.84; bass 16, 1.12/1.09/1.27/1.31; barbel
+steed 16, 0.75/0.67/0.77/0.78; yellow catfish 16, 0.77/0.98/0.82/1.02; eel 3.5, 0.60 throughout; culter 1.5,
+0.92/0.78/0.79/0.69 (`spawn_baseline.txt`).
+
+### 13.4 The niche map (where each new fish lives)
+
+| Fish | Rarity, base | Band, column | Where on the bed | When | Rig (D11′ best) |
+|---|---|---|---|---|---|
+| 떡붕어 white crucian | common, 40 | p10–p50, mid | weedy flats and shelves (weed ×1.56) | dawn, day, evening (1.2–1.3) | paste at 2 m |
+| 끄리 three-lips | common, 40 | p20–p70 (dawn / evening −20p), mid | humps and drop-offs over gravel / sand; flats at dawn, shelves at evening | dawn 1.5, evening 1.4 | spinner, minnow |
+| 누치 barbel steed | uncommon, 16 | p35–p80, bottom | the channel and humps, gravel + sand (×1.59) | all day (0.8–1.2) | worm / soft worm on the bottom |
+| 동자개 yellow catfish | uncommon, 16 | p60–p95, bottom | holes, deep basin, channel; mud; drop-offs at night | night 1.9 (day 0) | worm, shrimp, soft worm |
+| 뱀장어 eel | rare, 3.5 | p75–p100, bottom | the deepest holes (night ×2.08), mud | night 2.0 (day 0) | worm, shrimp on the bottom |
+| 강준치 redfin culter | epic, 1.5 | p65–p100 (dawn / evening −20p), mid | the old creek's channel and the deep basin (z ≤ 50: ×1.5–2.6); drop-offs at dawn, humps at evening | dawn and evening 1.5 | minnow, spoon |
+
+### 13.5 The live soak (`-fkauto economy`, 24 processes)
+
+Seven configurations of section 11's soak (rigs paste2 / pasteB / worm1 / cornB, 30 game s per spot, a fresh stock every
+10 spots, each period its own process; bamboo 70 spots, carbon 110): today's lake (legacy) with the bamboo and the carbon,
+the new lake on seed 1 with both rods, and with the bamboo on D11′'s lowest-F seed (13, F 0.511) and highest-F seed (40,
+F 0.559). Pooled with the test's rules (periods by length, rigs equally; catches by the point estimate, both sides over
+1000 bites; income also by a paired bootstrap over the yaw blocks, 2000 draws), against the legacy run of the same rod:
+
+| New lake | F | Catches / min (legacy) | Ratio (95 %) | Income / min (legacy) | Ratio (95 %) | Predicted | Live / predicted |
+|---|---|---|---|---|---|---|---|
+| seed 1, bamboo | 0.520 | 1.862 (2.072) | **×0.90** (0.85–0.95) | 93.0 (110.0) | **×0.85** (0.75–0.97) | ×0.82 / ×0.79 | 1.09 / 1.08 |
+| seed 13, bamboo | 0.511 | 1.875 | **×0.90** (0.84–0.99) | 92.8 | **×0.84** (0.73–0.99) | ×0.80 / ×0.75 | 1.14 / 1.12 |
+| seed 40, bamboo | 0.559 | 1.854 | **×0.89** (0.83–0.96) | 95.5 | **×0.87** (0.80–0.97) | ×0.81 / ×0.78 | 1.11 / 1.11 |
+| seed 1, carbon | 0.467 | 1.325 (1.448) | **×0.92** (0.84–1.00) | 66.6 (78.2) | **×0.85** (0.75–0.97) | ×0.83 / ×0.78 | 1.11 / 1.09 |
+
+Every configuration passes: catches and income within 0.8–1.25, each live ratio within ±20 % of the estimator's prediction
+for the same spots and rigs (the estimator is 8–14 % pessimistic on these float rigs), 0 frames of a fish in water
+shallower than it swims in, and "economy test done: 0 failed" in all 24 logs. These rigs are floats only: on them the new
+lake gives about 0.9 of today's catches, since part of its stock (the three-lips, the culter) takes lures; the reference
+player's fan with lures (D11′) is ×1.02–1.06.
+
+Bites by species (new lake / today's), bamboo seed 1: crucian 299 / 503, bluegill 226 / 316, white crucian 222, carp 97 /
+271, barbel steed 75, three-lips 65, bass 29 / 43, yellow catfish 23, eel 5, culter 0 (seeds 13 / 40: white crucian 195 /
+216, barbel steed 84 / 82, three-lips 73 / 82, yellow catfish 22 / 34, eel 6 / 3); carbon seed 1: crucian 318 / 577,
+bluegill 231 / 358, white crucian 224, carp 127 / 281, three-lips 99, barbel steed 90, bass 36 / 61, yellow catfish 26, eel
+3. The culter took none of these float baits on these spots (its baits are lures and a 0.4 shrimp; its water is the deep
+channel beyond most of the fan); the eel and the yellow catfish come at night.
+
+### 13.6 Regressions and the rest of the plan (the second build)
+
+`-fkauto species` 0 failed (56 of 56 fixtures; `species_dump.txt` and `spawn_baseline.txt` differ from step-2-code's only in
+the lake's lines and the six new species); `depth` 0 failed; `fish` (lake) caught 2; `legendspot` and `encounter`
+(`-fkencounter natural`) 0 failed; `breaks` 0 failed; `zoom` 0 failed; `pan` 0 failed; `tour` (with `-fkrecords all`:
+the lake's map dialog with 11 species in 6 × 2, the encyclopedia 42/42) 20 shots, no exception; `-fkauto cards` 0 failed
+(the six catch cards); `-fkaqua live` 30 ok, 0 failed (pellets 19, shrimp 30, sardines 11; the culter gulped the sardine in
+0.55 s, the yellow catfish took the shrimp off the gravel). `-fkbathy show,dump` on the shallowest (16) and deepest (26)
+lakes for the overlay shots. The lake's other scenarios, whose stock now holds the new species: `obstacles`, `hold` and
+`lure` 0 failed. Not rerun: `steer` (the stream) and `tidebites` (the sea), whose stages and code paths this part does not
+touch (section 12 has step-2-code's runs).
