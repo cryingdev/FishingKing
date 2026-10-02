@@ -33,6 +33,8 @@ namespace FishingKing
         // at least 960 wide, so the pair (from 160 units in from the right edge) never covers him or the props at his feet
         const float WalkBtn = 64, WalkGap = 12, WalkInset = 20, WalkBottom = 26;
         Text hint, flash, tensionLabel, fishName, distance, phaseLabel, baitCount, depthText, aimText, depthLabel;
+        /// <summary>The line out and left on the spool, above the 회수 button (no line: what to do).</summary>
+        Text lineText;
         RectTransform stageName;
         TopBar topBar;
         CanvasGroup hintGroup;
@@ -136,6 +138,9 @@ namespace FishingKing
             retrieveBtn = UIKit.Button(root, "회수", "blue", () => ctl.Retrieve(), new Vector2(96, 48), 20);
             retrieveBtn.GetComponent<RectTransform>().At(new Vector2(1, 0), new Vector2(-200, 16), new Vector2(96, 48), new Vector2(1, 0)); // clear of the reel's arrow orbit
             reel = ReelGrip.Create(root, ctl.Gesture);
+            lineText = UIKit.Label(root, "", 16, UIKit.Cream, TextAnchor.LowerRight);
+            lineText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            lineText.rectTransform.At(new Vector2(1, 0), new Vector2(-200, 16 + 48 + 4), new Vector2(300, 22), new Vector2(1, 0));
 
             // bottom-right: walk left / right (hold); only while ready, when the reel and retrieve button are hidden
             walkL = WalkButton("◀", "WalkLeft", -(WalkInset + WalkBtn + WalkGap), out holdL);
@@ -590,6 +595,30 @@ namespace FishingKing
             }
         }
 
+        /// <summary>
+        /// The line readout: out with the rig (waiting, winding in, a bite) the line out and what is left on the spool; at
+        /// the ready what is left; no line (thrown away): where to get one. Hidden in a fight or a snag (their strip shows
+        /// the line out) and in an encounter.
+        /// </summary>
+        void UpdateLineText()
+        {
+            if (lineText == null) return;
+            var s = ctl.State;
+            bool ready = s == FishingController.S.Ready || s == FishingController.S.Aiming;
+            bool rigOut = s == FishingController.S.Waiting || s == FishingController.S.Retrieving || s == FishingController.S.Biting;
+            string text = "";
+            var col = UIKit.Cream;
+            if (!Game.I.HasLine && (ready || rigOut))
+            {
+                text = "줄 없음 — 지도의 상점에서 장착";
+                col = UIKit.Bad;
+            }
+            else if (rigOut) text = $"줄 {ctl.LineOut:0.0}m · 남은 {Game.I.LineLeftNow:0}m";
+            else if (ready) text = $"남은 줄 {Game.I.LineLeftNow:0}m";
+            if (lineText.text != text) lineText.text = text;
+            lineText.color = col;
+        }
+
         public void RefreshTackle()
         {
             var b = Game.I.Bait;
@@ -740,6 +769,7 @@ namespace FishingKing
 
         public void Tick(float dt)
         {
+            UpdateLineText();
             if (flashTime > 0)
             {
                 flashTime -= dt;
@@ -917,7 +947,7 @@ namespace FishingKing
             snagName.color = UIKit.Bad;
             var icon = Art.UI(sn.kind == "pad" ? "icon_snag_pad" : sn.soft ? "icon_snag_weed" : "icon_snag");
             if (icon != null && snagIcon.sprite != icon) snagIcon.sprite = icon;
-            distance.text = $"{ctl.RigDistance:0.0}m";
+            distance.text = $"{ctl.LineOut:0.0}m";
             float r = Mathf.Clamp01(sn.r);
             shownTension = Mathf.Lerp(shownTension, r, 0.35f);
             UIKit.SetBar(tension, shownTension);

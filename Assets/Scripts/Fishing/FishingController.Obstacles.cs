@@ -807,6 +807,7 @@ namespace FishingKing
         {
             var sn = Tackle.Snag;
             bool prop = sn != null && sn.kind == "prop";
+            float lineOut = Mathf.Max(LineOut, LineChord);
             var loss = SnagLoss(cut);
             if (cut) Sfx.Play(Sfx.Snap, 0.5f);
             else
@@ -846,6 +847,7 @@ namespace FishingKing
                 snap.Home(lineEnd);
                 SetState(S.Ready);
             }
+            LoseLine(loss, lineOut);
             ShowLoss(loss);
         }
 

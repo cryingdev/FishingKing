@@ -32,6 +32,14 @@ namespace FishingKing
         public int count;
     }
 
+    /// <summary>The line left on a line item's spool (m) once it has been cut; a line with no entry is full.</summary>
+    [Serializable]
+    public class LineSpool
+    {
+        public string id;
+        public float left;
+    }
+
     [Serializable]
     public class SpeciesRecord
     {
@@ -62,6 +70,7 @@ namespace FishingKing
         public int xp;
         public List<string> ownedItems = new List<string>();
         public List<BaitCount> baits = new List<BaitCount>();
+        public List<LineSpool> lineSpools = new List<LineSpool>();
         public string rod = GameDatabase.StarterRod;
         public string reel = GameDatabase.StarterReel;
         public string line = GameDatabase.StarterLine;
@@ -196,11 +205,13 @@ namespace FishingKing
         {
             d.ownedItems ??= new List<string>();
             d.baits ??= new List<BaitCount>();
+            d.lineSpools ??= new List<LineSpool>();
             d.aquarium ??= new List<CaughtFish>();
             d.records ??= new List<SpeciesRecord>();
             d.legends ??= new List<LegendRecord>();
             d.unlockedStages ??= new List<string>();
-            foreach (var id in new[] { GameDatabase.StarterRod, GameDatabase.StarterReel, GameDatabase.StarterLine, GameDatabase.StarterBait, "tank_0" })
+            // (not the starter line: one thrown away when too little was left stays so until it is bought again, free)
+            foreach (var id in new[] { GameDatabase.StarterRod, GameDatabase.StarterReel, GameDatabase.StarterBait, "tank_0" })
                 if (!d.ownedItems.Contains(id)) d.ownedItems.Add(id);
             if (!d.unlockedStages.Contains("lake")) d.unlockedStages.Add("lake");
             if (GameDatabase.GetItem<RodDef>(d.rod) == null) d.rod = GameDatabase.StarterRod;

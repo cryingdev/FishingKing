@@ -20,6 +20,8 @@ namespace FishingKing
         public enum JumpKind { Hop, Shake, TailWalk }
 
         public float Line;          // metres of line out
+        /// <summary>The line the reel can give before it is spooled (m): the reel's capacity, or less when the spool is short (set by the controller).</summary>
+        public float SpoolCap;
         public float Tension;       // kgf
         public float Stamina = 1f;  // 0..1
         public Phase State = Phase.Run;
@@ -225,6 +227,7 @@ namespace FishingKing
             sizeT = sp.SizeT(sizeCm);
             Power = sp.power * (0.55f + 0.45f * sizeT) * stagePower;
             Line = startLine;
+            SpoolCap = reel.lineCap;
             rnd = new System.Random(seed);
             phaseTime = 1.0f;
             Tension = plainTension = Power * 0.3f;
@@ -471,7 +474,7 @@ namespace FishingKing
             }
             else breakTimer = Mathf.Max(0, breakTimer - dt * 2f);
 
-            if (Line > reel.lineCap) Result = Outcome.Spooled;
+            if (Line > SpoolCap) Result = Outcome.Spooled;
 
             if (Tension < Power * 0.05f && !Exhausted) slack += dt;
             else slack = Mathf.Max(0, slack - dt);

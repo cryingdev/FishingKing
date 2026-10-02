@@ -189,6 +189,8 @@ namespace FishingKing
         public float stealth = 1f; // bite rate multiplier
         /// <summary>Abrasion resistance: the line's wear rubbing on structure is divided by it (Docs/obstacles_spec.md 7.5).</summary>
         public float tough = 1f;
+        /// <summary>Metres on a full spool as bought (a parted line loses half the line out: Game.LoseLine).</summary>
+        public float spool = 100f;
         public Color color = Color.white;
         public override ItemKind Kind => ItemKind.Line;
     }

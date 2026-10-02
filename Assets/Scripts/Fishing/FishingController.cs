@@ -499,7 +499,17 @@ namespace FishingKing
                 else keys = 0f;
             }
             Angler.WalkInput = Mathf.Clamp(hud.WalkHeld + keys, -1f, 1f);
-            if (PointerInput.WorldPressed)
+            if (PointerInput.WorldPressed && !Game.I.HasLine)
+            {
+                // (the line was thrown away when too little was left: no cast until one is bought or equipped)
+                if (Time.time - noLineT > 1.5f)
+                {
+                    noLineT = Time.time;
+                    hud.Flash("줄이 없어요 — 지도의 상점에서 줄을 사거나 장착해요", UIKit.Bad, 2f);
+                    Sfx.Play(Sfx.Error, 0.5f);
+                }
+            }
+            else if (PointerInput.WorldPressed)
             {
                 pressPos = PointerInput.Position;
                 AimPower = 0;
@@ -807,6 +817,7 @@ namespace FishingKing
         }
 
         bool sweepHintNow;
+        float noLineT = -9f;
 
         // ------------------------------------------------------------------ waiting
         void UpdateWaiting(float dt)
@@ -1537,6 +1548,7 @@ namespace FishingKing
         void UpdateBiting(float dt)
         {
             Angler.LineTarget = Tackle.LineEnd;
+            LineOut = Mathf.Max(LineOut, LineChord);   // (the fish swimming off with it takes line)
             Angler.Slack01 = 0.15f;
             Angler.Tension01 = 0.25f;
             biteWindow -= dt;
@@ -1626,6 +1638,12 @@ namespace FishingKing
             if (seed < 0) seed = Random.Range(0, 99999);
             Fight = new FightModel(Hooked.Sp, Hooked.Cm, Game.I.Rod, Game.I.Reel, Game.I.Line, Stage.Def.powerMult,
                 Vector3.Distance(tip, Hooked.Pos), land, seed);
+            // the line out goes on in the fight (from the rod tip to the fish from here); the reel gives no more than the
+            // spool holds
+            Fight.SpoolCap = Mathf.Min(Game.I.Reel.lineCap, Game.I.LineLeftNow);
+            Debug.Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "[LINE] hooked: {0:0.0} m out (over the water from him), {1:0.0} m in the fight from the tip; the spool gives {2:0} m",
+                LineOut, Fight.Line, Fight.SpoolCap));
+            LineOut = Fight.Line;
             runRnd = new System.Random(seed + 1);   // which way each run heads (the same fish fought again runs the same ways)
             deepRnd = new System.Random(seed + 2);  // (the bed: a big runner's pull for the deep, its own stream so runRnd is untouched)
             shallowWarned = false;
@@ -2051,6 +2069,7 @@ namespace FishingKing
         void UpdateFighting(float dt)
         {
             var f = Fight;
+            LineOut = f.Line;   // (the fight's line out: wound in, given, taken by the fish)
             float revs = Gesture.Speed;
             TrackRodLine(dt);
             SidePressure(dt, f);

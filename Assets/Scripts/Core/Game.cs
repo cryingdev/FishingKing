@@ -315,6 +315,7 @@ namespace FishingKing
             if (Owns(item.id)) return BuyResult.AlreadyOwned;
             if (!Spend(item.price)) return BuyResult.NotEnoughCoins;
             data.ownedItems.Add(item.id);
+            if (item is LineDef) RefillLine(item.id);   // (a full spool)
             Equip(item);
             return BuyResult.Ok;
         }
@@ -337,6 +338,57 @@ namespace FishingKing
                 case ItemKind.Line: data.line = item.id; break;
                 case ItemKind.Bait: if (HasBait(item.id)) data.bait = item.id; break;
             }
+            Notify();
+        }
+
+        // ------------------------------------------------------------------ the line on the spool
+        /// <summary>A parted line loses this share of the line that was out (20 m out: 10 m gone).</summary>
+        public const float LineLossShare = 0.5f;
+
+        /// <summary>The line left on this line item's spool (m): its full <see cref="LineDef.spool"/> until it has been cut.</summary>
+        public float LineLeft(string id)
+        {
+            var l = GameDatabase.GetItem<LineDef>(id);
+            if (l == null) return 0f;
+            var e = data.lineSpools.FirstOrDefault(x => x.id == id);
+            return e != null ? Mathf.Clamp(e.left, 0f, l.spool) : l.spool;
+        }
+
+        /// <summary>The line left on the equipped line's spool (m).</summary>
+        public float LineLeftNow => LineLeft(data.line);
+        /// <summary>The equipped line is still owned (thrown away when too little was left: buy it again or equip another).</summary>
+        public bool HasLine => Owns(data.line);
+
+        /// <summary>
+        /// The equipped line parted with <paramref name="lineOut"/> m out: it loses <see cref="LineLossShare"/> of that. Left
+        /// shorter than the rod casts (<see cref="RodDef.castDist"/>), the line is thrown away (no longer owned; true).
+        /// </summary>
+        public bool LoseLine(float lineOut, out float lost, out float left)
+        {
+            string id = data.line;
+            float had = LineLeft(id);
+            lost = Mathf.Min(had, Mathf.Max(0f, lineOut) * LineLossShare);
+            left = had - lost;
+            data.lineSpools.RemoveAll(x => x.id == id);
+            bool gone = left < Rod.castDist;
+            if (gone) data.ownedItems.Remove(id);
+            else data.lineSpools.Add(new LineSpool { id = id, left = left });
+            Notify();
+            return gone;
+        }
+
+        /// <summary>A full spool of this line again (bought anew; the tests' gear).</summary>
+        public void RefillLine(string id)
+        {
+            data.lineSpools.RemoveAll(x => x.id == id);
+            Notify();
+        }
+
+        /// <summary>Test hook: the line left on this line's spool set to <paramref name="left"/> m.</summary>
+        internal void DebugSetLineLeft(string id, float left)
+        {
+            data.lineSpools.RemoveAll(x => x.id == id);
+            data.lineSpools.Add(new LineSpool { id = id, left = left });
             Notify();
         }
 

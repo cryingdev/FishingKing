@@ -290,7 +290,7 @@ HUD 장력 막대(`FishingHUD.UpdateFight`)는 비율 0.55 미만 초록, 0.85 �
 | `Landed` | `Line ≤ landDist` | `LandRoutine` |
 | `Snapped`(장력) | 장력 > `LineLimit`가 `BreakGrace = 0.3 + rod.flex × 0.6` s 넘게 이어짐 (한계 아래로 내려가면 타이머가 두 배 속도로 줄어듦) | `LineBroke`: "줄이 끊어졌다!", 루어면 루어 분실(`Game.LoseLure`), 미끼는 챔질 때 이미 소모(추가 차감 없음), 찌채비는 빈 바늘로 회수 (FishingController.Breaks.cs) |
 | `Snapped`(쓸림) | `Abrasion ≥ 1`, 또는 쓸리는 중(`Rubbing`) 끊김 ∧ `Abrasion > 0.02` | 〃, "줄이 {이름}에 쓸려 끊어졌다!" ([obstacles_spec.md](obstacles_spec.md) 7.4~7.5) |
-| `Spooled` | `Line > reel.lineCap` (줄이 다 풀림) | 〃, "줄이 다 풀려서 끊어졌다!" |
+| `Spooled` | `Line > SpoolCap` = min(`reel.lineCap`, 남은 줄) (줄이 다 풀림) | 〃, "줄이 다 풀려서 끊어졌다!" |
 | `Escaped`(느슨함) | 장력 < `Power × 0.05`(지치지 않았을 때)가 누적 `SlackLimit = 2.4 + rod.hookBonus × 2` s 초과 (아니면 초당 1씩 줄어듦) | `FishEscaped`: "물고기가 바늘을 털고 도망갔다..." |
 | `Escaped`(점프) | 5.6의 바늘 털림 | 〃 |
 

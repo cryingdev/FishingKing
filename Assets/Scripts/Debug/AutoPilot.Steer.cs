@@ -115,6 +115,7 @@ namespace FishingKing
                 if (it == null) continue;
                 if (!Game.I.Owns(it.id)) Game.Data.ownedItems.Add(it.id);
                 Game.I.Equip(it);
+                if (it is LineDef) Game.I.RefillLine(it.id);   // (a full spool)
             }
         }
 

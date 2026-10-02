@@ -34,6 +34,9 @@ namespace FishingKing
             public bool floatLost;
             /// <summary>The lure is a legend's key / costs <see cref="ExpensiveLure"/> or more: highlighted in the toast.</summary>
             public bool lureKey, lureExpensive;
+            /// <summary>The line lost with the break (m: <see cref="Game.LineLossShare"/> of the line out), what is left on the spool, and whether that was too little to cast and the line was thrown away.</summary>
+            public float lineLost, lineLeft;
+            public bool lineGone;
             /// <summary>The rub's and the float's distance from the hook along the line (m; -1: not a rub / no float).</summary>
             public float rubFromHook = -1f, floatFromHook = -1f;
             /// <summary>Where the line parted (a rub: the point it wore through; else the mouth; the spool: the mouth) and the float and the mouth then (for the tests).</summary>
@@ -72,6 +75,7 @@ namespace FishingKing
 
         void LineBroke(bool spooled)
         {
+            float lineOut = Fight != null ? Fight.Line : LineOut;
             Sfx.Play(Sfx.Snap, 1f);
             view.Shake(0.3f, 0.35f);
             string msg = BreakText(spooled);
@@ -96,6 +100,7 @@ namespace FishingKing
             r.floatAt = Tackle.FloatAt;
             r.mouth = mouth;
             FishOff(r.off, mouth, r.breakAt);
+            LoseLine(r, lineOut);
             ShowLoss(r);
         }
 
@@ -132,6 +137,7 @@ namespace FishingKing
                 kept = floatRig ? Tackle.LetGo() : Tackle.LetGoLure(mouth);
             if (kept)
             {
+                TautLine();   // (from where it was let go)
                 Angler.LineTarget = Tackle.LineEnd;
                 Angler.Slack01 = 0.45f;
                 retrieveWait = RetrieveWait;
@@ -193,6 +199,25 @@ namespace FishingKing
         }
 
         /// <summary>
+        /// The parted line takes <see cref="Game.LineLossShare"/> of the line that was out off the spool; too little left to
+        /// cast and the line is thrown away: casting stops until a line is bought or equipped (the shop on the map).
+        /// </summary>
+        void LoseLine(LossReport r, float lineOut)
+        {
+            var line = Game.I.Line;
+            r.lineGone = Game.I.LoseLine(lineOut, out r.lineLost, out r.lineLeft);
+            Debug.Log(string.Format(CultureInfo.InvariantCulture, "[LINE] {0} parted with {1:0.0} m out: lost {2:0.0} m, {3:0.0} m left on the spool{4}",
+                line.id, lineOut, r.lineLost, r.lineLeft, r.lineGone ? $" (under the rod's {Game.I.Rod.castDist:0} m cast: thrown away)" : ""));
+            if (!r.lineGone) return;
+            float castDist = Game.I.Rod.castDist;
+            Tween.After(LossToastDelay + 0.1f, () =>
+            {
+                if (this == null) return;
+                Toast.Show($"{line.name}: 남은 줄 {r.lineLeft:0}m — 비거리 {castDist:0}m보다 짧아 버렸어요\n지도의 상점에서 새 줄을 사거나 다른 줄을 장착해요", UIKit.Bad, 4f);
+            });
+        }
+
+        /// <summary>
         /// The loss toast under the break's flash: the lure (its icon, gold with its price when it costs
         /// <see cref="ExpensiveLure"/> or more, the eye when it is a legend's key), the bait x n, the float. Nothing lost
         /// (a float rig parted at the hook: its bait was eaten at the bite, as when a fish gets off): no toast.
@@ -217,6 +242,7 @@ namespace FishingKing
                     badge = key ? Art.UI("icon_eye") : null });
             }
             if (r.floatLost) items.Add(new Toast.Item { icon = Art.Item(Tackle.FloatItemId), text = "찌" });
+            if (r.lineLost > 0.05f) items.Add(new Toast.Item { icon = Art.Item(Game.I.Line.id), text = $"줄 {r.lineLost:0.#}m" });
             foreach (var it in items) r.items.Add(it.text);
             // under the flash at the top (the break's message stays readable over it), once the line's whip is over: the
             // rod tip it flies back to is often right there

@@ -380,7 +380,8 @@ namespace FishingKing
                 case ReelDef r:
                     return $"감기 {r.retrieve:0.0}m/회전 · 드랙 {r.dragMax:0.#}kg · 줄 {r.lineCap:0}m" + (r.autoReel > 0 ? " · 자동감기" : "");
                 case LineDef l:
-                    return $"강도 {l.strength:0}kg · {Abrasion(l.tough)}" + (l.stealth > 1 ? $" · 입질 +{(l.stealth - 1f) * 100f:0}%" : "");
+                    return $"강도 {l.strength:0}kg · {Abrasion(l.tough)} · 줄 {l.spool:0}m" + (Game.I.Owns(l.id) && Game.I.LineLeft(l.id) < l.spool ? $" (남은 {Game.I.LineLeft(l.id):0}m)" : "")
+                        + (l.stealth > 1 ? $" · 입질 +{(l.stealth - 1f) * 100f:0}%" : "");
                 case BaitDef b:
                 {
                     var fans = GameDatabase.Fish.Where(f => f.Appeal(b) >= 0.8f && Game.I.Record(f.id) != null).Select(f => f.name).Take(4).ToList();

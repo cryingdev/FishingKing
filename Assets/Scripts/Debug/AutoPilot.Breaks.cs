@@ -90,6 +90,7 @@ namespace FishingKing
             yield return BrBareWaiting(ctl, false);
             yield return BrBareWaiting(ctl, true);
             yield return BrRealRub(ctl, "real_rub_lake", "largemouth_bass", 32f, new Vector3(-6f, -1.2f, 14f), "boat.cover", 6f, 7808, 6f, true);   // (the float set 6 m up: the hull wears the line below it)
+            yield return BrLineGone(ctl);
             yield return BrLegendKey(ctl);
             yield return GoStage("ice", 3f);
             ctl = FindAnyObjectByType<FishingController>();
@@ -115,6 +116,7 @@ namespace FishingKing
         {
             yield return ToReady(ctl);
             EquipTest(bait, ctl);
+            Game.I.RefillLine(Game.I.Line.id);   // (every case on a full spool: a parted line takes half the line out off it)
             ctl.FloatDepthChanged(floatDepth);
             yield return null;
             ctl.DebugPlaceRig(new Vector3(at.x, 0f, at.z));
@@ -254,9 +256,15 @@ namespace FishingKing
             var snap = ctl.SnapFx;
             int plays0 = snap.Plays, breaks0 = ctl.Breaks;
             bool owned0 = Game.I.Owns(lure.id);
+            float lineOut = ctl.Fight != null ? ctl.Fight.Line : 0f, left0 = Game.I.LineLeftNow;
             bool parted = ctl.DebugPartLine("tension");
             var tk = ctl.Tackle;
             bool gone = ctl.State == FishingController.S.Ready && tk.State == Tackle.Mode.Hidden;
+            var lr = ctl.LastLoss;
+            float want = lineOut * Game.LineLossShare;
+            BCheck("lure_tension_line", lr != null && lineOut > 1f && Mathf.Abs(lr.lineLost - want) < 0.05f && Mathf.Abs(Game.I.LineLeftNow - (left0 - want)) < 0.05f
+                        && !lr.lineGone && Game.I.HasLine && lr.items.Contains($"줄 {lr.lineLost:0.#}m"),
+                $"{Fk(lineOut)} m out at the break: lost {(lr != null ? Fk(lr.lineLost) : "-")} m (half {Fk(want)}), spool {Fk(left0)} -> {Fk(Game.I.LineLeftNow)} m, kept {Game.I.HasLine}, toast '{(lr != null ? string.Join(" | ", lr.items) : "-")}'");
             // the whip a third of the way back to the tip
             while (snap.Active && snap.Progress < 0.33f) yield return null;
             if (snap.Active)
@@ -309,9 +317,9 @@ namespace FishingKing
             Log($"[BREAK] float tension: {w2.Brief}");
             BCheck("float_tension_hook", f != null && biting && hooked && nHook == n0 - 1,
                 $"fish {(f != null ? f.Sp.id : "none")} bit {biting}, hooked by the tap {hooked}, {bait.id} {n0} -> {nHook} at the hook set");
-            bool noToast = r != null && r.toast == null && !r.toastPending && r.items.Count == 0;
-            BCheck("float_tension_kept", parted && kept && r != null && r.off == FishingController.Off.AtHook && !r.floatLost && noToast && ctl.Breaks == breaks0 + 1,
-                $"parted at the hook: float kept and wound in spent with the bare hook {kept}, off {(r != null ? r.off.ToString() : "-")}, nothing lost (no toast) {noToast}");
+            bool onlyLine = OnlyLineLost(r);
+            BCheck("float_tension_kept", parted && kept && r != null && r.off == FishingController.Off.AtHook && !r.floatLost && onlyLine && ctl.Breaks == breaks0 + 1,
+                $"parted at the hook: float kept and wound in spent with the bare hook {kept}, off {(r != null ? r.off.ToString() : "-")}, nothing lost but the line (the toast lists only it) {onlyLine}: '{(r != null ? string.Join(" | ", r.items) : "-")}'");
             BCheck("float_tension_home", w2.home && w2.floatFrames > 0 && w2.bareFrames > 0 && w2.baitFrames == 0 && w2.z0 > w2.zEnd + 5f,
                 w2.Brief);
             BCheck("float_tension_bait", n1 == n0 - 1, $"{bait.id} {n0} -> {n1} for the bite (-1 at the hook set, nothing more at the break)");
@@ -427,10 +435,10 @@ namespace FishingKing
                 bool whipFromRub = sn.LastKind == LineSnap.Kind.Recoil && whipOff < 0.01f && whipMouth > 0.05f;
                 var w = new RigWatch();
                 yield return WatchHome(ctl, bait, w);
-                bool noToast = r != null && r.toast == null && !r.toastPending && r.items.Count == 0;
-                BCheck(tag, parted && r != null && r.cause == "rub" && r.off == FishingController.Off.AtHook && !r.floatLost && noToast && kept && w.home && w.baitFrames == 0
+                bool onlyLine = OnlyLineLost(r);
+                BCheck(tag, parted && r != null && r.cause == "rub" && r.off == FishingController.Off.AtHook && !r.floatLost && onlyLine && kept && w.home && w.baitFrames == 0
                             && Game.I.BaitCount(bait.id) == n0 && whipFromRub,
-                    $"{geo}; off {(r != null ? r.off.ToString() : "-")}, float kept and wound in {kept}, no toast {noToast}; {w.Brief}; the hook whipped back from the rub point {whipFromRub} ({whipOff:0.000} m off it, {whipMouth:0.00} m from the mouth)");
+                    $"{geo}; off {(r != null ? r.off.ToString() : "-")}, float kept and wound in {kept}, only the line lost {onlyLine}; {w.Brief}; the hook whipped back from the rub point {whipFromRub} ({whipOff:0.000} m off it, {whipMouth:0.00} m from the mouth)");
             }
         }
 
@@ -459,6 +467,37 @@ namespace FishingKing
             BCheck("snag_float_snap", snap.Plays == plays0 + 1 && snap.LastKind == LineSnap.Kind.Recoil && snap.LastFrames >= 8,
                 $"snaps {snap.Plays - plays0} ({snap.LastKind}), drawn {snap.LastFrames} frames");
             yield return new WaitForSeconds(1f);
+        }
+
+        /// <summary>A break that lost only the line: the toast lists the line alone (nothing of the rig).</summary>
+        static bool OnlyLineLost(FishingController.LossReport r) =>
+            r != null && r.lineLost > 0.05f && r.items.Count == 1 && r.items[0].StartsWith("줄 ") && r.lure == null && r.baitN == 0 && !r.floatLost;
+
+        // ------------------------------------------------------------------ the line thrown away (too little left to cast)
+        IEnumerator BrLineGone(FishingController ctl)
+        {
+            var line = Game.I.Line;
+            float cast = Game.I.Rod.castDist;
+            var bait = GameDatabase.GetItem<BaitDef>("bait_worm");
+            yield return BrPlace(ctl, bait.id, BrAt(ctl, 0f, 0f, 14f));
+            Game.I.DebugSetLineLeft(line.id, cast + 1f);
+            bool snagged = ctl.DebugSnag();
+            yield return new WaitForSeconds(0.3f);
+            float lineOut = Mathf.Max(ctl.LineOut, ctl.LineChord);
+            ctl.Retrieve();   // (끊기)
+            yield return null;
+            var r = ctl.LastLoss;
+            bool gone = r != null && r.cause == "cut" && r.lineGone && !Game.I.Owns(line.id) && !Game.I.HasLine;
+            yield return ToReady(ctl);
+            yield return new WaitForSeconds(1f);
+            yield return NamedShot("breaks_line_gone");
+            // bought again in the shop: owned, equipped, a full spool
+            Game.Data.coins += line.price;
+            var res = Game.I.Buy(line);
+            bool back = res == BuyResult.Ok && Game.I.Owns(line.id) && Game.I.HasLine && Game.I.Line == line && Mathf.Abs(Game.I.LineLeftNow - line.spool) < 0.01f;
+            BCheck("line_gone", snagged && gone && back,
+                $"{line.id} with {Fk(cast + 1f)} m left (the rod casts {Fk(cast)} m), cut at a snag with {Fk(lineOut)} m out: lost {(r != null ? Fk(r.lineLost) : "-")} m, {(r != null ? Fk(r.lineLeft) : "-")} m left, thrown away {gone}; bought again {res}: owned {Game.I.Owns(line.id)}, {Fk(Game.I.LineLeftNow)} m on the spool");
+            yield return new WaitForSeconds(3.5f);   // (the toasts gone before the next)
         }
 
         // ------------------------------------------------------------------ 6. the 끊기 button on a snagged lure
@@ -658,7 +697,8 @@ namespace FishingKing
             }
             bool coming = ctl.State == FishingController.S.Retrieving && tk.BareHook && ctl.SpentRetrieve == spent;
             yield return new WaitForSeconds(0.9f);   // (past the let-go's wait: wound in)
-            bool snagged = ctl.DebugSnag();
+            // (a bare hook still rolls for snags on the way: one it caught by itself in that time counts the same)
+            bool snagged = ctl.State == FishingController.S.Snagged || ctl.DebugSnag();
             yield return null;
             bool freed = ctl.DebugFreeSnag();
             yield return null;
