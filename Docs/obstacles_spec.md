@@ -137,7 +137,7 @@ The loader compares `camera` with the stage's `StageLayout`; any difference > 0.
 | `x`, `z`, `r` | float | the footprint's centroid and bounding radius (broad phase) |
 | `rad`, `x0`, `z0`, `x1`, `z1` | float | circle / capsule parameters (0 for a poly) |
 | `pts` | float[] | the footprint at the waterline (solids) or the zone's plan outline, convex, counter-clockwise, flattened `x0, z0, x1, z1, ...`, <= 16 points; present for every shape (a circle's code may ignore it) |
-| `bot`, `top` | float | the y range; `bot = -99` means "down to the bed" (y = -`StageLayout.DepthAt(z)`, tide included) |
+| `bot`, `top` | float | the y range; `bot = -99` means "down to the bed" (y = -`StageLayout.DepthAt(x, z)` at the point, tide included; on the lake the generated bed, Docs/terrain_depth_spec.md, whose pins mirror the baked tops: the sunken log's bed 6.225, the weed bed's top -1.2) |
 | `bed` | bool | solids: the prop goes on down to the bed (a post, a trunk) |
 | `tiers` | array | solids only: `{y0, y1, pts}` stacked convex prisms (pts as above, <= 12 points), bottom to top; a point is inside the solid if it lies in a tier's y range and inside its polygon |
 | `grabK`, `roughK` | float | multipliers of the material's `grab` / `rough` (default 1) |
@@ -188,7 +188,7 @@ public class Obstacles
     public static Obstacles Load(StageLayout L);          // null file / -fkobstacles off -> Empty (every query false / 1)
     public static bool Off, Show, Log; public static float SnagMult = 1f;   // switches (12)
     public IReadOnlyList<Obstacle> Solids, Pads, Snags, Weeds, Covers, Rims;
-    public float Bed(float z);                            // -L.DepthAt(z)
+    public float Bed(float x, float z);                   // -L.DepthAt(x, z)  (BotAt(o, x, z) likewise: a plan point)
     public bool Inside(Obstacle o, Vector2 xz, float grow = 0f);   // footprint (+ grow m)
     public bool InSolid(Vector3 p, out Obstacle o, out int tier);
     public bool SweepSolid(Vector3 a, Vector3 b, out ObstacleHit hit); // first contact on the segment (4.3)

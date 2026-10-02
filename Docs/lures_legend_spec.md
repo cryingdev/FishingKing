@@ -104,7 +104,7 @@ The existing lures change as follows:
 These changes replace the current lure rules: the flat `Wind` lift of 0.45 per metre and sinking to the bottom.
 
 **Buoyancy at rest**, handled in `Update` while `State == Water`:
-- **Sink**: moves towards `bottom = DepthAt(z) − 0.25` at `sinkSpeed`. After a flick it uses `fallSpeed`.
+- **Sink**: moves towards `bottom = DepthAt(x, z) − 0.25` (the water under the rig: on the lake the generated bed) at `sinkSpeed`. After a flick it uses `fallSpeed`.
 - **Suspend**: sinks only to `swimDepth`.
 - **Float**: rises to 0.05 m at `riseSpeed`.
 
@@ -377,7 +377,7 @@ The coelacanth row, set in `GameDatabase.BuildFish`:
 **The lurk point.** While the stage legend is off cooldown, a lurk point exists:
 - `x` inside the visible half-width;
 - `z` from 14 to `min(FishZMax, 30)`;
-- depth = `DepthAt(z) − 0.5`.
+- depth = `DepthAt(x, z) − 0.5` (the bed under the lurk point; on the lake a drop-off node beside weed, Docs/terrain_depth_spec.md 10).
 
 It appears 20–40 s after the stage opens or after a cooldown ends. It moves every 90–150 s.
 

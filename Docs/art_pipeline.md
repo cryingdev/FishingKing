@@ -153,7 +153,7 @@ numpy에서 sRGB로 바꿉니다. 그래서 16진 팔레트 색이 정확히 왕
 | `fk_persp.py` | 공용 원근 카메라 (2.1) | — | (임포트) |
 | `fk_scene.py` | 스테이지·지도용 재질/프리미티브 헬퍼, 구름 스프라이트 | `Sprites/Stages/cloud_*.png` | `fk_stages.py -- clouds`로 |
 | `fk_fish.py` | 36종 옆모습 2프레임 + 위에서 본 그림자 2프레임 (`<id>_0/_1/_t0/_t1.png`) | `Sprites/Fish/` | O |
-| `fk_items.py` | 낚싯대·릴·줄·미끼 아이콘, 월드 루어, UI 아이콘, 9-slice 프레임, 찌, 장애물·수족관 먹이 FX 등 (그룹 인자는 독스트링) | `Sprites/Items/`, `Sprites/World/`, `Sprites/UI/`, `Data/ui_borders.json` | O (인자 없이) |
+| `fk_items.py` | 낚싯대·릴·줄·미끼 아이콘, 월드 루어, UI 아이콘, 9-slice 프레임, 찌, 누운 찌(그룹 `floatlie`: `World/float_stick_lie.png` 32×7·`float_stick_tilt.png` 24×24, `float_stick`과 같은 형상·팔레트·외곽선·8 ppu, 확인용 `_tmp/floatlie/sheet.png`(×12)·`strip.png`(호수 물색 위 1배·0.36배); `world`는 다시 안 돌림), 장애물·수족관 먹이 FX 등 (그룹 인자는 독스트링) | `Sprites/Items/`, `Sprites/World/`, `Sprites/UI/`, `Data/ui_borders.json` | O (인자 없이) |
 | `fk_character.py` | 1세대 낚시꾼 7포즈 + `character.json` (크롭 `CROP_W, CROP_H, FEET_PX = 96, 112, 10`) | `Sprites/Character/`, `Data/` | O |
 | `fk_stages.py` | 1세대 스테이지 7곳의 `<id>_back.png` / `_front.png` + **`stage_<id>.json` 레이아웃** | `Sprites/Stages/`, `Data/` | O (`lake stream sea swamp ice ocean cave clouds`) |
 | `fk_misc.py` | 1세대 지도·수족관·로고 | `Sprites/Stages/`, `Sprites/UI/logo.png`, `Data/map.json`, `Data/aquarium.json` | O |

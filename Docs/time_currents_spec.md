@@ -512,8 +512,9 @@ ebb and a quiet low slack, the night has the high slack and the night ebb.
   minute for a float kept drifting** (cast again when the tide has carried it off or stopped it; measured x1.64) and
   about +25 % for one left alone, which lies in the slack against the tetrapods (8.3; x1.26); slack water ~15 % below
   the old rate (`-fkauto tidebites`, 15).
-- **Depth**: on the sea `StageLayout.DepthAt(z) + 0.4 h` (the bottom is 0.4 m deeper at high water, shallower at low);
-  `StageLayout.TideOffset` (static, set by the clock on the sea, 0 elsewhere) is added inside `DepthAt`.
+- **Depth**: on the sea `StageLayout.DepthAt(x, z) + 0.4 h` (the bottom is 0.4 m deeper at high water, shallower at low);
+  `StageLayout.TideOffset` (static, set by the clock on the sea, 0 elsewhere) is still added inside `DepthAt(x, z)`
+  (on every stage, the lake's generated bed included: Docs/terrain_depth_spec.md 3.1).
 - **Visuals** (10.2): flow lines, slack slicks, weed lean, a wet band on the tetrapods at low water, the buoy's wake.
 - `-fktide <phase>` forces it (section 14).
 

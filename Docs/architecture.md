@@ -72,7 +72,15 @@ flowchart LR
 | Fishing | `FishingScene` | 스테이지 id = `SceneFlow.PendingStage ?? Game.Data.lastStage ?? "lake"`(없거나 잠겨 있으면 `lake`) → `PixelView.Create` → `StageView.Build(id)` → `FishingController.Init(stage, pv)` → `Toast.Init()` → 첫 실행이면 튜토리얼 대화상자 |
 | Aquarium | `AquariumScene` | 탱크 레벨의 `AquaLayout`, `PixelView.Create` + `SetBaseHeight(data.viewH)`, 뒤/앞 스프라이트, `AquaFeed`·`AquaClean`·`AquaDecor` ([aquarium.md](aquarium.md)) |
 
-`FishingController.Init`이 만드는 것(`Assets/Scripts/Fishing/FishingController.cs`): `Angler.Create`, `Tackle.Create`, `FishSpawner`, 조준 점·부채꼴 점, `CastArrow`, `SideArrow`, 목표 링·입질 마크, `FishingHUD.Create`, `InitObstacles()`(`ObstacleOverlay`), `LegendWatch.For(this)`, `InitZoom()`, `InitMusic()`(스테이지 곡, [music.md](music.md)), 그리고 `SetState(S.Ready)`. 얼음 스테이지에서 얼음 구멍에 못 쓰는 루어가 장착돼 있으면 스타터 미끼로 바꿉니다(`LureInfo.IceOk`).
+`StageView.Init` 순서: 레이아웃(`Art.Layout`) → `Persp` → `TideOffset = 0` → `CurrentField` → `Obstacles.Load` → **`L.Bathy =
+Bathymetry.For(L, Bathymetry.SeedOverride ?? Game.I.WorldSeed)`**(호수의 생성 지형, 다른 스테이지는 null; `StageLayout`은 `Art.Data`가
+스테이지마다 하나를 캐시해 모든 뷰가 같이 쓰므로 매번 다시 넣음 — 타이틀의 호수 포함; 같은 시드면 캐시된 격자) → 시간대 레이어 …
+([terrain_depth_spec.md](terrain_depth_spec.md)). 새 파일: `Core/Bathymetry.cs`(격자·질의), `Core/BathyGen.cs`(생성기·검증),
+`Data/TerrainRecipes.cs`(호수 레시피), `Fishing/HabitatModel.cs`(서식지 계산), `Fishing/FishHabitat.cs`(실행 중 래퍼),
+`Debug/BathyOverlay.cs`(`-fkbathy show|dump`), `Debug/AutoPilot.Depth.cs`, `Debug/AutoPilot.Habitat.cs`.
+
+`FishingController.Init`이 만드는 것(`Assets/Scripts/Fishing/FishingController.cs`): `Angler.Create`, `Tackle.Create`, 지형이 있으면
+`FishHabitat`(`Spawner.Init` 전: 첫 물고기부터 서식지로 배치), `FishSpawner`, 조준 점·부채꼴 점, `CastArrow`, `SideArrow`, 목표 링·입질 마크, `FishingHUD.Create`, `InitObstacles()`(`ObstacleOverlay`), `LegendWatch.For(this)`, `InitZoom()`, `InitMusic()`(스테이지 곡, [music.md](music.md)), 그리고 `SetState(S.Ready)`. 얼음 스테이지에서 얼음 구멍에 못 쓰는 루어가 장착돼 있으면 스타터 미끼로 바꿉니다(`LureInfo.IceOk`).
 
 ---
 
@@ -472,7 +480,8 @@ LateUpdate (1100)  EncounterHUD.LateUpdate
 - **던진 직후 한 프레임**: `Tackle.Launch`는 `Update` 이후 코루틴에서 불리므로, 즉시 `DrawFlying(from)`으로 위치·순서·깊이를 잡아 한 프레임 이전 위치에 보이는 것을 막습니다(`Tackle` 주석). 같은 이유로 `OnBite`는 `PlaceBiteMark()`를 바로 부릅니다.
 - **3D 레이어는 카메라 스냅 이후**: `ActorLayer`(1000)가 `PixelView`(0)보다 늦게 돌아야 흔들림·스냅된 카메라 위치로 오프센터 투영을 계산해 스프라이트와 같은 픽셀 격자에 떨어집니다.
 - **HUD의 줌 여백**: `ViewZoom.TopInsetPx`는 `DirectZoom`이 매 프레임 설정하고, 같은 `LateUpdate` 안에서 곧바로 쓰입니다.
-- **게임 시계와 물때 깊이**: `FishingController.Update`의 `TickClock`과 `StageView.Update`의 `StageLayout.TideOffset` 갱신은 둘 다 order 0이라 서로 한 프레임 어긋날 수 있습니다(물때 변화가 느려 눈에 띄지 않음 — 순서를 강제하는 코드는 없음).
+- **게임 시계와 물때 깊이**: `FishingController.Update`의 `TickClock`과 `StageView.Update`의 `StageLayout.TideOffset` 갱신은 둘 다 order 0이라 서로 한 프레임 어긋날 수 있습니다(물때 변화가 느려 눈에 띄지 않음 — 순서를 강제하는 코드는 없음). `TideOffset`은 생성 지형이 생긴 뒤에도 `DepthAt(x, z)` 안에서 더해집니다(격자 위든 밖이든).
+- **호수 지형과 부팅 순서**: 테스트 시드(`-fkbathyseed`, `-fkauto`면 1)는 `Bathymetry.SeedOverride`가 명령줄을 직접 읽으므로 AfterSceneLoad 순서와 상관없습니다. `-fkbathy` 스위치는 `Game.DebugBoot`(AfterSceneLoad)가 읽고, 타이틀의 `StageView`는 `Start`에서 만들어지므로 그보다 뒤입니다.
 
 ---
 

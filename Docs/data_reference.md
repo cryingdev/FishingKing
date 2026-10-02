@@ -99,6 +99,14 @@
 - **보트(`ocean`)**: `mode` = boat. 너울에 갑판이 흔들립니다(`StageView.DeckBob`, `WaterFx`).
 - **물때(`sea`)**: 바다만 물때로 수심이 바뀝니다(`StageLayout.TideOffset` 주석: 물때 수위 × 0.4 m, 다른 스테이지는 0).
   물때 일정은 [time_currents_spec.md](time_currents_spec.md) 7절.
+- **호수 바닥(`lake`)**: 호수의 수심은 세이브의 세계 시드로 실행 중에 만드는 **생성 지형**입니다
+  ([terrain_depth_spec.md](terrain_depth_spec.md)). 위 표의 거리 프로필이 바탕이고(물가 얕음 → 깊음), 그 위에 얕은 턱·연잎과
+  갈대 밑 수초 평지·수초 둔덕·잔교 앞 깊은 골·옛 물골·깊은 웅덩이·수중 둔덕이 얹힙니다. 0.5 m 격자(x −48..48, z 0..64, 그림의
+  오버스캔까지), 칸마다 수심(cm)·바닥 종류(`BedKind`)·바닥 재질(`BedMat`: 진흙·모래·자갈·수초)·구역 이름. 고정된 그림과 맞추는
+  핀: 연잎 1.0–2.0 m, 연잎 줄기 0.8–2.2, 갈대 0.35–1.2, 보트 1.2–2.5, 수초밭 2.4–3.0, 가라앉은 통나무 6.225 ± 0.1,
+  잔교 앞(x −3.5..3.5, z 0..3.5)은 프로필 그대로, 깊은 골 ≥ 4.5. 전체 0.35–9.0 m, 경사 1.5 m/m 이하. 격자 밖과 다른 스테이지는
+  위 표의 프로필 그대로이고(이전과 비트 단위로 같음), 물때 보정(`TideOffset`)은 계속 `DepthAt(x, z)` 안에서 더해집니다.
+  `-fkbathy off`면 호수도 예전 프로필입니다.
 - **야광**: 야광 미끼(`glow`)는 동굴이나 얼음에서 감지 거리가 늘어납니다(`FishingController`:
   `if (bait.glow && (Stage.Def.id == "cave" || L.IsIce)) sense += 2f;`).
 - **장애물**: 7개 스테이지 모두 `Assets/Resources/Data/obstacles_<id>.json`이 있습니다. 형식은
@@ -288,7 +296,8 @@
 | `depthMin` / `depthMax` | 루어 수심 조건 (m, `depthMax` 0 = 끔) | 5.0 / 0 | 4.0 / 0 | 0 / 0.4 | 3.5 / 0 | 0 / 3.0 | 0 / 0 |
 | `bottomBand` | 바닥에서 이 거리 안 (m, 99 = 끔) | 1.5 | 0.8 | 99 | 0.8 | 99 | 99 |
 | `lurkZMin`–`lurkZMax` / `nearLurk` | 은신처 거리 / 가까움 판정 (m) | 14–30 / 8 | 14–30 / 7 | 10–30 / 7 | 6–14 / 12 | 20–45 / 10 | 20–45 / 10 |
-| `lurkDepth` | 은신 수심 (m, 0 = 바닥 근처) | 0 | 0 | 1.2 | 0 | 6 | 6 |
+| `lurkDepth` | 은신 수심 (m, 0 = 바닥 근처: 은신처 밑 바닥 `DepthAt(x, z)` − 0.5) | 0 | 0 | 1.2 | 0 | 6 | 6 |
+| `lurkWeedEdge` | 생성 지형에서 은신처를 수초 옆 브레이크라인(WeedEdge 칸, ≥ `depthMin` + 0.5)에 둠 | – | **true** | – | – | – | – |
 | `minQ` / `minSoak` / `fillTime` / `chance` | 최소 품질 / 최소 담금 s / 게이지 채움 s / 확률 | 0.55 / 8 / 16 / 0.6 | 0.6 / 10 / 18 / 0.6 | 0.55 / 6 / 16 / 0.6 | 0.5 / 8 / 18 / 0.6 | 0.6 / 5 / 14 / 0.6 | 0.55 / 6 / 20 / 0.55 |
 | `minLine` | 필요한 줄 강도 (kgf) | 20 | 11 | 22 | 22 | 45 | 100 |
 | `coolFail` / `coolFight` | 재등장 대기 s (실패 / 파이트 후) | 60 / 180 | 60 / 180 | 60 / 180 | 60 / 180 | 60 / 180 | 90 / 240 |
@@ -304,6 +313,26 @@
 `timeoutStrike` 60, `tell` 0.35, `perfectT` 0.25, `buffer` 0.15. `Row`를 쓰는 5종은 `moodHold` 2.5 (실러캔스는 기본값 0).
 `EncounterDef` 기본값: `curiousAt` 40, `excitedAt` 75, `hysteresis` 5, `turnAwayBelow` 15, `earlyGauge` 65.
 조우 판정에는 낚싯대 `luck`이 곱해집니다(`LegendWatch`: `Mathf.Min(0.95f, chance × Rod.luck)`).
+
+### 2.6 호수 바닥 위 서식지 (`GameDatabase.Habitats`, `HabitatDef`)
+
+호수의 생성 지형([terrain_depth_spec.md](terrain_depth_spec.md) 7절)에서 물고기가 어디로 헤엄치고 어디서 나타나는지 정합니다.
+활동량(`TimeActivity`)은 그대로 몇 마리가 나와 있는지를, 서식지는 그 물고기들이 어디에 있는지만 정합니다. 문자열
+`"key:value,…"`: `depth:a-b` 선호 물 깊이(칸의 수심), 바닥 종류 키(`open shelf flat shoal dropoff hump hole channel basin`)와
+재질 키(`mud sand gravel weed`)는 배율, `edge` 브레이크라인 근처 가산, `col:mid|bottom` 헤엄 층(중층 / 바닥 2 m 안),
+`beta` 서식지가 위치를 끄는 세기(0 = 예전처럼 고르게), `@<시간대>:<m>` 그 시간대의 깊이 이동(− 얕게), `@<시간대>.<종류>:<배율>`,
+`runDeep` 40 cm 이상이면 걸린 뒤 질주의 30%를 더 깊은 쪽으로. 모르는 키는 경고 로그.
+
+| 어종 | 선호 깊이 (m) | 층 | beta | 시간대 이동 (새벽 / 낮 / 저녁 / 밤) | 좋아하는 바닥 |
+|---|---|---|---|---|---|
+| `crucian_carp` 붕어 | 1.2–4.0 | 바닥 | 0.65 | −0.8 / +1.0 / −0.8 / −0.5 | 수초 평지·수초 둔덕 1.5, 브레이크라인 1.3(낮 ×1.3), 수초 재질 1.4, 진흙 1.2; 밤 평지 ×1.2 |
+| `bluegill` 블루길 | 0.8–3.0 | 중층 | 0.75 | 0 / +0.5 / 0 / +1.0 | 얕은 턱 1.8(낮 ×1.2), 평지 1.6, 둔덕 1.5, 모래 1.3·자갈 1.2·수초 1.3; 밤 브레이크라인 ×1.5 |
+| `carp` 잉어 | 3.0–7.0 | 바닥 | 0.65 | −1.0 / +0.5 / −1.0 / −2.0 | 낮 웅덩이·물골 ×1.5, 깊은 바닥 1.3, 진흙 1.4; 밤 평지 ×3.0·둔덕 ×2.6 (밤엔 얕은 평지로); `runDeep` |
+| `largemouth_bass` 배스 | 1.0–4.5 | 중층 | 0.65 | −1.2 / +1.5 / −1.2 / −0.5 | 브레이크라인 1.8(낮 ×1.15), 수중 둔덕 1.6(낮 ×1.3), 둔덕 1.5, 자갈 1.3; 새벽 평지 ×2.0·얕은 턱 ×1.8; `runDeep` |
+| `golden_carp` 황금잉어 | – | – | – | – | `runDeep`만 (걸린 뒤 질주) |
+
+정확한 문자열은 `GameDatabase.Habitats()`. 값은 입질 예산(분당 입질이 같은 채비·시간대에서 예전의 0.8–1.25배, terrain_depth_spec
+8절)과 시간대별 위치 이동 검사(14절 D7)에 맞춰 조정한 것입니다.
 
 ## 3. 낚시 장비 (`GameDatabase.BuildItems`)
 
@@ -631,6 +660,8 @@
 | `driftHint` | bool | false | 계곡 흘림 힌트를 보여 줌 |
 | `mendHint` | bool | false | 멘딩 힌트를 보여 줌 |
 | `pinHint` | bool | false | 찌가 물살에 밀려 화면 가장자리에 멈췄다는 1회 힌트를 보여 줌 |
+| `worldSeed` | int | 0 (`NewGame`: 새로 뽑음) | 호수 생성 지형의 세계 시드 ([terrain_depth_spec.md](terrain_depth_spec.md) 12절). 새 게임 = 새 호수. 0은 지형 이전 세이브라는 뜻이고 `Game.Boot`가 한 번 뽑아 저장 |
+| `lieHint` | bool | false | 찌가 누웠다는 1회 힌트("찌가 누웠어요! 미끼가 바닥에 닿았다는 뜻이에요 — 찌 수심을 줄이면 다시 서요")를 보여 줌 |
 
 ### 5.2 목록 원소
 
@@ -702,8 +733,13 @@
 5. **루어 id**: 루어 세분화 전의 id(`bait_spoon`, `bait_minnow`, `bait_frog`, `bait_jig`)를 그대로 써서 옛 세이브의
    `ownedItems`가 유효합니다.
 
-`Game.cs`에는 마이그레이션 코드가 없습니다. `Game.Boot`가 `SaveSystem.Load`를 부르고, `Game.ResetProgress`와
-`-fkfresh`가 `SaveData.NewGame()`으로 새로 시작합니다. 옛 세이브 변환 테스트는 `-fkaqua migrate` 등
+6. **`worldSeed`** (호수 생성 지형): 지형 이전 세이브는 필드가 없어 0으로 읽힙니다. `Game.Boot`가 `SaveSystem.Load` 바로 뒤에
+   `SaveSystem.EnsureWorldSeed`로 한 번 뽑아(`SaveSystem.NewSeed`: GUID 해시, 0 아님, `UnityEngine.Random` 아님) 곧바로 저장하므로
+   그 세이브의 호수는 그때부터 같습니다(로그 `[BATHY] world seed minted for an old save`). 버전 번호는 올리지 않습니다
+   (`aquaVer`/`capVer`와 같은 방식). 테스트용 `-fkbathyseed <n>`(그리고 `-fkauto`면 1)은 세이브에 쓰지 않습니다.
+
+`Game.Boot`가 `SaveSystem.Load`를 부르고(위 6번의 세계 시드만 고침), `Game.ResetProgress`와
+`-fkfresh`가 `SaveData.NewGame()`으로 새로 시작합니다(새 세계 시드 = 새 호수). 옛 세이브 변환 테스트는 `-fkaqua migrate` 등
 ([testing.md](testing.md))입니다.
 
 ## 사양서와 달라진 점
