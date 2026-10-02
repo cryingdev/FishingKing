@@ -248,17 +248,18 @@ namespace FishingKing
         /// Where the lake's fish live on its generated bed (Docs/terrain_depth_spec.md 7.1): the preferred water depth, the
         /// bed kinds and materials they favour, an edge's pull, their column, how strongly the habitat steers them (beta),
         /// the periods' depth shifts (- shallower: up at dawn and evening, down by day) and per-period kind weights, and
-        /// whether a big one runs for the deep. Tuned against the bite budget (spec 8.3: the estimator over 50 seeds) and
-        /// the spec 14 D7 shifts: the crucian and the bluegill steer harder than the spec's first numbers (beta 0.65 /
-        /// 0.75) so the best spots pay with every rod; the carp's night on the flats and the bass's dawn flats and day
-        /// drop-offs are stronger so the shift shows. Only the lake has a bed: the other stages never read these.
+        /// whether a big one runs for the deep. Tuned against the bite budget (spec 8.3: the occupancy estimator over 50
+        /// seeds and the three rods, the stock's bites per bait, rig class and period within 0.8..1.25 of today's) and the
+        /// spec 14 D7 shifts: the crucian's day on the drop-offs and shoals, the bass's day on the drop-offs and humps
+        /// (beta 0.8) and its shallower dawn and evening held to -0.4 m (topwater lures on the long rods are the budget's
+        /// tightest). Only the lake has a bed: the other stages never read these.
         /// </summary>
         static void Habitats()
         {
-            H("crucian_carp", "depth:1.2-4.0,flat:1.5,shoal:1.5,shelf:1.2,dropoff:1.3,hump:0.9,channel:0.8,hole:0.6,basin:0.5,weed:1.4,mud:1.2,sand:1.0,gravel:0.8,edge:0.4,col:bottom,beta:0.65,@dawn:-0.8,@day:1.0,@evening:-0.8,@night:-0.5,@night.flat:1.2,@day.dropoff:1.3,@day.shoal:1.3");
+            H("crucian_carp", "depth:1.2-4.0,flat:1.5,shoal:1.5,shelf:1.2,dropoff:1.3,hump:0.9,channel:0.8,hole:0.6,basin:0.5,weed:1.4,mud:1.2,sand:1.0,gravel:0.8,edge:0.4,col:bottom,beta:0.65,@dawn:-0.8,@day:1.0,@evening:-0.8,@night:-0.5,@night.flat:1.2,@day.dropoff:1.6,@day.shoal:1.5");
             H("bluegill", "depth:0.8-3.0,shelf:1.8,flat:1.6,shoal:1.5,dropoff:1.0,channel:0.7,hole:0.5,basin:0.4,sand:1.3,gravel:1.2,weed:1.3,mud:0.8,edge:0.3,col:mid,beta:0.75,@day:0.5,@night:1.0,@night.dropoff:1.5,@night.basin:0.6,@day.shelf:1.2,@day.shoal:1.2");
             H("carp", "depth:3.0-7.0,hole:1.5,channel:1.3,basin:1.3,dropoff:1.2,shoal:0.9,flat:0.7,shelf:0.5,mud:1.4,weed:1.1,gravel:0.8,edge:0.2,col:bottom,beta:0.65,@dawn:-1.0,@day:0.5,@evening:-1.0,@night:-2.0,@night.flat:3.0,@night.shoal:2.6,@night.dropoff:0.8,@day.hole:1.5,@day.channel:1.5,@day.dropoff:1.2,@day.flat:0.5,@day.shelf:0.5,runDeep");
-            H("largemouth_bass", "depth:1.0-4.5,dropoff:1.8,hump:1.6,shoal:1.5,flat:1.2,shelf:1.1,channel:0.9,hole:0.8,basin:0.5,gravel:1.3,weed:1.2,mud:0.8,edge:0.5,col:mid,beta:0.65,@dawn:-1.2,@day:1.5,@evening:-1.2,@night:-0.5,@dawn.flat:2.0,@dawn.shelf:1.8,@dawn.dropoff:0.8,@day.hump:1.3,@day.dropoff:1.15,@day.flat:0.8,runDeep");
+            H("largemouth_bass", "depth:1.0-4.5,dropoff:1.8,hump:1.6,shoal:1.5,flat:1.2,shelf:1.1,channel:0.9,hole:0.8,basin:0.5,gravel:1.3,weed:1.2,mud:0.8,edge:0.5,col:mid,beta:0.8,@dawn:-0.4,@day:1.5,@evening:-0.4,@night:-0.3,@dawn.flat:1.8,@dawn.shelf:1.6,@dawn.dropoff:0.8,@day.hump:1.8,@day.dropoff:1.5,@day.shoal:1.3,@day.flat:0.8,runDeep");
             H("golden_carp", "runDeep");   // (only its hooked fight's deep runs are used)
         }
 

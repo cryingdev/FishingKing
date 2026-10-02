@@ -14,9 +14,9 @@ namespace FishingKing
     /// D1 determinism and the golden hash; D2 seeds 1..50 (V1-V8, attempts, the fallback); D3 every other stage (and the
     /// lake with the grid off, off the grid) bit-identical to the old profile; D4 the queries; D5 the save's world seed;
     /// D6 the lying float (tilt, lie, label, hint, standing up, a fight from it; shots); D7 the habitat's shift of the
-    /// targets; D8 the body rule (wander / approach / flee and fights never in water too shallow, never under the bed);
+    /// targets; D8 the body rule (wander / approach / bite / flee and fights never in water too shallow, never under the bed);
     /// D9 the deep runs; D10 the golden carp's lurk on the weed edge and its spot; D11 the bite budget's estimator over
-    /// 50 seeds; D12 the obstacle bands over the new bed; D13 the dump and the contour overlay (two seeds).
+    /// 50 seeds (per species, and the stock's bites per bait, rig class, period and rod); D12 the obstacle bands over the new bed; D13 the dump and the contour overlay (two seeds).
     /// </summary>
     public partial class AutoPilot
     {
@@ -389,12 +389,18 @@ namespace FishingKing
             var species = new[] { "crucian_carp", "bluegill", "carp", "largemouth_bass" }.Select(GameDatabase.GetFish).ToList();
             // (a species and a rig class go together when some bait of that class draws it at all)
             bool Valid(FishSpecies sp, RigClass rc) => GameDatabase.Baits.Any(bt =>
-                (HabitatModel.IsLure(rc) ? bt.isLure && (bt.buoyancy == Buoyancy.Float ? RigClass.Surface : bt.buoyancy == Buoyancy.Suspend ? RigClass.Mid : RigClass.Bottom) == rc
-                                         : !bt.isLure) && sp.Appeal(bt) > 0f);
+                (HabitatModel.IsLure(rc) ? bt.isLure && FishHabitat.RigOf(bt, 0f) == rc : !bt.isLure) && sp.Appeal(bt) > 0f);
+            // the user's rule (spec 8.1): per bait, rig class, period and rod, the stock's bites after the lever over today's;
+            // a species' share = its stock weight x activity x sqrt(activity) (the approach roll) x its appeal for the bait
+            var stock = new Dictionary<string, float>();
+            foreach (var kv in ctl.Stage.Def.spawns) stock[kv.Key] = kv.Value;
+            var floats = new[] { RigClass.F1, RigClass.F2, RigClass.F4, RigClass.F6 };
+            var baits = GameDatabase.Baits.Where(bt => species.Any(sp => sp.Appeal(bt) > 0f)).ToList();
             var rods = new[] { ("rod_bamboo", 16f), ("rod_carbon", 24f), ("rod_dragon", 36f) };
-            int n = 0, rawOut = 0, scaledOut = 0, scaleOut = 0;
-            float rawMin = 9f, rawMax = 0f, scMin = 9f, scMax = 0f, sMin = 9f, sMax = 0f;
-            string firstBad = "";
+            int n = 0, rawOut = 0, scaledOut = 0, scaleOut = 0, pooledN = 0, pooledOut = 0;
+            float rawMin = 9f, rawMax = 0f, scMin = 9f, scMax = 0f, sMin = 9f, sMax = 0f, poMin = 9f, poMax = 0f;
+            string firstBad = "", firstPooled = "";
+            var outByRod = new Dictionary<float, int>();
             var best = new Dictionary<string, float>();
             var t0 = Time.realtimeSinceStartup;
             for (int seed = 1; seed <= 50; seed++)
@@ -402,40 +408,75 @@ namespace FishingKing
                 var b = seed == 1 ? L.Bathy : BathyGen.Build(L, r, seed, raw);
                 var hab = new FishHabitat(ctl.Stage, ctl, b);
                 foreach (var (rid, cd) in rods)
-                foreach (var sp in species)
-                for (int p = 0; p < 4; p++)
-                foreach (RigClass rc in Enum.GetValues(typeof(RigClass)))
                 {
-                    if (!Valid(sp, rc)) continue;
-                    var bu = hab.Budget(sp, p, rc, cd, true);
-                    n++;
-                    rawMin = Mathf.Min(rawMin, bu.raw);
-                    rawMax = Mathf.Max(rawMax, bu.raw);
-                    scMin = Mathf.Min(scMin, bu.scaled);
-                    scMax = Mathf.Max(scMax, bu.scaled);
-                    sMin = Mathf.Min(sMin, bu.scale);
-                    sMax = Mathf.Max(sMax, bu.scale);
-                    bool ro = bu.raw < HabitatModel.RawMin || bu.raw > HabitatModel.RawMax, so = bu.scaled < 0.9f || bu.scaled > 1.1f;
-                    bool co = bu.scale < HabitatModel.ScaleMin - 1e-4f || bu.scale > HabitatModel.ScaleMax + 1e-4f;
-                    if (ro) rawOut++;
-                    if (so) scaledOut++;
-                    if (co) scaleOut++;
-                    if ((ro || so || co) && firstBad.Length == 0) firstBad = $" (first: seed {seed} {rid} {sp.id} {GameClock.Id((Period)p)} {rc} raw {F2(bu.raw)} scaled {F2(bu.scaled)})";
-                    if (seed == 1 && cd == 16f)
+                    var got = new Dictionary<(string, int, RigClass), HabitatModel.Budget>();
+                    foreach (var sp in species)
+                    for (int p = 0; p < 4; p++)
+                    foreach (RigClass rc in Enum.GetValues(typeof(RigClass)))
                     {
-                        string key = sp.id + " " + GameClock.Id((Period)p);
-                        best[key] = Mathf.Max(best.TryGetValue(key, out float v) ? v : 0f, bu.best10);
-                        Log(string.Format(CIc, "[HAB] budget {0} {1} {2} rod {3:0} raw {4:0.00} scale {5:0.00} scaled {6:0.00} best10 {7:0.00} worst10 {8:0.00} (before the scale {9:0.00})",
-                            sp.id, GameClock.Id((Period)p), rc, cd, bu.raw, bu.scale, bu.scaled, bu.best10, bu.worst10, bu.best10Raw));
+                        if (!Valid(sp, rc)) continue;
+                        var bu = hab.Budget(sp, p, rc, cd, true);
+                        got[(sp.id, p, rc)] = bu;
+                        n++;
+                        rawMin = Mathf.Min(rawMin, bu.raw);
+                        rawMax = Mathf.Max(rawMax, bu.raw);
+                        scMin = Mathf.Min(scMin, bu.scaled);
+                        scMax = Mathf.Max(scMax, bu.scaled);
+                        sMin = Mathf.Min(sMin, bu.scale);
+                        sMax = Mathf.Max(sMax, bu.scale);
+                        bool ro = bu.raw < HabitatModel.RawMin || bu.raw > HabitatModel.RawMax, so = bu.scaled < 0.9f || bu.scaled > 1.1f;
+                        bool co = bu.scale < HabitatModel.ScaleMin - 1e-4f || bu.scale > HabitatModel.ScaleMax + 1e-4f;
+                        if (ro) rawOut++;
+                        if (so) scaledOut++;
+                        if (co) scaleOut++;
+                        if (ro || so) outByRod[cd] = (outByRod.TryGetValue(cd, out int k) ? k : 0) + 1;
+                        if ((ro || so || co) && firstBad.Length == 0) firstBad = $" (first: seed {seed} {rid} {sp.id} {GameClock.Id((Period)p)} {rc} raw {F2(bu.raw)} scaled {F2(bu.scaled)})";
+                        if (seed == 1 && cd == 16f)
+                        {
+                            string key = sp.id + " " + GameClock.Id((Period)p);
+                            best[key] = Mathf.Max(best.TryGetValue(key, out float v) ? v : 0f, bu.best10);
+                            Log(string.Format(CIc, "[HAB] budget {0} {1} {2} rod {3:0} raw {4:0.00} scale {5:0.00} scaled {6:0.00} best10 {7:0.00} worst10 {8:0.00} (before the scale {9:0.00})",
+                                sp.id, GameClock.Id((Period)p), rc, cd, bu.raw, bu.scale, bu.scaled, bu.best10, bu.worst10, bu.best10Raw));
+                        }
+                    }
+                    foreach (var bt in baits)
+                    foreach (var rc in bt.isLure ? new[] { FishHabitat.RigOf(bt, 0f) } : floats)
+                    for (int p = 0; p < 4; p++)
+                    {
+                        double num = 0, den = 0;
+                        foreach (var sp in species)
+                        {
+                            float app = sp.Appeal(bt);
+                            if (app <= 0f || !got.TryGetValue((sp.id, p, rc), out var bu)) continue;
+                            float a = TimeActivity.A(sp.id, (Period)p);
+                            float w = (stock.TryGetValue(sp.id, out float sw) ? sw : 0f) * a * Mathf.Sqrt(Mathf.Max(0f, a)) * app;
+                            num += w * bu.bed;
+                            den += w * bu.today;
+                        }
+                        if (den <= 0) continue;
+                        float ratio = (float)(num / den);
+                        pooledN++;
+                        poMin = Mathf.Min(poMin, ratio);
+                        poMax = Mathf.Max(poMax, ratio);
+                        if (ratio < 0.8f || ratio > 1.25f)
+                        {
+                            pooledOut++;
+                            if (firstPooled.Length == 0) firstPooled = $" (first: seed {seed} {rid} {bt.id} {rc} {GameClock.Id((Period)p)} x{F2(ratio)})";
+                        }
                     }
                 }
                 if (seed % 2 == 0) yield return null;
             }
-            DCheck(string.Format(CIc, "D11 the bite budget over seeds 1..50 x 4 species x 4 periods x their rig classes x bamboo / carbon / dragon ({0} estimates, {1:0} s): raw {2:0.00}..{3:0.00} (in [{4:0.00}, {5:0.00}]: {6} out), scaled {7:0.00}..{8:0.00} (in [0.90, 1.10]: {9} out), scale {10:0.00}..{11:0.00} (in [{12:0.00}, {13:0.00}]: {14} out){15}",
-                n, Time.realtimeSinceStartup - t0, rawMin, rawMax, HabitatModel.RawMin, HabitatModel.RawMax, rawOut, scMin, scMax, scaledOut, sMin, sMax, HabitatModel.ScaleMin, HabitatModel.ScaleMax, scaleOut, firstBad),
+            // the spec's per-species gate (fixed bounds: raw within what the clamp can take back, the scaled estimate within 10 %)
+            DCheck(string.Format(CIc, "D11 the bite budget per species over seeds 1..50 x 4 species x 4 periods x their rig classes x bamboo / carbon / dragon ({0} estimates, {1:0} s): raw {2:0.00}..{3:0.00} (in [{4:0.00}, {5:0.00}]: {6} out), scaled {7:0.00}..{8:0.00} (in [0.90, 1.10]: {9} out), scale {10:0.00}..{11:0.00} (in [{12:0.00}, {13:0.00}]: {14} out); raw or scaled out by rod {15}{16}",
+                n, Time.realtimeSinceStartup - t0, rawMin, rawMax, HabitatModel.RawMin, HabitatModel.RawMax, rawOut, scMin, scMax, scaledOut, sMin, sMax, HabitatModel.ScaleMin, HabitatModel.ScaleMax, scaleOut,
+                string.Join(" / ", rods.Select(rd => rd.Item2.ToString("0", CIc) + " m: " + (outByRod.TryGetValue(rd.Item2, out int o) ? o : 0))), firstBad),
                 rawOut == 0 && scaledOut == 0 && scaleOut == 0);
-            DCheck("D11 seed 1, bamboo: the best 10 % of casts (the best rig class, after the scale) >= 1.3 for every species and period: "
-                   + string.Join(", ", best.Select(kv => kv.Key + " " + F2(kv.Value))), best.Count == 16 && best.Values.All(v => v >= 1.3f));
+            // the user's rule: every bait, rig class, period and rod within 0.8..1.25 of today's
+            DCheck(string.Format(CIc, "D11 the stock's bites per bait x rig class x period x rod after the lever, over today's (seeds 1..50, {0} cases): {1:0.00}..{2:0.00} (in [0.80, 1.25]: {3} out){4}",
+                pooledN, poMin, poMax, pooledOut, firstPooled), pooledN > 0 && pooledOut == 0);
+            DCheck("D11 seed 1, bamboo: the best 10 % of casts (the best rig class, after the scale) >= 1.2 for every species and period: "
+                   + string.Join(", ", best.Select(kv => kv.Key + " " + F2(kv.Value))), best.Count == 16 && best.Values.All(v => v >= 1.2f));
         }
 
         // ------------------------------------------------------------------ D6: the lying float

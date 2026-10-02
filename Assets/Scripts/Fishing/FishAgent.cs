@@ -338,7 +338,14 @@ namespace FishingKing
             var fwd = new Vector3(Mathf.Cos(Heading), 0, Mathf.Sin(Heading));
             nibbleT -= dt;
             var rest = hook - fwd * (VisLen * 0.45f + (nibbleIn ? 0f : 0.25f));
-            Pos = Vector3.MoveTowards(Pos, rest, dt * 1.6f);
+            var next = Vector3.MoveTowards(Pos, rest, dt * 1.6f);
+            // on a generated bed its body does not back into water shallower than it swims in (it noses in from where it is)
+            if (stage.L.Terrain && ShallowStep(next.x, next.z))
+            {
+                next.x = Pos.x;
+                next.z = Pos.z;
+            }
+            Pos = next;
             if (nibbleT <= 0)
             {
                 nibbleIn = !nibbleIn;
@@ -367,7 +374,10 @@ namespace FishingKing
         {
             // swims off with the bait, dragging the float under
             var away = new Vector3(Mathf.Cos(Heading), 0, Mathf.Sin(Heading));
-            Pos += away * Sp.speed * 0.25f * dt;
+            var step = away * Sp.speed * 0.25f * dt;
+            // on a generated bed it is not carried into water shallower than it swims in (it holds there; deeper is fine)
+            if (stage.L.Terrain && ShallowStep(Pos.x + step.x, Pos.z + step.z)) step = Vector3.zero;
+            Pos += step;
             Pos.y = Mathf.MoveTowards(Pos.y, -Mathf.Min(Sp.depthMax, stage.L.DepthAt(Pos.x, Pos.z) - 0.3f), dt * 0.4f);
             var tk = ctl.Tackle;
             tk.Surface = new Vector3(MouthPos.x, 0, MouthPos.z);
@@ -445,6 +455,14 @@ namespace FishingKing
             return refused;
         }
 
+        /// <summary>A step to (x, z) would take it into water shallower than it swims in, and shallower than where it is.</summary>
+        bool ShallowStep(float x, float z)
+        {
+            var L = stage.L;
+            float next = L.DepthAt(x, z);
+            return next < HabitatModel.MinWater(Cm) && next < L.DepthAt(Pos.x, Pos.z);
+        }
+
         /// <summary>Lifted to at least 0.3 m over the bed (a bed only lifts).</summary>
         void KeepOffBed()
         {
@@ -453,14 +471,19 @@ namespace FishingKing
             Pos.y = Mathf.Max(Pos.y, -Mathf.Max(0.3f, L.DepthAt(Pos.x, Pos.z) - 0.3f));
         }
 
-        /// <summary>For the tests: this free fish is in water shallower than it swims in / under the bed now.</summary>
+        /// <summary>
+        /// For the tests: this free fish (wandering, coming, nibbling, biting or fleeing) is in water shallower than it swims
+        /// in / (wandering, coming or fleeing: one at the bait has its mouth on it, maybe on the bed) under the bed now.
+        /// </summary>
         void CountBed()
         {
             var L = stage.L;
-            if (!L.Terrain || (State != St.Wander && State != St.Approach && State != St.Flee)) return;
+            if (!L.Terrain) return;
+            bool atBait = State == St.Nibble || State == St.Bite;
+            if (!atBait && State != St.Wander && State != St.Approach && State != St.Flee) return;
             float w = L.DepthAt(Pos.x, Pos.z);
             if (w < HabitatModel.MinWater(Cm) - 1e-3f) ShallowFrames++;
-            if (Pos.y < -Mathf.Max(0.3f, w - 0.3f) - 1e-3f) UnderBedFrames++;
+            if (!atBait && Pos.y < -Mathf.Max(0.3f, w - 0.3f) - 1e-3f) UnderBedFrames++;
         }
 
         void UpdateFlee(float dt)

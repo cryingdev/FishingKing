@@ -208,6 +208,7 @@ namespace FishingKing
             Tackle.FloatDepth = Mathf.Clamp(2f, 0.5f, L.ProfileDepth(15f) - 0.3f);
             // the fish's ecology on the generated bed (the lake; Docs/terrain_depth_spec.md 7.6)
             Habitat = L.Terrain ? new FishHabitat(Stage, this, L.Bathy) : null;
+            Habitat?.Prewarm(Game.I.Rod.castDist);
             Tackle.FloatLaid += OnFloatLaid;
             Spawner = new GameObject("Spawner").AddComponent<FishSpawner>();
             Spawner.Init(this);

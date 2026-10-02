@@ -288,10 +288,10 @@ material keys, `edge`, `col`, `beta`, `@period:shift` (− shallower), `@period.
 `EncounterDef.lurkWeedEdge` (the golden carp). The strings as tuned (§17.3):
 
 ```
-crucian_carp     depth:1.2-4.0,flat:1.5,shoal:1.5,shelf:1.2,dropoff:1.3,hump:0.9,channel:0.8,hole:0.6,basin:0.5,weed:1.4,mud:1.2,sand:1.0,gravel:0.8,edge:0.4,col:bottom,beta:0.65,@dawn:-0.8,@day:1.0,@evening:-0.8,@night:-0.5,@night.flat:1.2,@day.dropoff:1.3,@day.shoal:1.3
+crucian_carp     depth:1.2-4.0,flat:1.5,shoal:1.5,shelf:1.2,dropoff:1.3,hump:0.9,channel:0.8,hole:0.6,basin:0.5,weed:1.4,mud:1.2,sand:1.0,gravel:0.8,edge:0.4,col:bottom,beta:0.65,@dawn:-0.8,@day:1.0,@evening:-0.8,@night:-0.5,@night.flat:1.2,@day.dropoff:1.6,@day.shoal:1.5
 bluegill         depth:0.8-3.0,shelf:1.8,flat:1.6,shoal:1.5,dropoff:1.0,channel:0.7,hole:0.5,basin:0.4,sand:1.3,gravel:1.2,weed:1.3,mud:0.8,edge:0.3,col:mid,beta:0.75,@day:0.5,@night:1.0,@night.dropoff:1.5,@night.basin:0.6,@day.shelf:1.2,@day.shoal:1.2
 carp             depth:3.0-7.0,hole:1.5,channel:1.3,basin:1.3,dropoff:1.2,shoal:0.9,flat:0.7,shelf:0.5,mud:1.4,weed:1.1,gravel:0.8,edge:0.2,col:bottom,beta:0.65,@dawn:-1.0,@day:0.5,@evening:-1.0,@night:-2.0,@night.flat:3.0,@night.shoal:2.6,@night.dropoff:0.8,@day.hole:1.5,@day.channel:1.5,@day.dropoff:1.2,@day.flat:0.5,@day.shelf:0.5,runDeep
-largemouth_bass  depth:1.0-4.5,dropoff:1.8,hump:1.6,shoal:1.5,flat:1.2,shelf:1.1,channel:0.9,hole:0.8,basin:0.5,gravel:1.3,weed:1.2,mud:0.8,edge:0.5,col:mid,beta:0.65,@dawn:-1.2,@day:1.5,@evening:-1.2,@night:-0.5,@dawn.flat:2.0,@dawn.shelf:1.8,@dawn.dropoff:0.8,@day.hump:1.3,@day.dropoff:1.15,@day.flat:0.8,runDeep
+largemouth_bass  depth:1.0-4.5,dropoff:1.8,hump:1.6,shoal:1.5,flat:1.2,shelf:1.1,channel:0.9,hole:0.8,basin:0.5,gravel:1.3,weed:1.2,mud:0.8,edge:0.5,col:mid,beta:0.8,@dawn:-0.4,@day:1.5,@evening:-0.4,@night:-0.3,@dawn.flat:1.8,@dawn.shelf:1.6,@dawn.dropoff:0.8,@day.hump:1.8,@day.dropoff:1.5,@day.shoal:1.3,@day.flat:0.8,runDeep
 golden_carp      runDeep
 ```
 
@@ -307,7 +307,9 @@ node has less than `MinWater(maxCm)`.
 
 Target region z in [zNear + 1.5, zMax] (spawn [zNear + 2, zMax], from distance [zMax − 4, zMax]), |x| ≤ half(z) =
 min(xLim − 0.5, VisibleHalfWidth(z, 600)). Today's density `U = 1/(2·half(z))`; `hn = clamp(h / mean_U(h), 0.25, 3)`;
-`W = U·((1 − β) + β·hn)` (0 under MinWater).
+`W = U·((1 − β) + β·hn)` (0 under MinWater); then every row of the region (one z) is scaled back to today's share of it
+(`RowKeep` = 1): the habitat moves a species along a distance band, onto the flats, drop-offs, humps and channels at that
+range, not from beyond a rod's reach into it (§8.3).
 
 ### 7.4 Samplers
 
@@ -324,25 +326,61 @@ Bottom `U[max(min(lo, bot), bot − 2), bot]`; ≥ 0.3. No def: today's rule.
 
 ## 8. Bite-rate budget
 
-**Rule as interpreted**: for a reference player who casts evenly over the ±38° fan and keeps the rig unchanged, the bites
-per minute per (rig class, period) stay within 0.8–1.25× of today on every seed. If the user meant per spot, ecology
-would have to be almost invisible (β ≈ 0.25).
+**Rule** (the user's): for a reference player who casts evenly over the ±38° fan and keeps the rig unchanged, the stock's
+bites per minute per (bait, rig class, period, rod) stay within 0.8–1.25× of today on every seed. If it meant per spot,
+ecology would have to be almost invisible (β ≈ 0.25).
 
-**Lever** (grid only, before `ApproachRolls++`): `sense = SenseRange() × ReachScale(species, clock blend, rig)`; no
-approach to a hook in water shallower than the fish's MinWater. `SenseFor(f)` exposes it. Rig classes: floats F1 ≤ 1.0,
-F2 ≤ 2.5, F4 ≤ 4.5, F6 beyond; lures Surface (floating), Mid (suspending), Bottom (sinking). `ReachScale` blends the two
-periods' scales, each cached per (species, period, rig class, cast distance) and logged `[HAB] budget …`.
+**Lever** (grid only, before `ApproachRolls++`): `sense = SenseRange() × ReachScale(species, clock blend, rig)`, the scale
+in [0.82, 1.22] (`HabitatModel.ScaleMin/ScaleMax`); no approach to a hook in water shallower than the fish's MinWater.
+`SenseFor(f)` exposes it. Rig classes: floats F1 ≤ 1.0, F2 ≤ 2.5, F4 ≤ 4.5, F6 beyond; lures Surface (floating), Mid
+(suspending), Bottom (sinking). `ReachScale` blends the two periods' scales, each cached per (species, period, rig class,
+cast distance) and logged `[HAB] budget …`.
 
-**Estimator** (deterministic): casts from (mid of the walk range, 0) at yaw −38..38 every 4°, out from zNear + 2.5 to
-the cast distance every metre; the hook depth per class on the profile (today) or the grid (new); sense radius 5
-(floats) or 7 (lures); over the region's 1 m stride nodes within reach, Σ density × the share of the node's swim depths
-within 2.5 m of the hook. `raw = E_new / E_today`, `scale = clamp(sqrt(1/raw), 0.70, 1.30)`; the scaled estimate
-re-gathers the nodes within reach × scale. best10 / worst10: the per-cast ratios (new within reach × scale over today) of
-the best / worst 10 % of casts.
+### 8.1 Estimator: where the fish spend their time
 
-**Data gates** (`-fkauto depth` D11, every (species, rig class) pair that some bait of the class draws at all):
-raw within what the lever takes back ([0.59, 2.04]), the scaled estimate in [0.9, 1.1], the scale in [0.70, 1.30]; seed
-1, bamboo: the best rig class's best10 ≥ 1.3 for every species and period.
+The first estimator weighted the casts by the target density; the live A/B soak (§17.1) showed it tracks play only
+loosely (r = 0.72): a wanderer re-targets after 12 s at 0.18–0.3 of its speed, so it spends most of its time between
+targets, and its depth eases at half its speed. Now `HabitatModel.Simulate` runs the wander itself (deterministic,
+`System.Random`; the game's `UnityEngine.Random` is never touched): 160 fish (today's lake 640, the same for every seed),
+20 s settling then 240 s sampled every 0.5 s at a 0.2 s step; the stock's sizes (`RollSize`) and speeds; PickTarget's
+rules (the habitat's node draw with its jitter, or today's uniform draw over the profile), the cover branch (0.6 × seek of
+the targets in a cover of its types, on the bed one with `MinWater + 0.2` at its hold), `Steer` (2.5 rad/s, the
+alignment factor), the depth eased at half its speed, and on the bed `KeepInWater` / `KeepOffBed`. The samples go into
+1 m cells × 0.25 m depth bins (`Occupancy`).
+
+Over the casts (from (mid of the walk range, 0) at yaw −38..38 every 4°, zNear + 2.5 out to the cast distance every
+metre): today's samples within R (5 floats, 7 lures) whose depth is within 2.5 m of the hook (the class's hook depth over
+the profile), and the bed's (over the grid, × the share of the species' sizes that come into the water at the hook,
+`SizeShare`). `raw = bed(R) / today(R)`; the scale is the one that brings the bed's count to today's (solved over the
+cumulative count by distance), clamped to [0.82, 1.22]; `scaled = bed(R × scale) / today(R)`. best10 / worst10: the
+per-cast ratios after the scale of the best / worst 10 % of casts. The estimator's own noise (6 salts, seed 1): sd 0.02–0.07
+of raw.
+
+**Prewarm**: `FishingController.Init` starts the simulations for the rod in hand (today's lake and the bed's four periods
+for the stage's stock, the period now first) on a worker thread (`Lazy`, `Task.Run`: ~2.4 s for 20 in the player); a
+fish that senses the rig before its own is done waits for it or makes it.
+
+### 8.2 Gates (`-fkauto depth` D11, seeds 1..50 × bamboo / carbon / dragon)
+
+1. **Per species** (the spec's gate, fixed bounds `HabitatModel.RawMin/RawMax`, not derived from the clamp): raw in
+   [0.67, 1.49], the scaled estimate in [0.9, 1.1], the scale in [0.82, 1.22], for every (species, rig class) pair some
+   bait of the class draws.
+2. **The user's rule**: per bait, rig class (floats F1..F6; a lure its own), period and rod, the stock's bites after the
+   lever over today's in [0.8, 1.25]; a species' share = its stock weight × activity × √activity (the approach roll) ×
+   its appeal for the bait.
+3. Seed 1, bamboo: the best rig class's best10 ≥ 1.2 for every species and period (occupancy is smoother than the targets;
+   it was 1.3 on the target density).
+
+### 8.3 What the bed does to the budget
+
+The bed is shallower than the old profile over most of the fan (the lake's sides and flats: at z 14 the profile says
+4.5 m, the bed's mean over the view's width is 2.6 m with a third under 2 m), so fish that keep their old depths are
+forced up over it: shallow rigs meet more of them, deep rigs fewer, before any habitat. With β = 0 (no ecology at all)
+raw is already 0.75–1.86 per species (carp on F1 and bass on topwater with the carbon and dragon rods ~1.6–1.9). So gate 1
+cannot pass with the 0.82–1.22 lever whatever the habitat strings (§17.1); gate 2, the user's rule, can. The habitat was
+also pulling fish from beyond a long rod's reach into its fan (the long rods' pooled ratio after the lever reached ×1.6);
+`RowKeep` (§7.3) stops that, and with the strings of §7.1 every rod passes gate 2 (seeds 1..50: after the lever
+1.00–1.09 bamboo, 1.00–1.19 carbon, 1.00–1.22 dragon; the tightest is a topwater lure at dawn on the dragon rod).
 
 ---
 
@@ -352,7 +390,9 @@ raw within what the lever takes back ([0.59, 2.04]), the scaled estimate in [0.9
 
 **9.1 Agents** (grid): after the steer in wander (after the current's carry), approach and flee, a step into water
 shallower than its MinWater that is also shallower than where it was is undone (wander: a new target; approach: it
-loses interest; flee: off down the slope, `DeeperDir`·15, or straight out). Always lifted to ≥ 0.3 m over the bed.
+loses interest; flee: off down the slope, `DeeperDir`·15, or straight out). Always lifted to ≥ 0.3 m over the bed. A
+nibbling fish's body and a biting fish carrying the bait off hold their plan position instead of such a step
+(`ShallowStep`); their depth stays at the bait's (a bait on the bed: no lift).
 
 **9.2 Fight** (grid, a run or a cover run, not a jump): `OnLine(y)` is `OnLineAt(y, fightYaw)`. Looking 1.5 m ahead
 along its heading, water under `need + 0.2` turns the run 0.3 rad towards the deeper side; a fish still in water under
@@ -437,20 +477,26 @@ game is a new lake. `StageView.Init` assigns `L.Bathy = Bathymetry.For(L, SeedOv
 | D5 | The world seed: minted once for an old save, kept through JSON, set for a new game; the test's seed leaves the save file byte for byte |
 | D6 | The lying float (set at 4 m on a flat: tilt, lie within settle + 0.3 s, "찌 누움", the hint once; at night the 케미 at its tip; shortened to 1 m it stands through the tilt; laid again no second hint; a fight from it stands it on the first frame) and its shots |
 | D7 | 2000 targets per species and period (bamboo's water): bass by day on drop-off + hump + shoal ≥ 1.4× today, at dawn on flat + shelf ≥ 1.3×; crucian at dawn on the flats ≥ 1.3×, by day ≤ 0.8× its dawn share; carp at night on flat + shoal ≥ 1.4×, by day in hole + channel + basin ≥ 1.2× |
-| D8 | 300 s soaks (carp, bass, the stock) and 10 fights by the lane's edges at 1/60 s: no free fish in water shallower than its MinWater, none under the bed − 0.3; no running fight frame in too little water, none under the bed − 0.2 |
+| D8 | 300 s soaks (carp, bass, the stock) and 10 fights by the lane's edges at 1/60 s: no free fish (wandering, coming, nibbling, biting, fleeing) in water shallower than its MinWater, none (wandering, coming, fleeing) under the bed − 0.3; no running fight frame in too little water, none under the bed − 0.2. (These soaks have no rig in the water; the habitat soak counts the nibbles and bites.) |
 | D9 | 60 fights each (carp 70 cm, crucian 25 cm): of the runs whose sides differ ≥ 0.3 m the deeper taken 0.58–0.75 (carp) / 0.40–0.60 (crucian); none into too little water with the other side open; the step draws match a fresh `System.Random(seed + 1)` |
 | D10 | 40 placements with the bamboo and the dragon rod: lurk ≥ 4.5 m, ≥ 75 % on WeedEdge, a spot every time with ≥ 4.3 m over 0.9 m |
-| D11 | The estimator over seeds 1..50 × 4 species × 4 periods × their rig classes × bamboo / carbon / dragon (§8) |
+| D11 | The estimator over seeds 1..50 × 4 species × 4 periods × their rig classes × bamboo / carbon / dragon: the three gates of §8.2 |
 | D12 | Every lake weed / snag zone, 20 points: the bed under its top |
 | D13 | `bathy_lake_1.png`, `bathy_lake_7.png` and the overlay for seeds 1 and 7 (`depth_show_lake_seed*`) |
 
 **`-fkauto habitat`**: lake, seed 1, the bamboo rod with the starter reel and line, the stock; the clock frozen at each
-period's centre; 떡밥 2 m, 옥수수 4 m, 지렁이 1 m floats; 12 spots (yaw −30/−10/10/30 × 8/12/15 m), `-fkhabsecs` each;
-terrain on, then off (the stage reloaded, `Random.InitState(1515)`). CHECK pooled over the periods per rig: bites on / off
-in [0.8, 1.25] and fish in reach on / off in [0.85, 1.18]; each period's ratio in [0.6, 1.6].
+period's centre; 떡밥 2 m, 옥수수 4 m, 지렁이 1 m floats; 70 spots over the reference player's fan (the estimator's: yaw
+−36..36 every 8° × from zNear + 2.5 every 2 m out to the cast, from the walk's middle; moved off pads and weed / snag
+zones), `-fkhabsecs` each (default 20); terrain on, then off (the stage reloaded, `Random.InitState(1515)`).
+`-fkhabmode on|off`, `-fkhabperiods 0,2`, `-fkhabrigs paste,worm` run part of the cells (parallel runs; the
+`[HAB] cell …` lines are pooled by hand with the same rule). CHECK (hard) every rig × period and every rig pooled over
+the periods: bites on / off in [0.8, 1.25] — the point estimate once both sides have 100 bites, else the 95 % interval
+(log ratio ± 1.96·√(1/a + 1/b), half a bite added each side) must reach the band; the fish in reach pooled per rig in
+[0.8, 1.25]; the bed on: no fish (wandering, coming, nibbling, biting, fleeing) in water shallower than it swims in.
 
-**Regressions**: lake `fish`, `obstacles`, `legendspot` (natural), `encounter` (natural), `breaks`, `pan`; the sea's
-`tidebites` against the pre-change build (the counts equal when both reproduce).
+**Regressions**: lake `fish`, `obstacles`, `legendspot` (natural), `encounter` (natural), `breaks`, `pan`, `steer`,
+`hold`, `lure`; the stream's `steer` `[SIDELOG]` lines against the pre-change build (equal: the stream has no bed); the
+sea's `tidebites` against the pre-change build (the counts equal when both reproduce).
 
 ---
 
@@ -463,7 +509,9 @@ in [0.8, 1.25] and fish in reach on / off in [0.85, 1.18]; each period's ratio i
 
 ## 16. Risks
 
-1. **The 0.8–1.25 rule** is read as "a reference player, averaged over the fan", not per spot (§8).
+1. **The 0.8–1.25 rule** is read as "a reference player, averaged over the fan", not per spot (§8). The spec's
+   per-species gate (§8.2, 1) fails structurally with the 0.82–1.22 lever (§8.3): the user decides between a wider lever
+   (stronger ecology on the long rods) and leaving it as is (the user's own rule, gate 2, holds).
 2. **Recipe edits re-roll every save's lake** (the version is in the seed). Bump the version on every terrain change.
 3. **Lake numbers move on purpose**: the lake's random order changes in PickTarget, Spawn, Place and ChooseSpot; pads and
    reeds now sit in about 1 m of water (cover runs end shallow; big carp skip reed holds); the weed bed's bottom is 2.4–3 m
@@ -485,15 +533,19 @@ in [0.8, 1.25] and fish in reach on / off in [0.85, 1.18]; each period's ratio i
    exact closure. Every seed passes V5 at its first attempt. Pass B clamps the cores only: blending the rings again
    after the limit steepened their edges past it.
 2. **Validation tolerances**: V1 ±0.0051 (the profile pin's 1.425 m rounds to 1.42 / 1.43); V5 in whole cm (≤ 76).
-3. **The reach scale's clamp is 0.70–1.30** (planned 0.82–1.22, raw gate [0.67, 1.49]). The period shifts asked for (up
-   at dawn and evening, the carp on the flats at night) bring a shallow rig on the longest rods (F1 with the dragon rod,
-   topwater lures) up to ~2× today's encounters, which 0.82 cannot take back. With 0.70–1.30 every estimate's scaled value
-   lies in [0.97, 1.09] over 50 seeds.
+3. **The reach scale's clamp is the planned 0.82–1.22** and D11's raw gate the planned [0.67, 1.49] as its own constants.
+   (A first build widened the clamp to 0.70–1.30 and derived the raw gate from it, so the gate could not fail, and the
+   live soak still failed the rule: §17.1.) The estimator now simulates where the fish spend their time (§8.1); the
+   habitat keeps every distance band's share (`RowKeep`, §7.3); the per-species gate fails structurally (§8.3) and the
+   user's rule is gated on its own (§8.2, 2).
 4. **Habitat strings** (§7.1): the spec's numbers did not produce D7's shifts (the carp's night on the flats ×1.09, the
-   bass's dawn flats ×1.15) nor the bamboo's best spots ≥ 1.3 (crucian, bluegill); stronger period weights and higher β
-   (crucian 0.65, bluegill 0.75) do.
+   bass's dawn flats ×1.15) nor the bamboo's best spots (crucian, bluegill); stronger period weights and higher β
+   (crucian 0.65, bluegill 0.75) do. With the occupancy estimator and `RowKeep`: the crucian's day drop-offs / shoals
+   1.6 / 1.5; the bass's β 0.8, day humps / drop-offs / shoals 1.8 / 1.5 / 1.3, and its shallower dawn and evening held to
+   −0.4 m (dawn flats / shelves 1.8 / 1.6): a topwater lure at dawn on the dragon rod is the user's rule's tightest case.
 5. **best10** is the scaled per-cast ratio of the best 10 % of casts, for the species' best rig class; D11 counts only the
-   (species, rig class) pairs some bait of that class draws (a crucian never takes a topwater lure).
+   (species, rig class) pairs some bait of that class draws (a crucian never takes a topwater lure). Its floor is 1.2
+   (§8.2, 3).
 6. **The lying sprite is 32 × 7** (28 cut its tip off: it sits 12.9 px out), and the thin top is twice as thick in the
    lie / tilt frames (laid over, the 0.03 tube broke into dots).
 7. **`HabitatModel.cs`** holds the pure math so the generator and the estimator were swept outside Unity (a .NET harness,
@@ -502,18 +554,28 @@ in [0.8, 1.25] and fish in reach on / off in [0.85, 1.18]; each period's ratio i
 9. **Agents already in too little water** (dragged there in a fight) may still move to deeper water.
 10. **Build time**: ~70 ms per attempt in the Mono player (target 30 ms), once per stage and seed at a load.
 
-### 17.1 Open: the live A/B soak
+### 17.1 The live A/B soak
 
-`-fkauto habitat` (seed 1, the bamboo rod, 75 s × 12 spots per rig and period, the bed on against off) at commit time:
+**First build** (12 central spots, 75 s each, the target-density estimator, the clamp 0.70–1.30): 떡밥 2 m 142 / 120
+bites (×1.18; dawn ×0.59, day ×1.52, night ×1.73), 옥수수 4 m 33 / 20 (×1.65), 지렁이 1 m 198 / 178 (×1.11); the fish
+in reach ×1.49 / ×1.08 / ×0.78; the estimator against the live in-reach ratios r = 0.72. Failed the rule.
 
-| Rig | Bites on / off (pooled) | Ratio | Fish in reach ratio | Single periods |
+**This build** (the occupancy estimator, `RowKeep`, the clamp 0.82–1.22; 70 spots over the fan × 60 s = 4200 game s per
+cell; eight processes, one per mode and period, `[HAB] cell` lines pooled with the test's rule):
+
+| Rig | Bites on / off (pooled) | Ratio | Fish in reach | Single periods (dawn / day / evening / night) |
 |---|---|---|---|---|
-| 떡밥 2 m | 142 / 120 | ×1.18 | ×1.49 | dawn ×0.59, day ×1.52, evening ×1.03, night ×1.73 |
-| 옥수수 4 m | 33 / 20 | ×1.65 | ×1.08 | dawn 6 / 1, day 14 / 4, evening 5 / 5, night 8 / 10 bites |
-| 지렁이 1 m | 198 / 178 | ×1.11 | ×0.78 | 1.02, 0.98, 1.17, 1.32 |
+| 떡밥 2 m | 172 / 189 | ×0.91 (point) | ×0.98 | 29/38 ×0.77, 52/60 ×0.87, 27/16 ×1.67, 64/75 ×0.85 (all under 100 bites: the 95 % intervals reach the band) |
+| 지렁이 1 m | 678 / 651 | ×1.04 (point) | ×0.91 | ×0.96, **×1.30** (179 / 138), ×0.99, ×0.97 |
+| 옥수수 4 m | 0 / 6 | — | — | no fish within reach of the 4 m corn rig in 7 of 8 cells, either mode (6 bites at dawn off): uninformative |
 
-All three rigs together: 373 / 318 bites, ×1.17. Two rigs are inside 0.8–1.25 pooled; the corn rig's off rate (20 bites in
-3600 s) is too low for the band (Poisson ±29 %), and the fish-in-reach ratios and several single periods are outside
-theirs. The estimator (§8, the whole fan) says every rig and period is within ±10 %; the soak's 12 spots put 4 in the
-central lane, where the carp gather by day (the corn rig's dawn and day). Next: a longer soak with spots drawn evenly
-over the fan, then β or the period weights of the carp and crucian if the gap stays.
+The bed on: 0 frames of a fish (wandering, coming, nibbling, biting, fleeing) in water shallower than it swims in.
+Open: the worm rig by day is ×1.30 on 179 / 138 bites (≈ 2.3 σ over 1.0; its fish in reach ×0.73 the other way), and the
+corn rig gets too few fish over the whole fan to measure. D11's per-species gate fails structurally (§8.3). The rates
+over the whole fan are a quarter of the first build's central spots (paste 0.2–1.1 / min), so a cell needs ~4 game hours
+for 100 bites.
+
+Regressions on this build: lake `fish`, `obstacles`, `legendspot`, `encounter` (natural), `breaks`, `pan`, `steer`, `hold`,
+`lure`: 0 failed. The stream's `steer -fksidelog` against the pre-change build: the `[SIDELOG]` lines are not equal, but
+two runs of this same build differ as much (463 of ~530 lines; the steer test is not on a fixed step), and the three
+checks that fail on the stream (the hat graze, the edge sweep, the bent 회수) fail on the pre-change build too.

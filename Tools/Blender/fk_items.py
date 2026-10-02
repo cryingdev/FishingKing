@@ -6,7 +6,7 @@ Run:  blender -b --python Tools/Blender/fk_items.py [-- group ...]   groups: rod
       (also: lures = only the spec-v1 lures (spinner crank kona popper softworm egi: Items/<id>.png 32 px +
        World/<id>_w.png 11 px) and the lure action chips (UI/act_*.png 12 px), plus the review sheet
        _tmp/legend_art/lure_sheet.png - the existing bait icons are not re-rendered;
-       world = float sprites; floatlie = the stick float lying flat / tilting (World/float_stick_lie.png 28 x 7,
+       world = float sprites; floatlie = the stick float lying flat / tilting (World/float_stick_lie.png 32 x 7,
        float_stick_tilt.png 24 x 24, the lake's lying float: Docs/terrain_depth_spec.md 11.4) + _tmp/floatlie/sheet.png
        and strip.png, float_stick.png left as it is; worldreels = the small reel under the angler's rod, 2 handle frames per reel;
        barehook = the bare hook a float rig comes home with once its bait is gone (World/hook_bare_w.png 11 px, the
@@ -820,7 +820,7 @@ def render_float_lie():
     water: the bait rests on the bottom) and half way down (the 0.18 s between standing and lying), the same geometry,
     materials, palette, outline and 8 ppu as World/float_stick.png. Lie: turned 90 degrees about Y (the tip to +x) and
     20 degrees about Z (the tip a little away from the camera), its axis on z = 0, World/float_stick_lie.png 32 x 7 (28
-    cut the tip off: it sits 12.9 px out); tilt:
+    cut the tip off: it sits 12.9 px out; its tip sphere drawn 1.7x so the yellow survives the pixelization); tilt:
     45 degrees about Y (+ the same 20 about Z), World/float_stick_tilt.png 24 x 24. Both frames are centred on the model
     origin, so the sprite's centre is the point on the water (the Tackle places it there, flipped for floats left of the
     middle). Prints the tip sphere's pixel offset from the frame's centre (Tackle.LieTipPx / TiltTipPx: the 케미 light).
@@ -837,8 +837,17 @@ def render_float_lie():
         # (0.03, a quarter pixel) stays a 1 px column standing, but breaks into dots laid over: twice as thick here.
         T = Matrix.Rotation(math.radians(20), 4, "Z") @ Matrix.Rotation(math.radians(tilt), 4, "Y")
         S = Matrix.Diagonal((2.0, 2.0, 1.0, 1.0))
+        # Laid over, the tip sphere (0.48 px) sits on a pixel edge and the pixelization washes its yellow into the orange
+        # top: in the lie frame it is drawn 1.7x as big (about its own centre, which stays put) so the highlight pixel
+        # lands as it does standing and tilted.
+        Tip = Matrix.Diagonal((1.7, 1.7, 1.7, 1.0)) if tilt == 90.0 else Matrix.Identity(4)
         for ob in objs:
-            ob.matrix_world = T @ (S @ ob.matrix_world if ob.name.startswith("Top") else ob.matrix_world)
+            if ob.name.startswith("Top"):
+                ob.matrix_world = T @ S @ ob.matrix_world
+            elif ob.name.startswith("Tip"):
+                ob.matrix_world = T @ ob.matrix_world @ Tip
+            else:
+                ob.matrix_world = T @ ob.matrix_world
         bpy.context.view_layer.update()
         tip = T @ Vector((0.0, 0.0, 1.72))
         tips[name] = (tip.x * ppu, tip.z * ppu)
