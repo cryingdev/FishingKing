@@ -41,7 +41,7 @@
 | `-fkauto occlusion` · `-fkocclusion off` · `-fkoccwatch` | 발판 가림 검사 / 가림 끄기 / 아무 시나리오에서나 프레임 단위 노출 검출 |
 | `-fkaqua feed\|live\|clean\|decor\|tanks\|migrate` | 수족관 시나리오 (사료·생먹이·청소·꾸미기·수조 단계·구 세이브). live는 끝에 호수 신종 6종의 먹이·먹는 방식을 확인하고 로그에 먹이별 어종 수를 적은 뒤, 강준치와 동자개를 수조에 넣어(캡처 new_species_tank) 정어리를 강준치 위에(솟구쳐 삼킴, new_species_gulp), 생새우를 동자개 위에(바닥에서 먹음, new_species_bottom) 떨어뜨림 |
 | `-fkauto cards [-fkcards <id>,<id>,…]` | 잡은 결과 카드 캡처 (예: `-fkfresh -fkrich -fkgear -fksave <이름> -fkscene Fishing -fkstage lake -fkauto cards -fkcards white_crucian,redfin_culter -fkshots <폴더>`, 처음부터 포인터를 가져감): 어종마다 14 m 앞에 찌를 놓고 테스트 훅(`DebugHook`)으로 걸어 바로 끌어올린 뒤(`DebugLand`, 그동안 자연 입질 없음) 결과 카드를 card_<id>로 찍고 판매. 새 세이브라 첫 포획 카드. `-fkcards`가 없으면 그 스테이지의 일반 어종 전부. 끝에 "cards done: N failed" |
-| `-fkrecords <스테이지>\|all` | 스크린샷용: 그 스테이지(all = 모든 스테이지)의 어종을 도감에 넣음(잡은 수 1, 최대 길이 = 크기 범위 가운데; 이미 있는 기록은 그대로). 지도의 스테이지 창·도감을 실루엣 없이 찍을 때 (`-fkauto tour`와 함께) |
+| `-fkrecords <스테이지>\|all` | 스크린샷용: 그 스테이지(all = 모든 스테이지)의 어종을 도감에 넣음(잡은 수 1, 최대 길이 = 크기 범위 가운데; 이미 있는 기록은 그대로). 지도의 스테이지 창·도감을 실루엣 없이 찍을 때 (`-fkauto tour`와 함께; 도감 상세 샷 `collection_detail`은 `-fkdetail <어종 id>`를 주면 그 어종, 아니면 처음 찾은 어종) |
 | `-fkaquahours <h>` · `-fkaquafeed basic\|premium` · `-fkaquadirt <0..1>` · `-fkaqualog` | 수족관 시간 빨리 감기·먹이 유지·오염도·로그 |
 | `-fkactors2d` | 3D 캐릭터 대신 2D 스프라이트 |
 | `-fkrodright <도>` | `-fkauto steer`와 함께: 낚싯대가 몸을 가로지르는 쪽의 회전 한계 (오른손이면 오른쪽, 왼손이면 왼쪽; 기본 30; 40은 파이트 중 가까이 온 그쪽 물고기에서 낚싯대가 모자에 겹침) · `-fkrodcentremax <도>` 가운데로 들 때 양쪽 한계 (기본 35) |

@@ -1045,8 +1045,11 @@ namespace FishingKing
             CollectionUI.Open(canvas);
             yield return new WaitForSeconds(0.6f);
             yield return Shot("collection");
+            // (-fkdetail <species id>: that species' page instead of the first caught one's)
+            string detail = Arg("-fkdetail");
             var tile = FindObjectsByType<Button>(FindObjectsSortMode.None)
-                .FirstOrDefault(b => b.transform.parent != null && b.transform.parent.name.StartsWith("Grid_"));
+                .Where(b => b.transform.parent != null && b.transform.parent.name.StartsWith("Grid_"))
+                .OrderBy(b => detail != null && b.name == detail ? 0 : 1).FirstOrDefault();
             if (tile != null)
             {
                 tile.onClick.Invoke();
