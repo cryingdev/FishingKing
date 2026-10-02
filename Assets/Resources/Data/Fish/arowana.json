@@ -1,0 +1,22 @@
+{
+  "id": "arowana",
+  "name": "아로와나",
+  "desc": "수면 가까이를 유유히 헤엄치다 먹이를 향해 도약한다.",
+  "rarity": "rare",
+  "minCm": 50,
+  "maxCm": 110,
+  "weightK": 0.8,
+  "basePrice": 900,
+  "power": 7.5,
+  "stamina": 16,
+  "speed": 4.0,
+  "aggression": 0.6,
+  "jump": 0.6,
+  "jumpStyle": "shaker",
+  "depthMin": 0.5,
+  "depthMax": 3,
+  "baits": "frog:1,popper:1,minnow:0.7,shrimp:0.4,golden:0.5",
+  "activity": { "dawn": 1.2, "day": 1.3, "evening": 1.0, "night": 0.3 },
+  "cover": { "seek": 0.20, "reach": 8, "dig": 0.8, "types": ["root"] },
+  "diet": { "foods": ["shrimp", "sardine"], "style": "surge", "note": "hunts at the surface and leaps for prey: shrimp or fish" }
+}

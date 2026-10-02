@@ -1,0 +1,23 @@
+{
+  "id": "pale_chub",
+  "name": "피라미",
+  "desc": "맑은 계곡을 떼지어 누비는 날쌘돌이.",
+  "rarity": "common",
+  "minCm": 8,
+  "maxCm": 18,
+  "weightK": 1.0,
+  "basePrice": 15,
+  "power": 0.8,
+  "stamina": 4,
+  "speed": 3.0,
+  "aggression": 0.5,
+  "jump": 0.1,
+  "jumpStyle": "hopper",
+  "depthMin": 0.5,
+  "depthMax": 3,
+  "baits": "worm:1,paste:0.6,spinner:0.4,golden:0.3",
+  "activity": { "dawn": 1.0, "day": 1.3, "evening": 1.0, "night": 0.3 },
+  "cover": { "types": [] },
+  "diet": { "foods": ["pellet"], "style": "grab", "note": "a tiny insect / algae picker" },
+  "pocketHold": 0.1
+}

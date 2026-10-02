@@ -7,60 +7,14 @@ namespace FishingKing
     /// How active each species is by the time of day (Docs/time_currents_spec.md 6): a per period (새벽 · 낮 · 저녁 · 밤).
     /// It scales how often the species is stocked (FishSpawner) and, as sqrt(a), how readily it comes to the bait; a = 0
     /// never stocks it (쏘가리, 메기 and 모캐 only come at night). For a legend it scales its encounter meter's fill rate.
-    /// Unknown ids: 1 in every period.
+    /// The values are each species file's "activity" (FishSpecies.activity, Docs/data_reference.md 2.4). Unknown ids: 1
+    /// in every period.
     /// </summary>
     public static class TimeActivity
     {
-        static readonly Dictionary<string, float[]> table = new Dictionary<string, float[]>
-        {
-            // lake
-            { "crucian_carp", new[] { 1.3f, 0.8f, 1.3f, 0.9f } },
-            { "bluegill", new[] { 1.0f, 1.3f, 1.0f, 0.4f } },
-            { "carp", new[] { 1.2f, 0.7f, 1.2f, 1.4f } },
-            { "largemouth_bass", new[] { 1.5f, 0.6f, 1.5f, 0.7f } },
-            { "golden_carp", new[] { 1.4f, 0.7f, 1.4f, 1.0f } },
-            // stream
-            { "pale_chub", new[] { 1.0f, 1.3f, 1.0f, 0.3f } },
-            { "cherry_salmon", new[] { 1.5f, 0.8f, 1.4f, 0.4f } },
-            { "rainbow_trout", new[] { 1.4f, 0.8f, 1.4f, 0.6f } },
-            { "mandarin_fish", new[] { 0f, 0f, 0f, 1.8f } },
-            { "lenok", new[] { 1.6f, 0.5f, 1.6f, 0.8f } },
-            // sea
-            { "horse_mackerel", new[] { 1.3f, 1.0f, 1.3f, 1.1f } },
-            { "mackerel", new[] { 1.5f, 1.1f, 1.4f, 0.4f } },
-            { "rockfish", new[] { 1.0f, 0.6f, 1.2f, 1.6f } },
-            { "flounder", new[] { 1.3f, 0.9f, 1.2f, 0.8f } },
-            { "black_porgy", new[] { 1.4f, 0.6f, 1.3f, 1.3f } },
-            { "red_seabream", new[] { 1.6f, 0.9f, 1.3f, 0.5f } },
-            // swamp
-            { "piranha", new[] { 0.9f, 1.4f, 1.0f, 0.5f } },
-            { "catfish", new[] { 0f, 0f, 0f, 2.0f } },
-            { "snakehead", new[] { 1.5f, 0.8f, 1.5f, 0.6f } },
-            { "arowana", new[] { 1.2f, 1.3f, 1.0f, 0.3f } },
-            { "arapaima", new[] { 1.3f, 1.1f, 1.0f, 0.6f } },
-            // ice
-            { "smelt", new[] { 1.3f, 1.2f, 1.0f, 0.5f } },
-            { "burbot", new[] { 0f, 0f, 0f, 2.0f } },
-            { "northern_pike", new[] { 1.4f, 1.0f, 1.3f, 0.3f } },
-            { "arctic_char", new[] { 1.3f, 0.7f, 1.3f, 0.9f } },
-            { "sturgeon", new[] { 0.8f, 0.6f, 1.0f, 1.6f } },
-            // ocean
-            { "yellowtail", new[] { 1.5f, 1.0f, 1.2f, 0.4f } },
-            { "mahi_mahi", new[] { 1.1f, 1.4f, 1.0f, 0.3f } },
-            { "bluefin_tuna", new[] { 1.6f, 0.8f, 1.3f, 0.5f } },
-            { "ocean_sunfish", new[] { 0.6f, 1.8f, 0.6f, 0f } },
-            { "blue_marlin", new[] { 1.3f, 1.2f, 0.9f, 0.4f } },
-            { "great_white", new[] { 1.1f, 0.6f, 1.4f, 1.5f } },
-            // cave
-            { "cave_tetra", new[] { 1.0f, 1.0f, 1.0f, 1.0f } },
-            { "crystal_koi", new[] { 1.0f, 1.3f, 1.0f, 0.8f } },
-            { "anglerfish", new[] { 1.0f, 0.8f, 1.0f, 1.4f } },
-            { "coelacanth", new[] { 1.0f, 0.8f, 1.0f, 1.4f } },
-        };
-
         /// <summary>The species' activity in one period.</summary>
         public static float A(string speciesId, Period p) =>
-            speciesId != null && table.TryGetValue(speciesId, out var a) ? a[(int)p] : 1f;
+            GameDatabase.GetFish(speciesId)?.activity is { Length: 4 } a ? a[(int)p] : 1f;
 
         /// <summary>The activity now: during a cross-fade the two periods' values blended.</summary>
         public static float A(string speciesId, PeriodBlend b) =>

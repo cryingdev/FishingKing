@@ -1,0 +1,21 @@
+{
+  "id": "red_seabream",
+  "name": "참돔",
+  "desc": "바다의 여왕. 분홍빛 몸에 푸른 점이 반짝인다.",
+  "rarity": "epic",
+  "minCm": 35,
+  "maxCm": 100,
+  "weightK": 1.5,
+  "basePrice": 1300,
+  "power": 8.0,
+  "stamina": 20,
+  "speed": 3.6,
+  "aggression": 0.6,
+  "jump": 0,
+  "depthMin": 4,
+  "depthMax": 7,
+  "baits": "squid:1,jig:0.8,egi:0.7,shrimp:0.7,golden:0.7",
+  "activity": { "dawn": 1.6, "day": 0.9, "evening": 1.3, "night": 0.5 },
+  "cover": { "seek": 0.20, "reach": 10, "dig": 1.0, "types": ["tet"] },
+  "diet": { "foods": ["shrimp", "sardine"], "style": "grab", "note": "a mid-size sea predator of crustaceans and small fish" }
+}

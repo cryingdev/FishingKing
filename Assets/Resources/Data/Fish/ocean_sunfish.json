@@ -1,0 +1,21 @@
+{
+  "id": "ocean_sunfish",
+  "name": "개복치",
+  "desc": "느긋하고 거대한 바다의 괴짜. 의외로 끈질기다.",
+  "rarity": "epic",
+  "minCm": 100,
+  "maxCm": 250,
+  "weightK": 3.0,
+  "basePrice": 4000,
+  "power": 16,
+  "stamina": 25,
+  "speed": 1.6,
+  "aggression": 0.2,
+  "jump": 0,
+  "depthMin": 2,
+  "depthMax": 7,
+  "baits": "squid:1,shrimp:0.7,golden:0.7",
+  "activity": { "dawn": 0.6, "day": 1.8, "evening": 0.6, "night": 0 },
+  "cover": { "types": [] },
+  "diet": { "foods": ["shrimp"], "style": "grab", "note": "a slow drifter on jellies and crustaceans, not a hunter: shrimp" }
+}

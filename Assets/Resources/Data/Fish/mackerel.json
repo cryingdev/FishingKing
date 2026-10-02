@@ -1,0 +1,21 @@
+{
+  "id": "mackerel",
+  "name": "고등어",
+  "desc": "등의 물결무늬가 멋진 등푸른 생선. 쉴 새 없이 헤엄친다.",
+  "rarity": "common",
+  "minCm": 20,
+  "maxCm": 45,
+  "weightK": 0.9,
+  "basePrice": 50,
+  "power": 2.4,
+  "stamina": 8,
+  "speed": 4.0,
+  "aggression": 0.7,
+  "jump": 0,
+  "depthMin": 1,
+  "depthMax": 4,
+  "baits": "jig:1,shrimp:0.9,spoon:0.6,squid:0.5,sandworm:0.5,golden:0.3,@vertical:0.7",
+  "activity": { "dawn": 1.5, "day": 1.1, "evening": 1.4, "night": 0.4 },
+  "cover": { "types": [] },
+  "diet": { "foods": ["pellet", "shrimp"], "style": "grab", "note": "the same" }
+}

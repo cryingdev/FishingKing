@@ -1,0 +1,22 @@
+{
+  "id": "arctic_char",
+  "name": "북극곤들매기",
+  "desc": "주황빛 배를 가진 극지방의 연어과 물고기.",
+  "rarity": "rare",
+  "minCm": 40,
+  "maxCm": 80,
+  "weightK": 1.1,
+  "basePrice": 800,
+  "power": 7.0,
+  "stamina": 16,
+  "speed": 3.8,
+  "aggression": 0.6,
+  "jump": 0.1,
+  "jumpStyle": "shaker",
+  "depthMin": 2,
+  "depthMax": 6,
+  "baits": "jig:1,egi:0.7,glow:0.6,golden:0.5",
+  "activity": { "dawn": 1.3, "day": 0.7, "evening": 1.3, "night": 0.9 },
+  "cover": { "seek": 0.20, "reach": 0, "dig": 1.0, "types": ["rim"] },
+  "diet": { "foods": ["pellet", "shrimp"], "style": "grab", "note": "an omnivorous char, farmed on pellets" }
+}

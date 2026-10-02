@@ -1,0 +1,23 @@
+{
+  "id": "cherry_salmon",
+  "name": "산천어",
+  "desc": "옆구리의 타원형 무늬가 특징인 계곡의 요정.",
+  "rarity": "common",
+  "minCm": 15,
+  "maxCm": 35,
+  "weightK": 1.1,
+  "basePrice": 45,
+  "power": 1.8,
+  "stamina": 7,
+  "speed": 3.2,
+  "aggression": 0.55,
+  "jump": 0.2,
+  "jumpStyle": "shaker",
+  "depthMin": 1,
+  "depthMax": 4,
+  "baits": "worm:1,spinner:1,spoon:0.7,minnow:0.5,shrimp:0.4,golden:0.3",
+  "activity": { "dawn": 1.5, "day": 0.8, "evening": 1.4, "night": 0.4 },
+  "cover": { "types": [] },
+  "diet": { "foods": ["pellet", "shrimp"], "style": "grab", "note": "a small trout: hatchery pellets, stream shrimp and insects" },
+  "pocketHold": 0.4
+}

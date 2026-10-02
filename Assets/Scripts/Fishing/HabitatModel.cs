@@ -12,7 +12,7 @@ namespace FishingKing
     /// A species' habitat on the generated bed (Docs/terrain_depth_spec.md 7.1): its preferred water depth [a, b], a weight
     /// per bed kind and material, how much it likes an edge, its column, how strongly the habitat steers it (beta), the
     /// period shifts of its depths (m, - shallower) and per-period kind weights, and whether a big one runs for the deep.
-    /// Parsed from a "key:value,..." string (GameDatabase.Habitats).
+    /// Parsed from a "key:value,..." string (the species file's "habitat").
     /// </summary>
     public sealed class HabitatDef
     {

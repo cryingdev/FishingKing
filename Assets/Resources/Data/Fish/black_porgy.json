@@ -1,0 +1,21 @@
+{
+  "id": "black_porgy",
+  "name": "감성돔",
+  "desc": "갯바위 낚시꾼들의 로망. 경계심이 강하다.",
+  "rarity": "rare",
+  "minCm": 25,
+  "maxCm": 60,
+  "weightK": 1.8,
+  "basePrice": 480,
+  "power": 4.5,
+  "stamina": 14,
+  "speed": 3.0,
+  "aggression": 0.55,
+  "jump": 0,
+  "depthMin": 3,
+  "depthMax": 7,
+  "baits": "shrimp:1,sandworm:0.8,corn:0.4,golden:0.5",
+  "activity": { "dawn": 1.4, "day": 0.6, "evening": 1.3, "night": 1.3 },
+  "cover": { "seek": 0.55, "reach": 8, "dig": 1.2, "types": ["tet"], "note": "the sea has no rock cover: that tag never matched and was dropped" },
+  "diet": { "foods": ["pellet", "shrimp"], "style": "grab", "note": "an omnivore (krill, corn, weed)" }
+}

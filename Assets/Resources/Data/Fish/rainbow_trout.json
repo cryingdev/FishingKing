@@ -1,0 +1,23 @@
+{
+  "id": "rainbow_trout",
+  "name": "무지개송어",
+  "desc": "몸의 분홍 띠가 무지개처럼 빛난다. 힘차게 뛰어오른다.",
+  "rarity": "uncommon",
+  "minCm": 25,
+  "maxCm": 65,
+  "weightK": 1.2,
+  "basePrice": 160,
+  "power": 3.5,
+  "stamina": 11,
+  "speed": 3.6,
+  "aggression": 0.6,
+  "jump": 0.4,
+  "jumpStyle": "shaker",
+  "depthMin": 1,
+  "depthMax": 5,
+  "baits": "spoon:1,spinner:0.9,minnow:0.8,worm:0.6,corn:0.3,golden:0.4,@steady:0.7",
+  "activity": { "dawn": 1.4, "day": 0.8, "evening": 1.4, "night": 0.6 },
+  "cover": { "seek": 0.20, "reach": 8, "dig": 0.8, "types": ["rock"] },
+  "diet": { "foods": ["pellet", "shrimp"], "style": "grab", "note": "farmed on pellets; crustaceans give it the pink band" },
+  "pocketHold": 0.5
+}

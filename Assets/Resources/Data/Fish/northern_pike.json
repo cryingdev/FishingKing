@@ -1,0 +1,22 @@
+{
+  "id": "northern_pike",
+  "name": "강꼬치고기",
+  "desc": "오리주둥이 같은 입의 민물 늑대. 순간 가속이 무시무시하다.",
+  "rarity": "uncommon",
+  "minCm": 50,
+  "maxCm": 120,
+  "weightK": 0.7,
+  "basePrice": 350,
+  "power": 8.0,
+  "stamina": 14,
+  "speed": 4.2,
+  "aggression": 0.75,
+  "jump": 0.1,
+  "jumpStyle": "shaker",
+  "depthMin": 1,
+  "depthMax": 5,
+  "baits": "jig:1,softworm:0.7,egi:0.5,golden:0.4,@vertical:0.7",
+  "activity": { "dawn": 1.4, "day": 1.0, "evening": 1.3, "night": 0.3 },
+  "cover": { "seek": 0.55, "reach": 0, "dig": 1.2, "types": ["rim"] },
+  "diet": { "foods": ["shrimp"], "style": "grab", "note": "a mid-size lurking predator" }
+}

@@ -71,7 +71,8 @@ namespace FishingKing
                 : scenario == "panmeasure" ? ap.PanMeasure() : scenario == "pan" ? ap.PanTest()
                 : scenario == "breaks" ? ap.BreaksTest() : scenario == "legendspot" ? ap.LegendSpotTest()
                 : scenario == "music" ? ap.MusicTest() : scenario == "hold" ? ap.HoldTest()
-                : scenario == "depth" ? ap.DepthTest() : scenario == "habitat" ? ap.HabitatSoakTest() : ap.Fish());
+                : scenario == "depth" ? ap.DepthTest() : scenario == "habitat" ? ap.HabitatSoakTest()
+                : scenario == "species" ? ap.SpeciesTest() : ap.Fish());
         }
 
         /// <summary>-fkflick &lt;speed&gt;[:&lt;deg&gt;]: the flick of the fish / walk scenarios' casts (angle null = not given).</summary>

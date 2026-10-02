@@ -1,0 +1,21 @@
+{
+  "id": "horse_mackerel",
+  "name": "전갱이",
+  "desc": "방파제의 단골손님. 옆줄의 단단한 비늘이 특징.",
+  "rarity": "common",
+  "minCm": 15,
+  "maxCm": 40,
+  "weightK": 1.0,
+  "basePrice": 35,
+  "power": 1.8,
+  "stamina": 7,
+  "speed": 3.5,
+  "aggression": 0.6,
+  "jump": 0,
+  "depthMin": 1,
+  "depthMax": 5,
+  "baits": "shrimp:1,sandworm:0.7,jig:0.6,spoon:0.4,golden:0.3",
+  "activity": { "dawn": 1.3, "day": 1.0, "evening": 1.3, "night": 1.1 },
+  "cover": { "types": [] },
+  "diet": { "foods": ["pellet", "shrimp"], "style": "grab", "note": "a schooling krill / plankton eater: pellets or shrimp" }
+}

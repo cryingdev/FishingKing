@@ -1,0 +1,23 @@
+{
+  "id": "great_white",
+  "name": "백상아리",
+  "desc": "바다의 절대 포식자. 티타늄 와이어 없이는 상대할 수 없다.",
+  "rarity": "legendary",
+  "minCm": 300,
+  "maxCm": 500,
+  "weightK": 1.0,
+  "basePrice": 30000,
+  "power": 80,
+  "stamina": 60,
+  "speed": 5.0,
+  "aggression": 0.85,
+  "jump": 0.15,
+  "jumpStyle": "hopper",
+  "depthMin": 3,
+  "depthMax": 8,
+  "baits": "kona:1,jig:0.6",
+  "activity": { "dawn": 1.1, "day": 0.6, "evening": 1.4, "night": 1.5 },
+  "cover": { "seek": 0.45, "reach": 16, "dig": 1.6, "types": ["hull"] },
+  "diet": { "foods": ["sardine"], "style": "surge", "note": "the apex predator" },
+  "encounter": "great_white"
+}

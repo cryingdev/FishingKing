@@ -1,0 +1,21 @@
+{
+  "id": "yellowtail",
+  "name": "방어",
+  "desc": "노란 줄무늬의 힘센 회유어. 겨울에 맛이 오른다.",
+  "rarity": "common",
+  "minCm": 50,
+  "maxCm": 100,
+  "weightK": 1.1,
+  "basePrice": 280,
+  "power": 9.0,
+  "stamina": 16,
+  "speed": 4.5,
+  "aggression": 0.7,
+  "jump": 0,
+  "depthMin": 1,
+  "depthMax": 6,
+  "baits": "jig:1,squid:0.8,kona:0.7,minnow:0.6,golden:0.3",
+  "activity": { "dawn": 1.5, "day": 1.0, "evening": 1.2, "night": 0.4 },
+  "cover": { "seek": 0.40, "reach": 12, "dig": 1.1, "types": ["hull", "rock"], "note": "the ocean's reef pinnacle too" },
+  "diet": { "foods": ["shrimp", "sardine"], "style": "surge", "note": "a fast pelagic hunter of small fish and shrimp" }
+}

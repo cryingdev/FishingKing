@@ -1,0 +1,21 @@
+{
+  "id": "burbot",
+  "name": "모캐",
+  "desc": "차가운 호수 바닥에 사는 민물 대구.",
+  "rarity": "uncommon",
+  "minCm": 30,
+  "maxCm": 80,
+  "weightK": 1.0,
+  "basePrice": 220,
+  "power": 4.0,
+  "stamina": 12,
+  "speed": 2.2,
+  "aggression": 0.4,
+  "jump": 0,
+  "depthMin": 5,
+  "depthMax": 7.5,
+  "baits": "worm:0.8,sandworm:0.6,glow:1,squid:0.5,softworm:0.5,golden:0.4",
+  "activity": { "dawn": 0, "day": 0, "evening": 0, "night": 2.0 },
+  "cover": { "seek": 0.30, "reach": 6, "dig": 1.0, "types": ["rock"] },
+  "diet": { "foods": ["shrimp"], "style": "bottom", "note": "a freshwater cod hunting the bottom at night" }
+}

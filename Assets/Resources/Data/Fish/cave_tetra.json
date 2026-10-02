@@ -1,0 +1,21 @@
+{
+  "id": "cave_tetra",
+  "name": "장님동굴어",
+  "desc": "빛이 없는 동굴에서 눈이 퇴화한 신비한 물고기.",
+  "rarity": "common",
+  "minCm": 6,
+  "maxCm": 12,
+  "weightK": 1.5,
+  "basePrice": 90,
+  "power": 0.8,
+  "stamina": 4,
+  "speed": 3.0,
+  "aggression": 0.5,
+  "jump": 0,
+  "depthMin": 1,
+  "depthMax": 6,
+  "baits": "glow:1,worm:0.5,golden:0.3",
+  "activity": { "dawn": 1.0, "day": 1.0, "evening": 1.0, "night": 1.0 },
+  "cover": { "types": [] },
+  "diet": { "foods": ["pellet"], "style": "grab", "note": "a tiny blind scavenger" }
+}

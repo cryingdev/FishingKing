@@ -1,0 +1,22 @@
+{
+  "id": "snakehead",
+  "name": "가물치",
+  "desc": "뱀 같은 무늬의 늪지 포식자. 개구리 루어에 사족을 못 쓴다.",
+  "rarity": "uncommon",
+  "minCm": 40,
+  "maxCm": 90,
+  "weightK": 1.1,
+  "basePrice": 300,
+  "power": 7.0,
+  "stamina": 15,
+  "speed": 3.2,
+  "aggression": 0.7,
+  "jump": 0.2,
+  "jumpStyle": "shaker",
+  "depthMin": 1,
+  "depthMax": 5,
+  "baits": "frog:1,popper:0.8,minnow:0.8,crank:0.6,worm:0.3,golden:0.4,@topwater:0.8",
+  "activity": { "dawn": 1.5, "day": 0.8, "evening": 1.5, "night": 0.6 },
+  "cover": { "seek": 0.65, "reach": 10, "dig": 1.4, "types": ["pad", "reed", "root", "log"], "note": "the swamp has no weed cover: that tag never matched and was dropped" },
+  "diet": { "foods": ["shrimp"], "style": "grab", "note": "an ambush predator of frogs and fish: no pellets" }
+}

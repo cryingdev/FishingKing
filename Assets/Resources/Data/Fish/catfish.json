@@ -1,0 +1,21 @@
+{
+  "id": "catfish",
+  "name": "메기",
+  "desc": "긴 수염으로 진흙 바닥을 더듬는 야행성 물고기.",
+  "rarity": "common",
+  "minCm": 30,
+  "maxCm": 100,
+  "weightK": 1.0,
+  "basePrice": 110,
+  "power": 5.0,
+  "stamina": 13,
+  "speed": 2.4,
+  "aggression": 0.4,
+  "jump": 0,
+  "depthMin": 3.5,
+  "depthMax": 6,
+  "baits": "worm:1,sandworm:0.5,squid:0.6,softworm:0.5,glow:0.4,golden:0.3",
+  "activity": { "dawn": 0, "day": 0, "evening": 0, "night": 2.0 },
+  "cover": { "seek": 0.45, "reach": 8, "dig": 1.1, "types": ["root", "log"] },
+  "diet": { "foods": ["pellet", "shrimp"], "style": "bottom", "note": "a whiskered bottom scavenger: sinking pellets and shrimp" }
+}

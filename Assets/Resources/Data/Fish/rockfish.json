@@ -1,0 +1,21 @@
+{
+  "id": "rockfish",
+  "name": "우럭",
+  "desc": "바위 사이 깊은 곳에 사는 입 큰 물고기.",
+  "rarity": "uncommon",
+  "minCm": 20,
+  "maxCm": 55,
+  "weightK": 1.7,
+  "basePrice": 140,
+  "power": 3.0,
+  "stamina": 9,
+  "speed": 2.2,
+  "aggression": 0.4,
+  "jump": 0,
+  "depthMin": 4,
+  "depthMax": 7,
+  "baits": "sandworm:1,softworm:0.9,squid:0.8,shrimp:0.7,jig:0.5,golden:0.4,@bottom:0.7",
+  "activity": { "dawn": 1.0, "day": 0.6, "evening": 1.2, "night": 1.6 },
+  "cover": { "seek": 0.75, "reach": 6, "dig": 1.5, "types": ["tet"], "note": "the sea has no rock cover: that tag never matched and was dropped" },
+  "diet": { "foods": ["shrimp"], "style": "bottom", "note": "a rock-bottom ambusher of crabs and shrimp" }
+}

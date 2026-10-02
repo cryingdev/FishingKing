@@ -207,7 +207,16 @@ namespace FishingKing
             if (GameDatabase.GetItem<ReelDef>(d.reel) == null) d.reel = GameDatabase.StarterReel;
             if (GameDatabase.GetItem<LineDef>(d.line) == null) d.line = GameDatabase.StarterLine;
             if (GameDatabase.GetItem<BaitDef>(d.bait) == null) d.bait = GameDatabase.StarterBait;
-            d.aquarium.RemoveAll(f => f == null || GameDatabase.GetFish(f.speciesId) == null);
+            if (GameDatabase.LoadErrors.Count == 0) d.aquarium.RemoveAll(f => f == null || GameDatabase.GetFish(f.speciesId) == null);
+            else
+            {
+                // the species data did not load cleanly (GameDatabase.LoadErrors): a species may only be missing for now,
+                // so its fish are kept rather than dropped and saved
+                d.aquarium.RemoveAll(f => f == null);
+                int kept = 0;
+                foreach (var f in d.aquarium) if (GameDatabase.GetFish(f.speciesId) == null) kept++;
+                if (kept > 0) Debug.LogError($"[DATA] aquarium kept: {kept} fish of unloaded species");
+            }
             if (d.aquariumCollectedAt <= 0) d.aquariumCollectedAt = Now;
             d.level = Mathf.Max(1, d.level);
             d.clockMin = float.IsNaN(d.clockMin) || float.IsInfinity(d.clockMin) ? 600f : Mathf.Clamp(d.clockMin, 0f, 1439.99f);

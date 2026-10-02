@@ -1,0 +1,23 @@
+{
+  "id": "sturgeon",
+  "name": "철갑상어",
+  "desc": "공룡 시대부터 살아온 살아있는 화석.",
+  "rarity": "legendary",
+  "minCm": 120,
+  "maxCm": 280,
+  "weightK": 0.6,
+  "basePrice": 9000,
+  "power": 30,
+  "stamina": 40,
+  "speed": 2.6,
+  "aggression": 0.5,
+  "jump": 0.05,
+  "jumpStyle": "hopper",
+  "depthMin": 5.5,
+  "depthMax": 7.5,
+  "baits": "softworm:1,jig:0.5",
+  "activity": { "dawn": 0.8, "day": 0.6, "evening": 1.0, "night": 1.6 },
+  "cover": { "seek": 0.40, "reach": 0, "dig": 1.5, "types": ["rim"] },
+  "diet": { "foods": ["shrimp"], "style": "bottom", "note": "a bottom feeder vacuuming crustaceans off the gravel" },
+  "encounter": "sturgeon"
+}

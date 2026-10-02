@@ -87,20 +87,6 @@ namespace FishingKing
         }
 
         // ------------------------------------------------------------------ wandering
-        /// <summary>
-        /// Stream holders (Docs/time_currents_spec.md 9.6): how likely a wander target lies inside a slack pocket behind a
-        /// mid-stream rock (so a float led into a pocket meets them).
-        /// </summary>
-        static float HoldChance(string id) => id switch
-        {
-            "mandarin_fish" => 0.8f,
-            "lenok" => 0.5f,
-            "rainbow_trout" => 0.5f,
-            "cherry_salmon" => 0.4f,
-            "pale_chub" => 0.1f,
-            _ => 0f,
-        };
-
         /// <summary>A period began in which this species is not about (a = 0): it leaves at this real time (-1 = no).</summary>
         public float LeaveAt = -1f;
 
@@ -123,7 +109,9 @@ namespace FishingKing
             }
             var cur = stage.Current;
             bool heldInPocket = false;
-            if (cur != null && cur.K == CurrentField.Kind.Stream && Random.value < HoldChance(Sp.id))
+            // stream holders (Docs/time_currents_spec.md 9.6; FishSpecies.pocketHold): how likely a wander target lies inside
+            // a slack pocket behind a mid-stream rock (so a float led into a pocket meets them)
+            if (cur != null && cur.K == CurrentField.Kind.Stream && Random.value < Sp.pocketHold)
             {
                 heldInPocket = true;
                 // hold in the slack behind a rock (a pocket within reach, uniformly in its ellipse)
@@ -150,7 +138,7 @@ namespace FishingKing
             var obs = stage.Obstacles;
             if (obs != null && !obs.Empty && Sp.coverSeek > 0f)
             {
-                bool holder = cur != null && cur.K == CurrentField.Kind.Stream && HoldChance(Sp.id) > 0f;
+                bool holder = cur != null && cur.K == CurrentField.Kind.Stream && Sp.pocketHold > 0f;
                 if (holder ? heldInPocket && Random.value < 0.5f : Random.value < 0.6f * Sp.coverSeek)
                 {
                     // (on the bed: only a cover whose hold has water enough for it)

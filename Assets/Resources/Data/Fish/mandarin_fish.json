@@ -1,0 +1,23 @@
+{
+  "id": "mandarin_fish",
+  "name": "쏘가리",
+  "desc": "바위틈에 숨어 사는 계곡의 제왕. 표범 무늬가 아름답다.",
+  "rarity": "rare",
+  "minCm": 20,
+  "maxCm": 50,
+  "weightK": 1.4,
+  "basePrice": 420,
+  "power": 3.2,
+  "stamina": 12,
+  "speed": 3.0,
+  "aggression": 0.65,
+  "jump": 0.05,
+  "jumpStyle": "hopper",
+  "depthMin": 2,
+  "depthMax": 5,
+  "baits": "minnow:1,softworm:0.8,shrimp:0.6,spoon:0.5,golden:0.5",
+  "activity": { "dawn": 0, "day": 0, "evening": 0, "night": 1.8 },
+  "cover": { "seek": 0.70, "reach": 8, "dig": 1.4, "types": ["rock"] },
+  "diet": { "foods": ["shrimp"], "style": "grab", "note": "쏘가리 take live prey only" },
+  "pocketHold": 0.8
+}

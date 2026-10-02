@@ -67,8 +67,8 @@ namespace FishingKing
     /// <summary>Hopper: short leap. Shaker: hangs in the air whipping its head. TailWalker: skips across the surface on its tail.</summary>
     public enum JumpStyle { Hopper, Shaker, TailWalker }
 
-    /// <summary>The aquarium foods a kept fish eats (AquaCare; the table in GameDatabase.Diets): 사료 pellets, 생새우 live
-    /// shrimp, 정어리 sardines. Omnivores take two.</summary>
+    /// <summary>The aquarium foods a kept fish eats (AquaCare; each species file's "diet", Docs/data_reference.md 2.4): 사료
+    /// pellets, 생새우 live shrimp, 정어리 sardines. Omnivores take two.</summary>
     [System.Flags]
     public enum Diet { None = 0, Pellet = 1, Shrimp = 2, Sardine = 4 }
 
@@ -76,6 +76,10 @@ namespace FishingKing
     /// big ones) surges to the surface and gulps it.</summary>
     public enum FeedStyle { Grab, Bottom, Surge }
 
+    /// <summary>
+    /// A species, read from its file Resources/Data/Fish/&lt;id&gt;.json by <see cref="SpeciesData"/> (Docs/data_reference.md 2;
+    /// the keys there are these fields' names).
+    /// </summary>
     public class FishSpecies
     {
         public string id;
@@ -89,7 +93,7 @@ namespace FishingKing
         public float speed;         // swim speed (units/s) while running
         public float aggression;    // 0..1 tendency to run
         public float jump;          // 0..1 chance to jump when running near the surface
-        public JumpStyle jumpStyle; // how it behaves in the air (see GameDatabase.BuildFish)
+        public JumpStyle jumpStyle; // how it behaves in the air ("jumpStyle" in the species file)
         public float depthMin, depthMax; // preferred depth below the surface (units)
         public Dictionary<string, float> baitPrefs = new Dictionary<string, float>();
         /// <summary>How much it likes a lure action in general ("@twitch:0.8" in the preference string).</summary>
@@ -105,11 +109,21 @@ namespace FishingKing
         // rim, hull, crystal)
         public float coverSeek, coverReach, coverDig = 1f;
         public string[] coverFor;
-        /// <summary>Where it lives on a generated bed (Docs/terrain_depth_spec.md 7; GameDatabase.Habitats): null = h 1 everywhere, today's swim depths.</summary>
+        /// <summary>Where it lives on a generated bed (Docs/terrain_depth_spec.md 7; the species file's "habitat"): null = h 1 everywhere, today's swim depths.</summary>
         public HabitatDef habitat;
-        // ---- the aquarium (GameDatabase.Diets): the foods it eats and how it takes a dropped piece
+        // ---- the aquarium (the species file's "diet"): the foods it eats and how it takes a dropped piece
         public Diet diet = Diet.Pellet;
         public FeedStyle feedStyle;
+        /// <summary>
+        /// How active it is in each period, in Period order (새벽, 낮, 저녁, 밤; the species file's "activity"; read through
+        /// <see cref="TimeActivity"/>, Docs/time_currents_spec.md 6).
+        /// </summary>
+        public float[] activity;
+        /// <summary>
+        /// The stream's pocket holders (Docs/time_currents_spec.md 9.6; "pocketHold"): how likely a wander target lies inside
+        /// a slack pocket behind a mid-stream rock (0 = never, every species off the stream).
+        /// </summary>
+        public float pocketHold;
 
         public float Pref(string baitId) => baitPrefs.TryGetValue(baitId, out float v) ? v : 0f;
 

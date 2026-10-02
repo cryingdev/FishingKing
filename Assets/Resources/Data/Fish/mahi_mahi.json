@@ -1,0 +1,22 @@
+{
+  "id": "mahi_mahi",
+  "name": "만새기",
+  "desc": "형광빛 몸에 튀어나온 이마. 화려한 점프의 달인.",
+  "rarity": "uncommon",
+  "minCm": 60,
+  "maxCm": 150,
+  "weightK": 0.7,
+  "basePrice": 520,
+  "power": 12,
+  "stamina": 18,
+  "speed": 5.0,
+  "aggression": 0.7,
+  "jump": 0.6,
+  "jumpStyle": "tailWalker",
+  "depthMin": 0.5,
+  "depthMax": 3,
+  "baits": "popper:1,minnow:1,kona:0.9,squid:0.8,jig:0.6,golden:0.4",
+  "activity": { "dawn": 1.1, "day": 1.4, "evening": 1.0, "night": 0.3 },
+  "cover": { "seek": 0.45, "reach": 12, "dig": 1.0, "types": ["weed"], "note": "under the drifting weed mat" },
+  "diet": { "foods": ["shrimp", "sardine"], "style": "surge", "note": "a surface predator of flying fish, squid and shrimp" }
+}

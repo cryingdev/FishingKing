@@ -1,0 +1,23 @@
+{
+  "id": "arapaima",
+  "name": "피라루쿠",
+  "desc": "세계 최대급 민물고기. 붉은 비늘을 가진 고대어.",
+  "rarity": "legendary",
+  "minCm": 150,
+  "maxCm": 300,
+  "weightK": 1.0,
+  "basePrice": 6000,
+  "power": 24,
+  "stamina": 35,
+  "speed": 3.2,
+  "aggression": 0.6,
+  "jump": 0.3,
+  "jumpStyle": "shaker",
+  "depthMin": 2,
+  "depthMax": 5.5,
+  "baits": "frog:1,popper:0.8",
+  "activity": { "dawn": 1.3, "day": 1.1, "evening": 1.0, "night": 0.6 },
+  "cover": { "seek": 0.60, "reach": 14, "dig": 1.6, "types": ["root", "log"], "note": "the swamp has no weed cover: that tag never matched and was dropped" },
+  "diet": { "foods": ["sardine"], "style": "surge", "note": "a giant that gulps fish at the surface" },
+  "encounter": "arapaima"
+}

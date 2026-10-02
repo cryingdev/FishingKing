@@ -1,0 +1,23 @@
+{
+  "id": "lenok",
+  "name": "열목어",
+  "desc": "차가운 1급수에만 사는 귀한 물고기. 눈이 붉게 빛난다.",
+  "rarity": "epic",
+  "minCm": 30,
+  "maxCm": 70,
+  "weightK": 1.1,
+  "basePrice": 950,
+  "power": 4.5,
+  "stamina": 16,
+  "speed": 3.8,
+  "aggression": 0.6,
+  "jump": 0.3,
+  "jumpStyle": "shaker",
+  "depthMin": 2,
+  "depthMax": 5,
+  "baits": "spoon:1,spinner:0.8,minnow:0.8,worm:0.3,golden:0.7",
+  "activity": { "dawn": 1.6, "day": 0.5, "evening": 1.6, "night": 0.8 },
+  "cover": { "seek": 0.25, "reach": 8, "dig": 1.0, "types": ["rock"] },
+  "diet": { "foods": ["shrimp"], "style": "grab", "note": "a cold-stream salmonid predator of insects and small prey" },
+  "pocketHold": 0.5
+}

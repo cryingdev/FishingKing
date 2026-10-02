@@ -55,6 +55,13 @@ namespace FishingKing.EditorTools
         [MenuItem("FishingKing/Build Windows")]
         public static void BuildWindows()
         {
+            // the species data first (Docs/data_reference.md 2.7): nothing is built from data the validator rejects
+            if (!SpeciesValidator.Gate())
+            {
+                if (Application.isBatchMode) EditorApplication.Exit(1);
+                else EditorUtility.DisplayDialog("Build Windows", "The species data has errors (see the Console): nothing was built.", "OK");
+                return;
+            }
             var scenes = System.Array.ConvertAll(EditorBuildSettings.scenes, s => s.path);
             // -fkBuildOut <dir>: build somewhere else (e.g. while Builds/Windows is in use); default Builds/Windows
             string outDir = "Builds/Windows";

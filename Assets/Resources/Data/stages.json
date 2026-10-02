@@ -1,0 +1,131 @@
+{
+  "stages": [
+    {
+      "id": "lake",
+      "name": "고요한 호수",
+      "subtitle": "낚시를 처음 배우기 좋은 잔잔한 호수",
+      "difficulty": 1,
+      "reqLevel": 1,
+      "unlockCost": 0,
+      "powerMult": 1.0,
+      "biteMult": 1.1,
+      "population": 8,
+      "fish": [
+        { "id": "crucian_carp", "weight": 40 },
+        { "id": "bluegill", "weight": 35 },
+        { "id": "carp", "weight": 16 },
+        { "id": "largemouth_bass", "weight": 14 },
+        { "id": "golden_carp", "weight": 1.2 }
+      ]
+    },
+    {
+      "id": "stream",
+      "name": "산골 계곡",
+      "subtitle": "차갑고 맑은 물이 흐르는 계곡",
+      "difficulty": 2,
+      "reqLevel": 2,
+      "unlockCost": 1200,
+      "powerMult": 1.0,
+      "biteMult": 1.0,
+      "population": 8,
+      "fish": [
+        { "id": "pale_chub", "weight": 40 },
+        { "id": "cherry_salmon", "weight": 30 },
+        { "id": "rainbow_trout", "weight": 18 },
+        { "id": "mandarin_fish", "weight": 8 },
+        { "id": "lenok", "weight": 3 }
+      ]
+    },
+    {
+      "id": "sea",
+      "name": "바다 방파제",
+      "subtitle": "파도가 부서지는 테트라포드 방파제",
+      "difficulty": 3,
+      "reqLevel": 4,
+      "unlockCost": 6000,
+      "powerMult": 1.05,
+      "biteMult": 1.0,
+      "population": 9,
+      "fish": [
+        { "id": "horse_mackerel", "weight": 35 },
+        { "id": "mackerel", "weight": 30 },
+        { "id": "rockfish", "weight": 20 },
+        { "id": "flounder", "weight": 14 },
+        { "id": "black_porgy", "weight": 8 },
+        { "id": "red_seabream", "weight": 3 }
+      ]
+    },
+    {
+      "id": "swamp",
+      "name": "안개 늪지",
+      "subtitle": "안개 속에 괴어가 숨어 있는 늪",
+      "difficulty": 3,
+      "reqLevel": 6,
+      "unlockCost": 15000,
+      "powerMult": 1.1,
+      "biteMult": 0.95,
+      "population": 8,
+      "fish": [
+        { "id": "piranha", "weight": 35 },
+        { "id": "catfish", "weight": 28 },
+        { "id": "snakehead", "weight": 20 },
+        { "id": "arowana", "weight": 7 },
+        { "id": "arapaima", "weight": 1.5 }
+      ]
+    },
+    {
+      "id": "ice",
+      "name": "얼음 호수",
+      "subtitle": "얼음 구멍 아래로 미끼를 내리는 빙어낚시",
+      "difficulty": 4,
+      "reqLevel": 8,
+      "unlockCost": 35000,
+      "powerMult": 1.15,
+      "biteMult": 0.95,
+      "population": 8,
+      "fish": [
+        { "id": "smelt", "weight": 45 },
+        { "id": "burbot", "weight": 22 },
+        { "id": "northern_pike", "weight": 18 },
+        { "id": "arctic_char", "weight": 9 },
+        { "id": "sturgeon", "weight": 1.5 }
+      ]
+    },
+    {
+      "id": "ocean",
+      "name": "먼바다",
+      "subtitle": "배를 타고 나가는 대물 트롤링",
+      "difficulty": 5,
+      "reqLevel": 11,
+      "unlockCost": 80000,
+      "powerMult": 1.2,
+      "biteMult": 0.9,
+      "population": 7,
+      "fish": [
+        { "id": "yellowtail", "weight": 34 },
+        { "id": "mahi_mahi", "weight": 26 },
+        { "id": "bluefin_tuna", "weight": 14 },
+        { "id": "ocean_sunfish", "weight": 7 },
+        { "id": "blue_marlin", "weight": 2.5 },
+        { "id": "great_white", "weight": 1.2 }
+      ]
+    },
+    {
+      "id": "cave",
+      "name": "수정 동굴",
+      "subtitle": "빛나는 수정 아래 고대어가 잠든 지하 호수",
+      "difficulty": 5,
+      "reqLevel": 14,
+      "unlockCost": 200000,
+      "powerMult": 1.25,
+      "biteMult": 0.9,
+      "population": 7,
+      "fish": [
+        { "id": "cave_tetra", "weight": 40 },
+        { "id": "crystal_koi", "weight": 12 },
+        { "id": "anglerfish", "weight": 10 },
+        { "id": "coelacanth", "weight": 2 }
+      ]
+    }
+  ]
+}

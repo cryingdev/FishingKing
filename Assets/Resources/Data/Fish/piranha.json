@@ -1,0 +1,22 @@
+{
+  "id": "piranha",
+  "name": "피라냐",
+  "desc": "날카로운 이빨의 늪지 무법자. 떼로 몰려다닌다.",
+  "rarity": "common",
+  "minCm": 15,
+  "maxCm": 35,
+  "weightK": 2.2,
+  "basePrice": 60,
+  "power": 2.2,
+  "stamina": 6,
+  "speed": 3.8,
+  "aggression": 0.8,
+  "jump": 0.05,
+  "jumpStyle": "hopper",
+  "depthMin": 1,
+  "depthMax": 5,
+  "baits": "worm:0.8,squid:0.6,shrimp:0.7,minnow:0.6,spinner:0.5,golden:0.3",
+  "activity": { "dawn": 0.9, "day": 1.4, "evening": 1.0, "night": 0.5 },
+  "cover": { "types": [] },
+  "diet": { "foods": ["pellet", "shrimp"], "style": "grab", "note": "an omnivorous scavenger" }
+}

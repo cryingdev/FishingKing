@@ -1,0 +1,21 @@
+{
+  "id": "anglerfish",
+  "name": "초롱아귀",
+  "desc": "머리의 초롱불로 먹이를 꾀어내는 심연의 사냥꾼.",
+  "rarity": "epic",
+  "minCm": 40,
+  "maxCm": 100,
+  "weightK": 2.5,
+  "basePrice": 4500,
+  "power": 12,
+  "stamina": 20,
+  "speed": 2.4,
+  "aggression": 0.6,
+  "jump": 0,
+  "depthMin": 5,
+  "depthMax": 7.5,
+  "baits": "glow:0.8,egi:0.8,squid:0.6,jig:0.5,golden:0.7",
+  "activity": { "dawn": 1.0, "day": 0.8, "evening": 1.0, "night": 1.4 },
+  "cover": { "seek": 0.40, "reach": 8, "dig": 1.1, "types": ["rock"] },
+  "diet": { "foods": ["sardine"], "style": "bottom", "note": "lies on the bottom and engulfs the fish its lure brings in" }
+}

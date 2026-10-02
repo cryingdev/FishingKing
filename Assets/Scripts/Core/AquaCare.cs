@@ -52,7 +52,7 @@ namespace FishingKing
     /// ~ length^3, value by the catch-time formula at the grown size. Viewing income per fish = max(1, 0.003 x rarity
     /// weight x value) coins/min, x1.2 fed / x0.7 hungry, banked piecewise so feeding mid-window is exact and capped
     /// at 12 h after the last collect (as before). Each species eats only the foods of its diet (FishSpecies.diet:
-    /// pellets, live shrimp, sardines; GameDatabase.Diets); a shrimp fills 40 %, a sardine 100 %, both digest like the
+    /// pellets, live shrimp, sardines; each species file's "diet"); a shrimp fills 40 %, a sardine 100 %, both digest like the
     /// basic feed. The tank's decorations and dirt (<see cref="AquaTank"/>) multiply the income (+decor, -dirt: banked at
     /// the span's average dirt). Test switches: -fkaquahours &lt;h&gt; fast-forwards the tank at boot (-fkaquafeed
     /// basic|premium|shrimp|sardine keeps it fed meanwhile), -fkaqualog logs [AQUA] lines, -fkaquadirt &lt;0..1&gt; sets
