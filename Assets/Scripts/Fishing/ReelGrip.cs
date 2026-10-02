@@ -24,11 +24,14 @@ namespace FishingKing
         /// What the reel covers (the arrow's orbit and the two-line label over it), in canvas units from the canvas's
         /// bottom-right corner (x negative), for overlays to keep clear of.
         /// </summary>
-        public static Rect Zone => Rect.MinMaxRect(ReelPos.x - ArrowArt * Units * 0.5f - 12f, 0f, 0f, ReelPos.y + 110f + 21f + 6f);
+        public static Rect Zone => Rect.MinMaxRect(ReelPos.x - ArrowArt * Units * 0.5f - 12f, 0f, 0f, ReelPos.y + SpoolTextY + 11f + 6f);
+        // the spool readout over the help label: what more line the reel can give, and a bar of it
+        const float SpoolBarY = 140f, SpoolTextY = 156f;
 
         RectTransform root;
         Image face, handle, ring, arrow;
-        Text label;
+        Text label, spoolText;
+        Image spoolFill;
         CircleGesture g;
         Sprite windArrow, giveArrow;
         bool tintArrow;
@@ -58,6 +61,27 @@ namespace FishingKing
                 tintArrow ? new Vector2(9, 7) * Units * 1.5f : Vector2.one * ArrowArt * Units, "Arrow");
             label = UIKit.Label(root, "원을 그려 감기", 15, UIKit.Cream);
             label.rectTransform.At(new Vector2(0.5f, 0.5f), ReelPos + new Vector2(0, 100), new Vector2(170, 22));
+            spoolFill = UIKit.Bar(root, new Vector2(124, 12), WindColor, "Spool");
+            ((RectTransform)spoolFill.transform.parent).At(new Vector2(0.5f, 0.5f), ReelPos + new Vector2(0, SpoolBarY), new Vector2(124, 12));
+            spoolText = UIKit.Label(root, "", 15, UIKit.Cream);
+            spoolText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            spoolText.rectTransform.At(new Vector2(0.5f, 0.5f), ReelPos + new Vector2(0, SpoolTextY), new Vector2(190, 22));
+        }
+
+        /// <summary>
+        /// The spool over the reel: how much more line it can give (<paramref name="cap"/>: the reel's capacity or what is
+        /// left on the spool, whichever is less; <paramref name="lineOut"/> out now) as text and a bar of what is left,
+        /// green, gold from 70 % out, red from 90 %.
+        /// </summary>
+        public void SetSpool(float lineOut, float cap)
+        {
+            float used = cap > 0.01f ? Mathf.Clamp01(lineOut / cap) : 1f;
+            string t = $"남은 줄 {Mathf.Max(0f, cap - lineOut):0}m";
+            if (spoolText.text != t) spoolText.text = t;
+            var c = used >= 0.9f ? UIKit.Bad : used >= 0.7f ? UIKit.Gold : WindColor;
+            spoolFill.color = c;
+            spoolText.color = used >= 0.7f ? c : UIKit.Cream;
+            UIKit.SetBar(spoolFill, 1f - used);
         }
 
         public void Show(bool on) => root.gameObject.SetActive(on);

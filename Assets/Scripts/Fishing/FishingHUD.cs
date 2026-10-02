@@ -33,8 +33,12 @@ namespace FishingKing
         // at least 960 wide, so the pair (from 160 units in from the right edge) never covers him or the props at his feet
         const float WalkBtn = 64, WalkGap = 12, WalkInset = 20, WalkBottom = 26;
         Text hint, flash, tensionLabel, fishName, distance, phaseLabel, baitCount, depthText, aimText, depthLabel;
-        /// <summary>The line out and left on the spool, above the 회수 button (no line: what to do).</summary>
-        Text lineText;
+        /// <summary>At the reel's place while it is hidden (ready): the spool and the reel (no line: what to do).</summary>
+        Text spotText;
+        /// <summary>Over the float: the line out while it changes.</summary>
+        Text floatText;
+        CanvasGroup floatGroup;
+        float floatLast = -1f, floatIdle;
         RectTransform stageName;
         TopBar topBar;
         CanvasGroup hintGroup;
@@ -138,9 +142,17 @@ namespace FishingKing
             retrieveBtn = UIKit.Button(root, "회수", "blue", () => ctl.Retrieve(), new Vector2(96, 48), 20);
             retrieveBtn.GetComponent<RectTransform>().At(new Vector2(1, 0), new Vector2(-200, 16), new Vector2(96, 48), new Vector2(1, 0)); // clear of the reel's arrow orbit
             reel = ReelGrip.Create(root, ctl.Gesture);
-            lineText = UIKit.Label(root, "", 16, UIKit.Cream, TextAnchor.LowerRight);
-            lineText.horizontalOverflow = HorizontalWrapMode.Overflow;
-            lineText.rectTransform.At(new Vector2(1, 0), new Vector2(-200, 16 + 48 + 4), new Vector2(300, 22), new Vector2(1, 0));
+            spotText = UIKit.Label(root, "", 16, UIKit.Cream);
+            // (over the walk buttons, which take the reel's place while ready)
+            spotText.rectTransform.At(new Vector2(1, 0), new Vector2(-110, WalkBottom + WalkBtn + 8f + 23f), new Vector2(200, 46), new Vector2(0.5f, 0.5f));
+            floatText = UIKit.Label(root, "", 16, UIKit.Cream, TextAnchor.LowerCenter, true, "FloatLine");
+            floatText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            floatText.rectTransform.anchorMin = floatText.rectTransform.anchorMax = root.pivot;
+            floatText.rectTransform.pivot = new Vector2(0.5f, 0f);
+            floatText.rectTransform.sizeDelta = new Vector2(120, 22);
+            floatGroup = floatText.gameObject.AddComponent<CanvasGroup>();
+            floatGroup.alpha = 0f;
+            floatGroup.blocksRaycasts = false;
 
             // bottom-right: walk left / right (hold); only while ready, when the reel and retrieve button are hidden
             walkL = WalkButton("◀", "WalkLeft", -(WalkInset + WalkBtn + WalkGap), out holdL);
@@ -596,27 +608,49 @@ namespace FishingKing
         }
 
         /// <summary>
-        /// The line readout: out with the rig (waiting, winding in, a bite) the line out and what is left on the spool; at
-        /// the ready what is left; no line (thrown away): where to get one. Hidden in a fight or a snag (their strip shows
-        /// the line out) and in an encounter.
+        /// The line readouts: over the reel what more it can give (ReelGrip.SetSpool: the reel's capacity or the spool,
+        /// whichever is less, less the line out); at the reel's place while it is hidden (ready) the spool and the reel, or,
+        /// with no line (thrown away), where to get one; over the float the line out while it changes (fading after 2 s
+        /// still), not in a bite (its "!" is there), a fight or a snag (their strip shows it).
         /// </summary>
-        void UpdateLineText()
+        void UpdateLineText(float dt)
         {
-            if (lineText == null) return;
+            if (spotText == null) return;
             var s = ctl.State;
+            var g = Game.I;
             bool ready = s == FishingController.S.Ready || s == FishingController.S.Aiming;
-            bool rigOut = s == FishingController.S.Waiting || s == FishingController.S.Retrieving || s == FishingController.S.Biting;
-            string text = "";
-            var col = UIKit.Cream;
-            if (!Game.I.HasLine && (ready || rigOut))
+            bool lineOut = s == FishingController.S.Waiting || s == FishingController.S.Biting || s == FishingController.S.Fighting || s == FishingController.S.Snagged;
+            float cap = ctl.Fight != null ? ctl.Fight.SpoolCap : Mathf.Min(g.Reel.lineCap, g.LineLeftNow);
+            reel.SetSpool(lineOut ? ctl.LineOut : 0f, cap);
+            string t = !ready ? "" : g.HasLine ? $"감긴 줄 {g.LineLeftNow:0}m\n릴 {g.Reel.lineCap:0}m" : "줄 없음\n지도 상점에서 장착";
+            if (spotText.text != t) spotText.text = t;
+            spotText.color = g.HasLine ? UIKit.Cream : UIKit.Bad;
+            var tk = ctl.Tackle;
+            bool show = (s == FishingController.S.Waiting || s == FishingController.S.Retrieving)
+                        && (tk.State == Tackle.Mode.Water || tk.State == Tackle.Mode.Perched) && PixelView.Current != null;
+            if (!show)
             {
-                text = "줄 없음 — 지도의 상점에서 장착";
-                col = UIKit.Bad;
+                floatGroup.alpha = 0f;
+                floatLast = -1f;
+                return;
             }
-            else if (rigOut) text = $"줄 {ctl.LineOut:0.0}m · 남은 {Game.I.LineLeftNow:0}m";
-            else if (ready) text = $"남은 줄 {Game.I.LineLeftNow:0}m";
-            if (lineText.text != text) lineText.text = text;
-            lineText.color = col;
+            if (Mathf.Abs(ctl.LineOut - floatLast) >= 0.05f)
+            {
+                floatLast = ctl.LineOut;
+                floatIdle = 0f;
+            }
+            else floatIdle += dt;
+            floatGroup.alpha = floatIdle < 2f ? 1f : Mathf.Clamp01(1f - (floatIdle - 2f) / 0.5f);
+            string ft = $"{ctl.LineOut:0.0}m";
+            if (floatText.text != ft) floatText.text = ft;
+            // just over the float's top (where a bite's "!" goes), kept on screen under the top bar
+            var at = tk.State == Tackle.Mode.Perched ? tk.PerchAt : tk.Surface;
+            var w = ctl.Stage.P.To2D(at) + new Vector2(0f, tk.UsesFloat ? tk.FloatScale * 0.95f + 0.15f : 0.25f);
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(root, PixelView.Current.WorldToScreen(w), null, out var local);
+            var half = root.rect.size * 0.5f;
+            local.x = Mathf.Clamp(local.x, -half.x + 60f, half.x - 60f);
+            local.y = Mathf.Clamp(local.y, -half.y + 20f, half.y - 170f);
+            floatText.rectTransform.anchoredPosition = local;
         }
 
         public void RefreshTackle()
@@ -769,7 +803,7 @@ namespace FishingKing
 
         public void Tick(float dt)
         {
-            UpdateLineText();
+            UpdateLineText(dt);
             if (flashTime > 0)
             {
                 flashTime -= dt;
