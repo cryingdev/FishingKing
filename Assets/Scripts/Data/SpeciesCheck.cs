@@ -324,9 +324,18 @@ namespace FishingKing
                     if (string.IsNullOrEmpty(hab)) E("E9", file, $"habitat is required on a generated bed ({string.Join(", ", stages.Where(s => TerrainRecipes.For(s) != null))})");
                     else
                     {
+                        // (Docs/lake_phase2_spec.md A3: the depth band relative to the lake, in percentiles; the shifts in points)
                         var parts = hab.Split(',').Select(p => p.Trim()).ToList();
-                        if (!parts.Any(p => p.StartsWith("depth:"))) E("E9", file, "habitat needs its depth (depth:a-b)");
+                        var h = sp.habitat;
+                        if (!parts.Any(p => p.StartsWith("depth:"))) E("E9", file, "habitat needs its depth (depth:pA-pB, percentiles of the lake's depths)");
                         if (!parts.Any(p => p.StartsWith("col:"))) E("E9", file, "habitat needs its column (col:mid | col:bottom)");
+                        if (h != null && (h.depthM || h.shiftM))
+                            E("E9", file, "habitat mixes units: on a generated bed the depth is relative (depth:pA-pB) and the shifts in points (@period:Np), not metres");
+                        if (h != null && h.depthP && !(h.pa >= 0f && h.pa < h.pb && h.pb <= 100f && h.pb - h.pa >= HabitatModel.MinBand))
+                            E("E9", file, $"habitat depth p{N(h.pa)}-p{N(h.pb)}: needs 0 <= A < B <= 100 and B - A >= {N(HabitatModel.MinBand)}");
+                        if (h != null && h.shiftPct)
+                            for (int p = 0; p < 4; p++)
+                                if (!(Mathf.Abs(h.shiftP[p]) <= 50f)) E("E9", file, $"habitat @{SpeciesData.ActivityKeys[p]}:{N(h.shiftP[p])}p: a shift is at most 50 points");
                     }
                 }
                 else if (!string.IsNullOrEmpty(hab) && !terrain) W(file, "habitat is given but never read (none of its stages has a generated bed)");

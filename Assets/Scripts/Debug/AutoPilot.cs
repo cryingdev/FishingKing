@@ -62,6 +62,10 @@ namespace FishingKing
             string scenario = i + 1 < args.Length ? args[i + 1] : "fish";
             // -fkoccwatch: the per-frame occlusion detector watches the whole run (the occlusion scenario always has it)
             if (Array.IndexOf(args, "-fkoccwatch") >= 0 || scenario == "occlusion") OcclusionWatch.Ensure(ap.shots, true);
+            // the scenarios that need a fish to come when they put the rig by it: every fish in reach is feeding (the
+            // lake's per-encounter roll off, Docs/lake_phase2_spec.md A5)
+            if (scenario == "breaks" || scenario == "obstacles" || scenario == "lure" || scenario == "hold" || scenario == "steer"
+                || scenario == "pan" || scenario == "occlusion" || scenario == "zoom") FishingController.FeedAll = true;
             ap.StartCoroutine(scenario == "tour" ? ap.Tour() : scenario == "walk" ? ap.Walk() : scenario == "flick" ? ap.FlickTest()
                 : scenario == "windup" ? ap.WindupShots() : scenario == "lure" ? ap.LureTest() : scenario == "encounter" ? ap.EncounterTest()
                 : scenario == "steer" ? ap.SteerTest() : scenario == "periods" ? ap.PeriodsTest() : scenario == "current" ? ap.CurrentTest()
@@ -71,7 +75,7 @@ namespace FishingKing
                 : scenario == "panmeasure" ? ap.PanMeasure() : scenario == "pan" ? ap.PanTest()
                 : scenario == "breaks" ? ap.BreaksTest() : scenario == "legendspot" ? ap.LegendSpotTest()
                 : scenario == "music" ? ap.MusicTest() : scenario == "hold" ? ap.HoldTest()
-                : scenario == "depth" ? ap.DepthTest() : scenario == "habitat" ? ap.HabitatSoakTest()
+                : scenario == "depth" ? ap.DepthTest() : scenario == "economy" ? ap.EconomySoakTest()
                 : scenario == "species" ? ap.SpeciesTest() : ap.Fish());
         }
 

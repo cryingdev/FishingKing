@@ -9,13 +9,13 @@
       "unlockCost": 0,
       "powerMult": 1.0,
       "biteMult": 1.1,
-      "population": 8,
+      "population": 15,
       "fish": [
-        { "id": "crucian_carp", "weight": 40 },
-        { "id": "bluegill", "weight": 35 },
-        { "id": "carp", "weight": 16 },
-        { "id": "largemouth_bass", "weight": 14 },
-        { "id": "golden_carp", "weight": 1.2 }
+        { "id": "crucian_carp" },
+        { "id": "bluegill" },
+        { "id": "carp" },
+        { "id": "largemouth_bass" },
+        { "id": "golden_carp" }
       ]
     },
     {

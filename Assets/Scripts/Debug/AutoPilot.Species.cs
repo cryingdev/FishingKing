@@ -97,9 +97,10 @@ namespace FishingKing
         }
 
         /// <summary>
-        /// spawn_baseline.txt: per stage, clock point and gear, each species' share of 5000 Pick draws (seeded), and per
-        /// stage, period and bait the stock's bite mass (sum of weight x a x sqrt(a) x appeal over its ordinary species,
-        /// the depth test's D11 share). The reference a later rebalance is compared with.
+        /// spawn_baseline.txt: per stage, clock point and gear, each species' share of 5000 Pick draws (seeded; a detached
+        /// spawner: base x activity, no bed), per stage, period and bait the stock's bite mass (sum of weight x a x sqrt(a) x
+        /// appeal over its ordinary species), and a generated bed's derived weights on world seed 1. The reference a later
+        /// rebalance is compared with.
         /// </summary>
         string SpawnBaseline()
         {
@@ -142,6 +143,25 @@ namespace FishingKing
                     mass += kv.Value * a * Mathf.Sqrt(Mathf.Max(0f, a)) * sp.Appeal(b);
                 }
                 if (mass > 0) sb.Append(string.Format(CIs, "{0} {1} {2} {3:0.000}\n", st.id, GameClock.Id((Period)p), b.id, mass));
+            }
+            // a generated bed's derived weights (Docs/lake_phase2_spec.md A4) on world seed 1: the pure derivation, no stage
+            sb.Append("# derived weights: stage seed species -> base, availability A and W = base x A x a per period (dawn day evening night)\n");
+            foreach (var st in GameDatabase.Stages)
+            {
+                if (!st.Derived) continue;
+                var bed = Bathymetry.For(Art.Layout(st.id), 1);
+                if (bed == null) continue;
+                var ins = new List<HabitatModel.WeightIn>();
+                foreach (var kv in st.spawns)
+                {
+                    var sp = GameDatabase.GetFish(kv.Key);
+                    if (sp == null || sp.encounter != null) continue;
+                    ins.Add(new HabitatModel.WeightIn { s = FishHabitat.HabOf(sp, bed), baseW = kv.Value, act = new[] { TimeActivity.A(sp.id, Period.Dawn), TimeActivity.A(sp.id, Period.Day), TimeActivity.A(sp.id, Period.Evening), TimeActivity.A(sp.id, Period.Night) } });
+                }
+                var d = HabitatModel.DerivedWeights(bed, ins);
+                for (int s = 0; s < d.ids.Length; s++)
+                    sb.Append(string.Format(CIs, "{0} 1 {1} base {2:0.###}{3} A {4:0.000}/{5:0.000}/{6:0.000}/{7:0.000} W {8:0.000}/{9:0.000}/{10:0.000}/{11:0.000}\n", st.id, d.ids[s], ins[s].baseW,
+                        st.GivenWeight.TryGetValue(d.ids[s], out bool g) && g ? " (given)" : "", d.A[s, 0], d.A[s, 1], d.A[s, 2], d.A[s, 3], d.W[s, 0], d.W[s, 1], d.W[s, 2], d.W[s, 3]));
             }
             GameClock.Set(clockWas);
             SetGear(rodWas, baitWas);

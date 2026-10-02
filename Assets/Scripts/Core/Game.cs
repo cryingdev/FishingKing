@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 
@@ -198,6 +199,11 @@ namespace FishingKing
                         case "show": Bathymetry.Show = true; break;
                         case "dump": Bathymetry.Dump = true; break;
                     }
+            // -fkecomode legacy: today's lake for the economy's A/B (Docs/lake_phase2_spec.md A7): no bed, 8 fish of the legacy
+            // stock (crucian 40, bluegill 35, carp 16, bass 14), no feeding roll; any scenario
+            if (Arg("-fkecomode") == "legacy") LegacyLake();
+            // -fkfeedall: every fish in reach of the rig is feeding (the per-encounter roll off; no draw)
+            if (Flag("-fkfeedall")) FishingController.FeedAll = true;
             string jump = Arg("-fkjump");
             if (!string.IsNullOrEmpty(jump) && Enum.TryParse(jump, true, out FightModel.JumpKind kind)) FightModel.ForceJump = kind;
             string scene = Arg("-fkscene");
@@ -206,6 +212,21 @@ namespace FishingKing
                 SceneFlow.PendingStage = Arg("-fkstage");
                 UnityEngine.SceneManagement.SceneManager.LoadScene(scene);
             }
+        }
+
+        /// <summary>-fkecomode legacy: the lake as before its bed (Bathymetry off, population 8, the legacy stock's weights; its legend kept).</summary>
+        static void LegacyLake()
+        {
+            Bathymetry.Off = true;
+            var st = GameDatabase.GetStage("lake");
+            if (st == null) return;
+            st.population = LakeEconomy.PopToday;
+            var legends = st.spawns.Where(kv => GameDatabase.GetFish(kv.Key)?.encounter != null).ToList();
+            st.spawns.Clear();
+            for (int i = 0; i < LakeEconomy.LegacyIds.Length; i++)
+                st.spawns.Add(new KeyValuePair<string, float>(LakeEconomy.LegacyIds[i], LakeEconomy.LegacyW[i]));
+            st.spawns.AddRange(legends);
+            Debug.Log("[ECO] -fkecomode legacy: the lake without its bed, population " + st.population + ", stock " + string.Join(", ", st.spawns.Select(kv => kv.Key + " " + kv.Value)));
         }
 
         void OnApplicationPause(bool pause)

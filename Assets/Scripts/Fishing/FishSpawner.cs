@@ -74,8 +74,9 @@ namespace FishingKing
                 if (sp == null) continue;
                 // a legend met through the underwater encounter never swims about as an ordinary fish
                 if (sp.encounter != null) continue;
-                // x its activity at this time of day (0: not about now; Docs/time_currents_spec.md 6)
-                float w = kv.Value * TimeActivity.A(sp.id, look);
+                // x its activity at this time of day (0: not about now; Docs/time_currents_spec.md 6); on a generated bed also
+                // x how much of its habitat the lake has (Docs/lake_phase2_spec.md A4: the roster's weight is the base)
+                float w = ctl != null && ctl.Habitat != null ? ctl.Habitat.SpawnWeight(sp, kv.Value, look) : kv.Value * TimeActivity.A(sp.id, look);
                 if (sp.rarity >= Rarity.Rare) w *= rod.luck;
                 if (sp.rarity >= Rarity.Epic) w *= bait.rareBoost;
                 if (sp.rarity == Rarity.Legendary)

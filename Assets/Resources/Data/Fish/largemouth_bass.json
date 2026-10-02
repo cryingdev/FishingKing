@@ -19,5 +19,5 @@
   "activity": { "dawn": 1.5, "day": 0.6, "evening": 1.5, "night": 0.7 },
   "cover": { "seek": 0.55, "reach": 10, "dig": 1.2, "types": ["post", "pad", "reed", "weed", "boat", "log"] },
   "diet": { "foods": ["shrimp"], "style": "grab", "note": "an ambush predator: live prey only, dead pellets are ignored" },
-  "habitat": "depth:1.0-4.5,dropoff:1.8,hump:1.6,shoal:1.5,flat:1.2,shelf:1.1,channel:0.9,hole:0.8,basin:0.5,gravel:1.3,weed:1.2,mud:0.8,edge:0.5,col:mid,beta:0.8,@dawn:-0.4,@day:1.5,@evening:-0.4,@night:-0.3,@dawn.flat:1.8,@dawn.shelf:1.6,@dawn.dropoff:0.8,@day.hump:1.8,@day.dropoff:1.5,@day.shoal:1.3,@day.flat:0.8,runDeep"
+  "habitat": "depth:p20-p75,dropoff:1.8,hump:1.6,shoal:1.5,flat:1.2,shelf:1.1,channel:0.9,hole:0.8,basin:0.5,gravel:1.3,weed:1.2,mud:0.8,edge:0.5,col:mid,beta:0.8,@dawn:-8p,@day:25p,@evening:-8p,@night:-5p,@dawn.flat:1.8,@dawn.shelf:1.6,@dawn.dropoff:0.8,@day.hump:1.8,@day.dropoff:1.5,@day.shoal:1.3,@day.flat:0.8,runDeep"
 }

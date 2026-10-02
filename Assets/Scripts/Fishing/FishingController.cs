@@ -1067,12 +1067,6 @@ namespace FishingKing
             return sense * TideReach();
         }
 
-        /// <summary>
-        /// How far this fish senses the rig now (m): <see cref="SenseRange"/>, on the generated bed x the bite budget's reach
-        /// scale for its species, the period and the rig (FishHabitat.ReachScale).
-        /// </summary>
-        public float SenseFor(FishAgent f) => Habitat == null ? SenseRange() : SenseRange() * Habitat.ReachScale(f.Sp, GameClock.Look, Tackle);
-
         /// <summary>A lure's strike roll x clamp(sqrt(activity) x the tide, 0.5, 1.5).</summary>
         public float StrikeMult(FishAgent f) => Mathf.Clamp(Mathf.Sqrt(Mathf.Max(0f, TimeActivity.Now(f.Sp.id))) * TideMult(), 0.5f, 1.5f) * StrikeBonus();
 
@@ -1409,13 +1403,15 @@ namespace FishingKing
             float dist = new Vector2(hook.x - f.Pos.x, hook.z - f.Pos.z).magnitude;
             var bait = Tackle.Bait;
             float q = Rhythm.Q;
-            // on the generated bed the reach is scaled to keep the bites per minute (Docs/terrain_depth_spec.md 8.1), and no
-            // fish comes into water shallower than it swims in
-            if (dist > SenseFor(f)) return false;
+            // on the generated bed no fish comes into water shallower than it swims in
+            if (dist > SenseRange()) return false;
             if (Habitat != null && L.DepthAt(hook.x, hook.z) < FishHabitat.MinWater(f.Cm)) return false;
             if (Mathf.Abs(f.Depth - Tackle.Depth) > 2.5f) return false;
             float appeal = f.Sp.Appeal(bait);
             if (appeal <= 0) return false;
+            // on the generated bed a fish in reach is feeding or not, decided once per encounter (Docs/lake_phase2_spec.md
+            // A5): the lake's bigger stock comes to the bait no more often than today's (its chance F set by the economy)
+            if (Habitat != null && !RollFeeding(f)) return false;
             // (a float drifting with the water is not "moving": its speed through the water counts)
             float activity = bait.isLure ? 0.15f + 1.25f * q : Tackle.RelSpeed < 0.4f ? 1f : 0.35f;
             // the time of day, the tide and the spot (Docs/time_currents_spec.md 9.5)
@@ -1428,6 +1424,31 @@ namespace FishingKing
             if (yes) Approaches++;
             return yes;
         }
+
+        /// <summary>
+        /// Test switch (-fkfeedall; the autopilot's breaks, obstacles, lure, hold, steer, pan, occlusion and zoom scenarios):
+        /// every fish in reach is feeding (no draw: Random's sequence is as without the roll).
+        /// </summary>
+        public static bool FeedAll;
+
+        /// <summary>
+        /// The per-encounter feeding roll (Docs/lake_phase2_spec.md A5): a fish in reach decides once whether it is feeding
+        /// (chance <see cref="FishHabitat.FeedP"/>; <see cref="FeedAll"/> without a draw) and keeps that until it has been out
+        /// of reach for 10 s (FishAgent.UpdateWander). True: it may roll to come.
+        /// </summary>
+        internal bool RollFeeding(FishAgent f)
+        {
+            if (!f.FeedDecided)
+            {
+                f.Feeding = FeedAll || Random.value < (Habitat != null ? Habitat.FeedP : 1f);
+                f.FeedDecided = true;
+            }
+            f.LastInReach = Time.time;
+            return f.Feeding;
+        }
+
+        /// <summary>Test hook (-fkauto economy): the fish biting now (null when none).</summary>
+        internal FishAgent DebugBiter => State == S.Biting ? biter : null;
 
         /// <summary>A fish following the lure gave up on it (the lure was worked badly for 2 s).</summary>
         public void OnFollowerTurned(FishAgent f)
