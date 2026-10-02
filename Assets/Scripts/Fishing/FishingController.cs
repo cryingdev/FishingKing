@@ -819,6 +819,24 @@ namespace FishingKing
         bool sweepHintNow;
         float noLineT = -9f;
 
+        /// <summary>Slack in the line (m) from which a biting fish does not feel it: the bite window waits.</summary>
+        public const float BiteSlackHold = 0.3f;
+        /// <summary>The longest a slack line keeps a bite going past its window (s).</summary>
+        public const float BiteHoldMax = 1f;
+        /// <summary>A press released within this (s) in a bite is a tap: the hook set.</summary>
+        const float BiteTapTime = 0.35f;
+        /// <summary>The bite's slack (m) and how long it has held the bite past its window (s) (for the tests and the line's sag).</summary>
+        public float BiteSlack { get; private set; }
+        public float BiteHeld { get; private set; }
+        float bitePressT;
+        Vector2 bitePressAt;
+        bool bitePressed;
+        /// <summary>
+        /// Test switch: a lifted finger still holds the reel in a fight (the autopilot's scenarios were written for the reel
+        /// that held with no finger on it; the breaks test turns it off to check the free spool).
+        /// </summary>
+        public static bool AutoHoldReel;
+
         // ------------------------------------------------------------------ waiting
         void UpdateWaiting(float dt)
         {
@@ -1530,6 +1548,8 @@ namespace FishingKing
             biter = f;
             Tackle.ClearPad();
             biteWindow = 0.75f + Game.I.Rod.hookBonus + (Tackle.UsesFloat ? 0.1f : 0f);
+            BiteHeld = BiteSlack = 0f;
+            bitePressed = false;
             // a bowed line in the current is slow to set the hook (Docs/time_currents_spec.md 9.2)
             float bowLate = 0.12f * Mathf.Max(0f, Mathf.Abs(Tackle.Bow) - 1f);
             if (bowLate > 0f) biteWindow = Mathf.Max(Mathf.Min(biteWindow, 0.45f), biteWindow - bowLate);
@@ -1548,10 +1568,17 @@ namespace FishingKing
         void UpdateBiting(float dt)
         {
             Angler.LineTarget = Tackle.LineEnd;
-            LineOut = Mathf.Max(LineOut, LineChord);   // (the fish swimming off with it takes line)
-            Angler.Slack01 = 0.15f;
-            Angler.Tension01 = 0.25f;
-            biteWindow -= dt;
+            // the line: left alone the reel lets the fish take it to as far as it has gone (not back when it comes nearer);
+            // circled the other way it gives more, faster: slack the fish does not feel, so it holds on longer (the bite
+            // window waits, up to BiteHoldMax)
+            float revs = Gesture.Speed;
+            if (revs <= -LureInput.WindMin) LineOut += -revs * Game.I.Reel.retrieve * dt;
+            LineOut = Mathf.Max(LineOut, LineChord);
+            BiteSlack = LineOut - LineChord;
+            Angler.Slack01 = Mathf.Lerp(0.15f, 0.6f, Mathf.Clamp01(BiteSlack / 1.5f));
+            Angler.Tension01 = BiteSlack >= BiteSlackHold ? 0.05f : 0.25f;
+            if (BiteSlack >= BiteSlackHold && BiteHeld < BiteHoldMax) BiteHeld += dt;
+            else biteWindow -= dt;
             // the fish tugging: rings around the float / line
             lineRingT -= dt;
             if (lineRingT <= 0)
@@ -1560,7 +1587,18 @@ namespace FishingKing
                 LineRing(Angler.LineUnderwater ? Angler.WaterEntry : Tackle.Surface, 0.5f);
             }
             PlaceBiteMark();
-            if (PointerInput.WorldPressed || Gesture.Circling)
+            // the hook set: a tap begun in the bite (on its release: a press may turn into circles) or winding circles; the
+            // other way round gives line
+            if (PointerInput.WorldPressed)
+            {
+                bitePressT = Time.time;
+                bitePressAt = PointerInput.Position;
+                bitePressed = true;
+            }
+            bool tap = bitePressed && PointerInput.Released && Time.time - bitePressT <= BiteTapTime
+                       && (PointerInput.Position - bitePressAt).magnitude <= LureInput.TapMaxTravel * Screen.height;
+            if (PointerInput.Released) bitePressed = false;
+            if (tap || (Gesture.Circling && revs >= LureInput.WindMin))
             {
                 SetHook();
                 return;
@@ -2071,6 +2109,8 @@ namespace FishingKing
             var f = Fight;
             LineOut = f.Line;   // (the fight's line out: wound in, given, taken by the fish)
             float revs = Gesture.Speed;
+            // a finger on the reel holds it; let go, the spool runs free
+            f.Free = !PointerInput.IsDown && !AutoHoldReel;
             TrackRodLine(dt);
             SidePressure(dt, f);
             CurrentFight(dt, f);

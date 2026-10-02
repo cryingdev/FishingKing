@@ -894,6 +894,12 @@ namespace FishingKing
             else ph = "쉬는 중 - 감아요!";
             // side pressure: the rod leant against the run / with it (the arrow: the way to lean instead)
             var phc = UIKit.Gold;
+            // (no finger on the reel: the spool runs free)
+            if (f.Free)
+            {
+                ph = "손을 떼서 줄이 풀려요 — 누르고 있으면 버텨요";
+                phc = UIKit.Sky;
+            }
             if (ctl.SideActive && ctl.SideNow > FishingController.SideDead) ph = "사이드 프레셔!";
             else if (ctl.SideActive && ctl.SideNow < -FishingController.SideDead)
             {

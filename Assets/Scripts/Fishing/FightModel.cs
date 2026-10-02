@@ -22,6 +22,12 @@ namespace FishingKing
         public float Line;          // metres of line out
         /// <summary>The line the reel can give before it is spooled (m): the reel's capacity, or less when the spool is short (set by the controller).</summary>
         public float SpoolCap;
+        /// <summary>
+        /// The reel let go (no finger on it): the spool runs free, the fish takes line as when line is given and the
+        /// tension collapses (a slack line shakes the hook in time: SlackLimit). Held (a finger down) the reel holds as
+        /// before. Set by the controller each step.
+        /// </summary>
+        public bool Free;
         public float Tension;       // kgf
         public float Stamina = 1f;  // 0..1
         public Phase State = Phase.Run;
@@ -398,8 +404,8 @@ namespace FishingKing
             if (holding) { force = 0.6f; swim = 0f; }
             float F = Power * force * stam * Mathf.Clamp01(0.35f + elapsed / 0.8f); // the fish needs a moment to realise it is hooked
             float u = sp.speed * swim * (0.4f + 0.6f * Stamina);   // how fast the fish wants to take line
-            float v = revs * reel.retrieve;                        // how fast the player winds
-            if (revs >= 0) v += reel.autoReel;
+            float v = Free ? 0f : revs * reel.retrieve;            // how fast the player winds (let go: not at all)
+            if (revs >= 0 && !Free) v += reel.autoReel;
 
             float targetT, dL;
             bool running = (State == Phase.Run || State == Phase.Burst) && !Exhausted;
@@ -417,7 +423,7 @@ namespace FishingKing
                     u *= 1.15f;
                 }
             }
-            if (v >= 0)
+            if (v >= 0 && !Free)
             {
                 // spool locked: the fish pulls against the rod; winding adds strain
                 float strain = Mathf.Clamp(v / (reel.retrieve * 2f), 0f, 1.6f) * Power * 0.5f;

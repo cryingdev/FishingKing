@@ -90,6 +90,7 @@ namespace FishingKing
             yield return BrBareWaiting(ctl, false);
             yield return BrBareWaiting(ctl, true);
             yield return BrRealRub(ctl, "real_rub_lake", "largemouth_bass", 32f, new Vector3(-6f, -1.2f, 14f), "boat.cover", 6f, 7808, 6f, true);   // (the float set 6 m up: the hull wears the line below it)
+            yield return BrBiteGive(ctl);
             yield return BrLineGone(ctl);
             yield return BrLegendKey(ctl);
             yield return GoStage("ice", 3f);
@@ -472,6 +473,98 @@ namespace FishingKing
         /// <summary>A break that lost only the line: the toast lists the line alone (nothing of the rig).</summary>
         static bool OnlyLineLost(FishingController.LossReport r) =>
             r != null && r.lineLost > 0.05f && r.items.Count == 1 && r.items[0].StartsWith("줄 ") && r.lure == null && r.baitN == 0 && !r.floatLost;
+
+        // ------------------------------------------------------------------ the line in a bite; the reel let go in the fight
+        IEnumerator BrBiteGive(FishingController ctl)
+        {
+            var bait = GameDatabase.GetItem<BaitDef>("bait_worm");
+            var spot = BrAt(ctl, -1f, 0f, 15f);
+            // left alone: the line follows the fish (no slack), the bite ends with its window
+            yield return BrPlace(ctl, bait.id, spot);
+            FishAgent f = null;
+            yield return BrForceBite(ctl, x => f = x);
+            bool bit0 = ctl.State == FishingController.S.Biting;
+            float t0 = Time.time, slack0 = 0f, out0 = ctl.LineOut;
+            while (ctl.State == FishingController.S.Biting && Time.time - t0 < 4f)
+            {
+                slack0 = Mathf.Max(slack0, ctl.BiteSlack);
+                yield return null;
+            }
+            float alone = Time.time - t0, out1 = ctl.LineOut;
+            yield return ToReady(ctl);
+            // circled the other way from the bite on: line given beyond the fish, slack, the bite held past that window;
+            // then a tap sets the hook
+            yield return BrPlace(ctl, bait.id, spot);
+            yield return BrForceBite(ctl, x => f = x);
+            bool bit1 = ctl.State == FishingController.S.Biting;
+            float t1 = Time.time, slack1 = 0f, giveSign = CircleGesture.Reversed ? 1f : -1f;
+            var centre = Scr(0.72f, 0.42f);
+            float rad = Screen.height * 0.12f;
+            while (ctl.State == FishingController.S.Biting && Time.time - t1 < alone + 0.6f)
+            {
+                circleAng -= giveSign * Time.deltaTime * 1.5f * Mathf.PI * 2f;
+                PointerInput.SimDown = true;
+                PointerInput.SimPos = centre + new Vector2(Mathf.Cos(circleAng), Mathf.Sin(circleAng)) * rad;
+                slack1 = Mathf.Max(slack1, ctl.BiteSlack);
+                yield return null;
+            }
+            PointerInput.SimDown = false;
+            yield return null;
+            bool longer = ctl.State == FishingController.S.Biting;
+            float held = ctl.BiteHeld;
+            yield return Tap(Scr(0.5f, 0.6f));
+            for (float w = 0f; w < 0.5f && ctl.State != FishingController.S.Fighting; w += Time.deltaTime) yield return null;
+            bool hooked = ctl.State == FishingController.S.Fighting;
+            BCheck("bite_alone", bit0 && slack0 < FishingController.BiteSlackHold && out1 >= out0 && alone < 2.5f,
+                $"left alone: bit {bit0}, the line followed the fish {Fk(out0)} -> {Fk(out1)} m with no slack (max {Fk(slack0)} m), the bite over after {Fk(alone)} s");
+            BCheck("bite_give", bit1 && longer && slack1 >= FishingController.BiteSlackHold && held > 0.3f && hooked,
+                $"circled the other way: bit {bit1}, slack up to {Fk(slack1)} m, still biting {Fk(alone + 0.6f)} s on {longer} (held {Fk(held)} s past the window), then hooked by a tap {hooked}");
+            if (!hooked) yield break;
+            // the fight: no finger on the reel runs it free, a finger down holds it again (live: the flags and the strip)
+            FishingController.AutoHoldReel = false;
+            var fm = ctl.Fight;
+            float line0 = fm.Line;
+            bool free = true, heldBack = true;
+            PointerInput.SimDown = false;
+            for (float w = 0f; w < 0.6f && ctl.State == FishingController.S.Fighting; w += Time.deltaTime)
+            {
+                yield return null;
+                if (w >= 0.1f) free &= fm.Free;
+            }
+            float line1 = fm.Line;
+            yield return NamedShot("breaks_fight_free");   // (the strip: let go, the line runs)
+            PointerInput.SimPos = Scr(0.72f, 0.42f);
+            PointerInput.SimDown = true;
+            for (float w = 0f; w < 0.6f && ctl.State == FishingController.S.Fighting; w += Time.deltaTime)
+            {
+                yield return null;
+                if (w >= 0.1f) heldBack &= !fm.Free;
+            }
+            PointerInput.SimDown = false;
+            FishingController.AutoHoldReel = true;
+            // what it does, on the fight model: the same fish and the same runs (one seed), stepped side by side at 1/60 s
+            // for 6 s with no winding, one let go and one held
+            var sp = GameDatabase.GetFish("carp");
+            var a = new FightModel(sp, 50f, Game.I.Rod, Game.I.Reel, Game.I.Line, 1f, 15f, 1.5f, 4242) { Free = true };
+            var h = new FightModel(sp, 50f, Game.I.Rod, Game.I.Reel, Game.I.Line, 1f, 15f, 1.5f, 4242);
+            float ta = 0f, th = 0f;
+            int n = 0;
+            for (int i = 0; i < 360 && a.Result == FightModel.Outcome.None && h.Result == FightModel.Outcome.None; i++)
+            {
+                a.Step(1f / 60f, 0f, false);
+                h.Step(1f / 60f, 0f, false);
+                if (i < 60) continue;
+                ta += a.Tension;
+                th += h.Tension;
+                n++;
+            }
+            ta /= Mathf.Max(1, n);
+            th /= Mathf.Max(1, n);
+            BCheck("fight_free", free && heldBack && n > 60 && ta < 0.5f * th && a.Line >= h.Line,
+                $"live: let go the spool free {free} (line {Fk(line0)} -> {Fk(line1)} m), a finger down held {heldBack}; the model ({sp.id} 50 cm, {n} steps): let go tension {Fk(ta)} kgf / held {Fk(th)} kgf, line {Fk(a.Line)} / {Fk(h.Line)} m");
+            if (ctl.State == FishingController.S.Fighting) ctl.DebugPartLine("tension");
+            yield return new WaitForSeconds(3.5f);
+        }
 
         // ------------------------------------------------------------------ the line thrown away (too little left to cast)
         IEnumerator BrLineGone(FishingController ctl)

@@ -56,6 +56,8 @@ namespace FishingKing
             // (a scenario may still hand it back)
             PointerInput.SimActive = true;
             PointerInput.SimDown = false;
+            // (the scenarios' fights were written for a reel that held with no finger on it: see FishingController.AutoHoldReel)
+            FishingController.AutoHoldReel = true;
             int s = Array.IndexOf(args, "-fkshots");
             ap.shots = s >= 0 && s + 1 < args.Length ? args[s + 1] : Path.Combine(Application.persistentDataPath, "shots");
             Directory.CreateDirectory(ap.shots);

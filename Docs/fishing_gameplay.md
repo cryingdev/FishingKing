@@ -172,7 +172,8 @@ UI 위에서 시작한 누름(`PointerInput.StartedOverUI`)은 월드 입력이 
 |---|---|---|
 | 챔질 창 | `0.75 + rod.hookBonus + (찌 채비면 0.1)` s | `FishingController.OnBite` |
 | 줄 휨 벌칙 | `bowLate = 0.12 × max(0, |Tackle.Bow| − 1)`; 창 = `max(min(창, 0.45), 창 − bowLate)` (0.45 s 밑으로는 줄이지 않음) | 〃, [time_currents_spec.md](time_currents_spec.md) 9.2 |
-| 챔질 입력 | `PointerInput.WorldPressed`(월드를 **누르는 순간**) 또는 `Gesture.Circling`(원 그리기) | `FishingController.UpdateBiting` |
+| 챔질 입력 | 입질 중 월드에서 시작한 **탭**(눌렀다 `BiteTapTime` 0.35 s 안에, 화면 높이 2% 안에서 뗌: 누름은 원이 될 수 있어 뗄 때 판정) 또는 감는 방향 원(`Gesture.Circling` ∧ `Speed ≥ WindMin`) | `FishingController.UpdateBiting` |
+| 입질 중 줄 | 가만히: `LineOut = max(LineOut, LineChord)` (물고기가 간 가장 먼 거리까지 풀림, 다가와도 안 감김). 반대 방향 원(`Speed ≤ −WindMin`): `LineOut += |Speed| × reel.retrieve × dt`(더 풀림). 느슨함 `BiteSlack = LineOut − LineChord ≥ BiteSlackHold`(0.3 m)인 동안은 챔질 창이 줄지 않음(최대 `BiteHoldMax` 1 s), 줄이 그만큼 처져 그려짐 | 〃 |
 | 줄 파문 | 0.35 s마다 | 〃 |
 
 - **성공** (`FishingController.SetHook`): `Sfx.Hook`, 화면 흔들림(0.12, 0.15), 찌 채비면 미끼 1개 소모(`Game.ConsumeBait`), "걸었다! 원을 그려 릴을 감아요!", 파이트 시작.
@@ -245,6 +246,8 @@ UI 위에서 시작한 누름(`PointerInput.StartedOverUI`)은 월드 입력이 
 그 뒤 물살 하중 `CurrentLoad + LineDrag`(풀 때는 절반)를 더하고, 사이드 프레셔 배율 `SideTensionMult`(5.6)를 곱합니다.
 
 ### 5.4 드랙과 장력
+
+릴 잡기: 파이트 중 화면을 누르고 있으면(`PointerInput.IsDown`) 지금까지처럼 스풀이 잠겨 버팀. 손을 떼면 `FightModel.Free`: 감기 입력·자동 감기 없이 줄을 줄 때와 같은 갈래(`targetT = F × 0.15`, `dL = max(0, u) × 0.5`) — 물고기가 줄을 가져가고 장력이 거의 없어짐(오래 느슨하면 `SlackLimit`로 바늘이 빠짐). HUD `손을 떼서 줄이 풀려요 — 누르고 있으면 버텨요`.
 
 | 항목 | 식 | 출처 |
 |---|---|---|
