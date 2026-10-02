@@ -911,7 +911,8 @@ namespace FishingKing
         public void UpdateSnag(SnagInfo sn)
         {
             if (sn == null) return;
-            string name = sn.kind == "weed" ? "수초" : sn.kind == "reed" ? "갈대" : sn.kind == "pad" ? "연잎" : "밑걸림";
+            string name = sn.kind == "weed" ? "수초" : sn.kind == "reed" ? "갈대" : sn.kind == "pad" ? "연잎"
+                : sn.kind == "prop" ? (!string.IsNullOrEmpty(sn.zone?.Name) ? sn.zone.Name : "걸림") : "밑걸림";
             if (snagName.text != name) snagName.text = name;
             snagName.color = UIKit.Bad;
             var icon = Art.UI(sn.kind == "pad" ? "icon_snag_pad" : sn.soft ? "icon_snag_weed" : "icon_snag");
@@ -936,7 +937,9 @@ namespace FishingKing
             else
             {
                 // (no rod sweep through the ice hole: only the 톡 and a slack line free it there)
-                phaseLabel.text = ctl.Stage.L.IsIce ? "감지 말고 톡!" : "감지 말고 톡! 또는 좌우로 밀어요";
+                // (wedged on a prop, no sweep slides it off: a 톡 or 끊기)
+                phaseLabel.text = ctl.Stage.L.IsIce ? "감지 말고 톡!" : sn.kind == "prop" && sn.freeSide == 0 ? "끼었어요! 톡 하거나 끊어요"
+                    : "감지 말고 톡! 또는 좌우로 밀어요";
                 phaseLabel.color = UIKit.Sky;
             }
         }

@@ -758,6 +758,7 @@ namespace FishingKing
             {
                 LastLanding = l;
                 LandPerched(l);
+                TautLine();   // (the cast paid out line to where it came to rest)
                 SetState(S.Waiting);
                 Watch?.OnCast();   // (a new cast all the same: the legend's per-cast soak / one-encounter flag start over)
                 return;
@@ -772,6 +773,7 @@ namespace FishingKing
             else Sfx.PlayVar(Sfx.Plop, 0.9f * big);
             Tackle.EnterWater(at);
             if (L.IsIce) Tackle.FloatDepth = AimDepth;
+            TautLine();   // (the cast paid out line to where it landed)
             SetState(S.Waiting);
             Watch?.OnCast();
             Watch?.OnRigLanded(at);   // (in the legend's splashing spot in time: claimed)
@@ -847,8 +849,9 @@ namespace FishingKing
                 if (Rhythm.Feedback != null) hud.LureFeedback(Rhythm.Feedback, Rhythm.FeedbackGood);
             }
             else Tackle.Hanging = false;
-            // the current: the rig drifts and the line bows (not through the ice)
+            // the current: the rig drifts and the line bows (not through the ice); the drift takes line off the reel
             StepCurrent(dt, revs > 0.0001f);
+            if (Tackle.State == Tackle.Mode.Water) LineOut = Mathf.Max(LineOut, LineChord);
             // a frog on a lily pad (dropped off its edge, struck through it); the obstacles' snags
             PadTick(dt);
             if (State == S.Waiting) SnagRolls(dt);
@@ -875,7 +878,12 @@ namespace FishingKing
             {
                 float m = revs * Game.I.Reel.retrieve;
                 if (L.IsIce) Tackle.Raise(m);
-                else Tackle.Wind(m, ShorePoint, SweepSin);   // (with the rod swept the path bends to its side)
+                else
+                {
+                    Tackle.Wind(m, ShorePoint, SweepSin);   // (with the rod swept the path bends to its side)
+                    AfterWind();
+                    if (State != S.Waiting) return;
+                }
                 ReelTicks(revs);
                 Angler.SetPose(ReelPose(Gesture.TotalRevs * 4));
             }
@@ -1099,7 +1107,12 @@ namespace FishingKing
             Angler.Slack01 = 0.2f;
             float m = Game.I.Reel.retrieve * 3.2f * dt;
             if (L.IsIce) Tackle.Raise(m * 1.5f);
-            else Tackle.Wind(m * 2f, ShorePoint, SweepSin);
+            else
+            {
+                Tackle.Wind(m * 2f, ShorePoint, SweepSin);
+                AfterWind();
+                if (State != S.Retrieving) return;
+            }
             Tackle.Hanging = false;
             StepCurrent(dt, true);
             // (a rig coming home after the fish got off or the line parted catches on nothing: SpentRetrieve)
@@ -1140,10 +1153,10 @@ namespace FishingKing
             RetrieveStalls++;
             var e = tk.LineEnd;
             Debug.Log(string.Format(System.Globalization.CultureInfo.InvariantCulture,
-                "[BREAK] retrieve stalled: the rig at ({0:0.00}, {1:0.00}, {2:0.00}) came {3:0.00} m nearer in {4:0.0} s (home z {5:0.00}); tackle {6}, surface ({7:0.00}, {8:0.00}), depth {9:0.00}, spent {10}, bare hook {11}, snag {12}, pad {13}, perched on {14}; taken in",
+                "[BREAK] retrieve stalled: the rig at ({0:0.00}, {1:0.00}, {2:0.00}) came {3:0.00} m nearer in {4:0.0} s (home z {5:0.00}); tackle {6}, surface ({7:0.00}, {8:0.00}), depth {9:0.00}, spent {10}, bare hook {11}, snag {12}, pad {13}, perched on {14}; last wind {15}; taken in",
                 e.x, e.y, e.z, stallRef - at, stallT, L.zNear + 0.3f, tk.State, tk.Surface.x, tk.Surface.z, tk.Depth, spentRig, tk.BareHook,
                 tk.Snag != null ? tk.Snag.zone.id : "none", tk.OnPad != null ? "on" : tk.PadSliding ? "sliding" : "no",
-                tk.State == Tackle.Mode.Perched ? (tk.PerchO != null ? tk.PerchO.id : "the bank") : "-"));
+                tk.State == Tackle.Mode.Perched ? (tk.PerchO != null ? tk.PerchO.id : "the bank") : "-", tk.WindNote));
             FinishRetrieve();
             return true;
         }

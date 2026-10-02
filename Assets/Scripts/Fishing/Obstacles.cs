@@ -117,6 +117,21 @@ namespace FishingKing
             _ => M("rock", 0.45f, 0.55f, 1, "탁!", 1.0f, 1.0f, 1.0f, "바위", "#a0a098"),
         };
 
+        /// <summary>
+        /// The friction of a rig pulled along the prop's face (the share of the pull pressing into it that the pull along
+        /// it must beat to slide): rough concrete and roots hold, a hull or crystal lets it slide (Docs/obstacles_spec.md 4.9).
+        /// </summary>
+        public float Friction => id switch
+        {
+            "concrete" => 0.25f,
+            "root" => 0.25f,
+            "wood" => 0.2f,
+            "hull" => 0.1f,
+            "crystal" => 0.1f,
+            "ice" => 0.05f,
+            _ => 0.2f,
+        };
+
         public AudioClip Sound => sound switch
         {
             1 => Sfx.Tock,

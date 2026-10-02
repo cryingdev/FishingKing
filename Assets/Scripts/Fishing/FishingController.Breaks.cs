@@ -170,7 +170,10 @@ namespace FishingKing
         /// <summary>The line parted at a snag (forced, or cut with 끊기): see FishingController.Obstacles.SnagBreak.</summary>
         LossReport SnagLoss(bool cut)
         {
-            var r = new LossReport { cause = cut ? "cut" : "snag", off = Tackle.UsesFloat ? Off.AtHook : Off.Above, frame = Time.frameCount };
+            // (caught on a prop the line parts at the prop, above the float: the float goes too)
+            bool prop = Tackle.Snag != null && Tackle.Snag.kind == "prop";
+            var r = new LossReport { cause = cut ? "cut" : "snag", off = Tackle.UsesFloat && !prop ? Off.AtHook : Off.Above, frame = Time.frameCount };
+            r.floatLost = prop && Tackle.UsesFloat;
             var bait = Tackle.Bait;
             if (bait.isLure)
             {

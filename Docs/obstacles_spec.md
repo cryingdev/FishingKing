@@ -399,8 +399,25 @@ branches is a classic spot).
 
 `Tackle.StepCurrent`'s `Ok()`, `Tackle.Sideways` (sweep drag, the 톡's pull and dart) and `Tackle.Wind` treat a
 standing solid's waterline footprint (grown 0.05 m) as out of the water: the rig stops against it and slides along it
-(the existing axis-split fallback); winding a rig that is against a prop bends it round the prop (project out along the
-footprint's normal, keep the wound distance). A float rig drifting into a rock stops at it and swings round.
+(the existing axis-split fallback). A float rig drifting into a rock stops at it and swings round.
+
+Winding a rig into a prop follows the line (`Tackle.WindAgainst`): the pull is the line's way to him bent by the rod sweep
+(`SweepLateral` x the sweep's sine), taken in 0.04 m steps against every face the rig touches (within 0.05 m past the
+0.05 m it keeps off): what goes into a face is taken by it, what is left slides along the faces less the friction of the
+face pressed (`ObstacleMat.Friction` x the pull into it: concrete and roots 0.25, wood and rock 0.2, a hull or crystal
+0.1, ice 0.05); two faces closing in on the pull (a notch between a tetrapod's legs) hold it. The rig never looks for
+another way round. Where it is held, the wound line it could not follow is stretch in the line.
+
+The line out (`FishingController.LineOut`, the plan distance from his feet; through the ice the hook's depth): the cast
+pays out to where the rig lands, the current's drift takes more off the reel, a wind the rig follows keeps it taut. A held
+rig whose stretch reaches 0.05 m is caught on the prop (`CatchOnProp`, a snag of kind `prop`, flash `<name>에 걸렸다!`):
+the snag strip as for 밑걸림, its tension the stretch (`retrieve / 0.9` m of stretch = tension 1, so winding builds it
+0.9 per rev as before; every snag's tension is the line's stretch now: giving line or leaving the reel lets it off at the
+old rates). The auto 회수 stops there. It comes free when the swept rod (sweep asked >= 0.5) turns the pull enough to
+slide it along the face (0.3 s; the strip's arrow shows the side that would; a rig wedged in a notch has none, the strip
+says `끼었어요! 톡 하거나 끊어요`), with a 톡 (popped 0.3 m off the faces) or
+the stream's nudge; a break or 끊기 parts the line at the prop, above the float: the whole rig is lost (float, hook, bait
+or lure). Prop catches are not counted in `SnagCount` (`PropCatches`).
 
 ---
 

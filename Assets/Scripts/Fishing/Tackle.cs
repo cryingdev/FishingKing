@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace FishingKing
@@ -31,7 +32,7 @@ namespace FishingKing
         public int freeSide;
         /// <summary>Weed, reed or a pad: a sweep either way frees it.</summary>
         public bool soft;
-        /// <summary>"hard", "weed", "reed" or "pad".</summary>
+        /// <summary>"hard", "weed", "reed", "pad" or "prop" (a prop the line pulls the rig into: FishingController.CatchOnProp).</summary>
         public string kind;
         /// <summary>0..1+: the snag tension ratio (winding against it builds it; 1 held = the line breaks).</summary>
         public float r;
@@ -520,30 +521,155 @@ namespace FishingKing
             return true;
         }
 
-        int bendSide;
+        /// <summary>The prop the rig was held against in the last <see cref="Wind"/> (null: it followed the line).</summary>
+        public Obstacle HeldBy { get; private set; }
+        /// <summary>Metres of that wind the rig could not follow (the reel took them as stretch in the line).</summary>
+        public float HeldM { get; private set; }
+        /// <summary>How the last wind went against the props (for the logs): free, slid, held.</summary>
+        public string WindNote { get; private set; } = "free";
+
+        /// <summary>A standing prop the rig touches and the outward normal of the face it touches.</summary>
+        struct Touch
+        {
+            public Obstacle o;
+            public Vector2 n;
+        }
+
+        readonly List<Touch> touches = new List<Touch>();
+        /// <summary>A face this near the rig (m, past the 0.05 m a rig keeps off it) touches it.</summary>
+        const float TouchReach = 0.05f;
+        /// <summary>The rig is wound along a prop in steps no longer than this (m): every face it meets on the way counts.</summary>
+        const float SlideStep = 0.04f;
+        /// <summary>A rig the faces let slide at less than this share of the reel's pace is held (the line stretches).</summary>
+        const float CreepMin = 0.1f;
+
+        void Touching(Vector2 xz)
+        {
+            touches.Clear();
+            if (Obst == null || Obst.Empty) return;
+            foreach (var s in Obst.Solids)
+            {
+                if (!s.Standing || s.Near) continue;
+                float rr = s.R + 0.05f + TouchReach + 0.01f;
+                if ((xz - s.C).sqrMagnitude > rr * rr) continue;
+                float dist = Obstacles.EdgeDist(s.Poly, xz, out _, out var n);
+                if (Obstacles.InPoly(s.Poly, xz) || dist <= 0.05f + TouchReach) touches.Add(new Touch { o = s, n = n });
+            }
+        }
 
         /// <summary>
-        /// A rig wound <paramref name="metres"/> into a prop standing in the water from <paramref name="from"/>: it slides
-        /// that far along the prop's nearest edge, the way that brings it nearer <paramref name="goal"/> (straight behind
-        /// the prop: the side it last went round, else its right), then out of the prop.
+        /// The way the pull <paramref name="p"/> (plan, its length the pull's strength) moves a rig at <paramref name="xz"/>
+        /// against the props it touches (Docs/obstacles_spec.md 4.9): what goes into a face is taken by it, what is left
+        /// slides along the faces, less the friction of the face pressed (<see cref="ObstacleMat.Friction"/> times the pull
+        /// into it); two faces that close in on the pull (a notch between a tetrapod's legs) hold it. Zero: held, and
+        /// <paramref name="by"/> the prop pressed hardest. No contact: the pull itself, <paramref name="by"/> null.
         /// </summary>
-        Vector3 BendRound(Vector3 from, float metres, Vector3 goal)
+        Vector2 PullAlong(Vector2 xz, Vector2 p, out Obstacle by)
         {
-            var xz = new Vector2(from.x, from.z);
-            var ahead = from + new Vector3(goal.x - from.x, 0f, goal.z - from.z).normalized * metres;
-            if (!Obst.BlockedAtSurface(new Vector2(ahead.x, ahead.z), 0.05f, out var o)) return PushOut(ahead);
-            Obstacles.EdgeDist(o.Poly, xz, out _, out var n);
-            var t = new Vector2(-n.y, n.x);
-            var g = new Vector2(goal.x - from.x, goal.z - from.z);
-            float along = Vector2.Dot(t, g.normalized);
-            if (Mathf.Abs(along) < 0.05f) t *= bendSide != 0 ? bendSide : 1;
-            else
+            by = null;
+            Touching(xz);
+            if (touches.Count == 0) return p;
+            var v = p;
+            for (int pass = 0; pass < 3; pass++)
+                foreach (var c in touches)
+                {
+                    float dn = Vector2.Dot(v, c.n);
+                    if (dn < 0f) v -= dn * c.n;
+                }
+            float load = 0f, mu = 0f, most = -1f;
+            bool wedged = false;
+            foreach (var c in touches)
             {
-                if (along < 0f) t = -t;
-                bendSide = Vector2.Dot(t, new Vector2(-n.y, n.x)) >= 0f ? 1 : -1;
+                if (Vector2.Dot(v, c.n) < -1e-4f) wedged = true;
+                float into = -Vector2.Dot(p, c.n);
+                if (into <= 0f) continue;
+                load += into;
+                mu = Mathf.Max(mu, c.o.Mat.Friction);
+                if (into > most)
+                {
+                    most = into;
+                    by = c.o;
+                }
             }
-            var np = xz + t * metres;
-            return PushOut(new Vector3(np.x, 0f, np.y));
+            if (by == null) by = touches[0].o;
+            float t = v.magnitude, f = mu * load;
+            if (wedged || t <= f + 1e-4f) return Vector2.zero;
+            return v * ((t - f) / t);
+        }
+
+        /// <summary>The pull of winding towards <paramref name="to"/> with the rod swept (<paramref name="sweepSin"/>): the line's way plus the sweep's bend.</summary>
+        Vector2 Pull(Vector3 to, float sweepSin, out Vector2 u)
+        {
+            var flat = new Vector2(to.x - Surface.x, to.z - Surface.z);
+            u = flat.sqrMagnitude > 1e-6f ? flat.normalized : Vector2.down;
+            return u + new Vector2(-u.y, u.x) * (SweepLateral * sweepSin);
+        }
+
+        /// <summary>
+        /// Wound into a prop: the rig follows the line (<paramref name="u"/>, bent by the sweep) step by step as far as the
+        /// faces it touches let it, sliding along them past their friction; where they hold it, the rest of the wind is
+        /// line it could not follow (<see cref="HeldBy"/>, <see cref="HeldM"/>: the controller turns it into tension). It
+        /// never looks for another way round. (As the straight wind, it may be wound in behind the front layer.)
+        /// </summary>
+        void WindAgainst(Vector3 u, float metres, float sweepSin)
+        {
+            var u2 = new Vector2(u.x, u.z);
+            var p = u2 + new Vector2(-u2.y, u2.x) * (SweepLateral * sweepSin);
+            float left = metres;
+            var from = Surface;
+            while (left > 1e-4f)
+            {
+                float s = Mathf.Min(left, SlideStep);
+                var xz = new Vector2(Surface.x, Surface.z);
+                var v = PullAlong(xz, p, out var by);
+                if (v.sqrMagnitude < 1e-8f)
+                {
+                    HeldBy = by;
+                    HeldM += left;
+                    WindNote = string.Format(System.Globalization.CultureInfo.InvariantCulture, "held by {0} ({1} faces)", by != null ? by.id : "?", touches.Count);
+                    return;
+                }
+                var next = new Vector3(xz.x + v.x * s, 0f, xz.y + v.y * s);
+                // (a sliver into a face it had not touched yet: out along that face's normal)
+                if (Blocked(next)) next = PushOut(next);
+                // friction all but stops it, or the next face puts it back where it was: held all the same, the line takes
+                // the rest as stretch
+                float allowed = v.magnitude * s;
+                if (v.magnitude < CreepMin || new Vector2(next.x - xz.x, next.z - xz.y).magnitude < 0.5f * allowed)
+                {
+                    HeldBy = by;
+                    HeldM += left;
+                    WindNote = string.Format(System.Globalization.CultureInfo.InvariantCulture, "held by {0} ({1} faces, barely moves)", by != null ? by.id : "?", touches.Count);
+                    return;
+                }
+                Surface = next;
+                left -= s;
+            }
+            WindNote = string.Format(System.Globalization.CultureInfo.InvariantCulture, "slid {0:0.000} of {1:0.000} m ({2} faces)",
+                new Vector2(Surface.x - from.x, Surface.z - from.z).magnitude, metres, touches.Count);
+        }
+
+        /// <summary>Whether winding towards <paramref name="to"/> with the rod swept this way would slide the rig off the props it is held against.</summary>
+        public bool WouldSlide(Vector3 to, float sweepSin)
+        {
+            var p = Pull(to, sweepSin, out _);
+            return PullAlong(new Vector2(Surface.x, Surface.z), p, out _).sqrMagnitude >= 1e-8f;
+        }
+
+        /// <summary>Freed off a prop it was held against: <paramref name="metres"/> out along the faces' normals (a 톡 lifts it off; never into a prop).</summary>
+        public void PopOff(float metres)
+        {
+            Touching(new Vector2(Surface.x, Surface.z));
+            var n = Vector2.zero;
+            foreach (var c in touches) n += c.n;
+            if (n.sqrMagnitude > 1e-6f)
+            {
+                n.Normalize();
+                Surface = PushOut(new Vector3(Surface.x + n.x * metres, 0f, Surface.z + n.y * metres));
+            }
+            lastHook = HookPos;
+            windT = 99f;
+            fallArmed = true;
         }
 
         /// <summary>Out of any prop standing in the water, along its nearest edge's normal.</summary>
@@ -717,6 +843,9 @@ namespace FishingKing
         /// </summary>
         public void Wind(float metres, Vector3 to, float sweepSin = 0f)
         {
+            HeldBy = null;
+            HeldM = 0f;
+            WindNote = "free";
             if (State != Mode.Water || metres <= 0 || Snag != null || PadSliding) return;
             var flat = new Vector3(to.x - Surface.x, 0, to.z - Surface.z);
             float d = flat.magnitude;
@@ -737,11 +866,13 @@ namespace FishingKing
             if (d > 0.01f)
             {
                 float m = Mathf.Min(d, metres);
-                var before = Surface;
-                Surface += flat / d * m;
-                // wound against a prop in the water, it bends round it (along its edge, the way to him)
-                if (Blocked(Surface)) Surface = BendRound(before, m, to);
-                if (sweepSin != 0f) Sideways(flat / d, m * SweepLateral * sweepSin);
+                // wound into a prop in the water: it follows the line as far as the prop lets it (WindAgainst)
+                if (Blocked(Surface + flat / d * m)) WindAgainst(flat / d, m, sweepSin);
+                else
+                {
+                    Surface += flat / d * m;
+                    if (sweepSin != 0f) Sideways(flat / d, m * SweepLateral * sweepSin);
+                }
             }
             if (UsesFloat) return;
             windT = 0f;

@@ -98,6 +98,61 @@ namespace FishingKing
         public int SnagFreeSide => Tackle.Snag != null ? Tackle.Snag.freeSide : 0;
         /// <summary>The rig's plan distance from him (the snag strip's distance slot).</summary>
         public float RigDistance => new Vector2(Tackle.Surface.x - Anchor.x, Tackle.Surface.z - Anchor.z).magnitude;
+
+        // ================================================================== the line out (Docs/obstacles_spec.md 4.9)
+        /// <summary>
+        /// The line out (m), measured as <see cref="LineChord"/>: the cast pays out to where the rig lands, the current's
+        /// drift takes more off the reel, winding takes it back. Where the rig cannot follow the line (held against a prop,
+        /// snagged) the line out falls short of the chord and the stretch is the tension: <see cref="StretchPerR"/> m of it
+        /// is a snag tension of 1.
+        /// </summary>
+        public float LineOut { get; private set; }
+        /// <summary>From the angler to the rig over the water (through the ice: the hook's depth under the hole).</summary>
+        public float LineChord => L.IsIce ? Tackle.Depth : RigDistance;
+        /// <summary>Metres of stretch to a snag tension of 1 (0.9 per rev of winding, as before the line out).</summary>
+        float StretchPerR => Mathf.Max(0.05f, Game.I.Reel.retrieve) / 0.9f;
+        /// <summary>A rig held against a prop is caught on it once the line it could not follow comes to this (m).</summary>
+        const float CatchStretch = 0.05f;
+        /// <summary>Rigs caught on a prop while wound in (not counted in <see cref="SnagCount"/>; for the tests).</summary>
+        public int PropCatches { get; private set; }
+
+        /// <summary>The line taut to the rig where it lies (after a cast, a let-go, a freed snag).</summary>
+        void TautLine() => LineOut = LineChord;
+
+        /// <summary>
+        /// After a wind: a rig that followed the line keeps it taut; one a prop held (Tackle.HeldBy) leaves the wound line
+        /// as stretch, and past <see cref="CatchStretch"/> it is caught on that prop (a snag of kind "prop").
+        /// </summary>
+        void AfterWind()
+        {
+            var by = Tackle.HeldBy;
+            if (by == null)
+            {
+                TautLine();
+                return;
+            }
+            LineOut = Mathf.Min(LineOut, LineChord) - Tackle.HeldM;
+            if (LineChord - LineOut >= CatchStretch) CatchOnProp(by);
+        }
+
+        /// <summary>
+        /// Caught on a prop the line pulls the rig into (spec 4.9): the snag strip as for 밑걸림, its tension the stretch;
+        /// the free side the way the swept rod would slide it off (none frees a rig wedged in a notch: a 톡, 끊기 or the
+        /// break); a break or a cut parts the line at the prop, above the float, so the whole rig goes.
+        /// </summary>
+        void CatchOnProp(Obstacle o)
+        {
+            var tk = Tackle;
+            float stretch = LineChord - LineOut;
+            int side = tk.WouldSlide(ShorePoint, 0.5f) ? 1 : tk.WouldSlide(ShorePoint, -0.5f) ? -1 : 0;
+            SnagAt(o, new Vector3(tk.Surface.x, -tk.Depth, tk.Surface.z), false, "prop");
+            var sn = tk.Snag;
+            if (sn == null) return;
+            sn.freeSide = side;   // (0: wedged, no sweep frees it)
+            sn.r = stretch / StretchPerR;
+            LineOut = LineChord - stretch;
+            PropCatches++;
+        }
         /// <summary>A frog sitting on a pad is not struck the usual way (only through the pad).</summary>
         public bool PadBlocksStrike => Tackle.OnPad != null;
 
@@ -510,7 +565,8 @@ namespace FishingKing
             int side = Mathf.Abs(dx) >= 1f ? -(int)Mathf.Sign(dx) : lastSideMove != 0f ? -(int)Mathf.Sign(lastSideMove) : (Obstacles.Roll() < 0.5f ? -1 : 1);
             var sn = new SnagInfo { zone = zone, at = h, freeSide = side, soft = soft, kind = kind, r = 0f };
             Tackle.SetSnag(sn);
-            SnagCount++;
+            TautLine();   // (no stretch yet)
+            if (kind != "prop") SnagCount++;
             snagArrow = false;
             snagRightT = snagWrongT = snagSoftT = snagBreakT = snagCurT = snagPadWound = 0f;
             snagRingT = 0f;
@@ -518,8 +574,9 @@ namespace FishingKing
             foreach (var f in Spawner.Fish) if (f.State == FishAgent.St.Approach || f.State == FishAgent.St.Nibble) f.LoseInterest();
             SetState(S.Snagged);
             if (kind == "pad") hud.Flash("연잎에 걸렸어요 — 톡 당기거나 좌우로 밀어요", UIKit.Bad, 1.6f);
+            else if (kind == "prop") hud.Flash($"{PropName(zone)}에 걸렸다!", UIKit.Bad, 1.2f);
             else hud.Flash(kind == "weed" ? "수초에 걸렸다!" : kind == "reed" ? "갈대에 걸렸다!" : "밑걸림!", UIKit.Bad, 1.2f);
-            Sfx.Play(kind == "hard" ? Sfx.Knock : Sfx.Tear, 0.6f, 0.8f);
+            Sfx.Play(kind == "hard" || kind == "prop" ? Sfx.Knock : Sfx.Tear, 0.6f, 0.8f);
             if (!Tackle.UsesFloat && kind != "pad") Fx.Puff(Snap(P.To2D(P.Apparent(h))), Stage.UnderwaterTint(Tackle.Depth, 0.8f), 5, 0.5f, 13, 0.25f);
             Obstacles.Say(string.Format(CIo, "snagged {0} ({1}) {2} at ({3:0.00}, {4:0.00}, {5:0.00}) free side {6:+0;-0}", zone.id, kind, Tackle.Bait.id, h.x, h.y, h.z, side));
         }
@@ -575,10 +632,14 @@ namespace FishingKing
             }
             else
             {
+                // the tension is the line's stretch: winding takes line the held rig cannot give, giving line eases it, the
+                // rod eases it a little when left (the current keeps a floor)
                 float floor = Stage.Current != null && Stage.Current.Moving && !L.IsIce ? 0.12f : 0.05f;
-                if (winding) sn.r += 0.9f * revs * dt;
-                else if (giving) sn.r = Mathf.Max(0f, sn.r - 1.5f * dt);
-                else sn.r = Mathf.Max(floor, sn.r - 1.2f * dt);
+                float k = StretchPerR, chord = LineChord;
+                if (winding) LineOut -= revs * Game.I.Reel.retrieve * dt;
+                else if (giving) LineOut = Mathf.Min(chord, LineOut + 1.5f * k * dt);
+                else LineOut = Mathf.Min(chord - floor * k, LineOut + 1.2f * k * dt);
+                sn.r = (chord - LineOut) / k;
                 // the line twanging as winding loads the snag (as in a fight)
                 Sfx.LineStrain(Mathf.InverseLerp(StrainFrom, 1f, sn.r));
                 if (sn.r >= 1f)
@@ -618,7 +679,35 @@ namespace FishingKing
             {
                 float lean = LeanReq;   // (the sweep asked for: a snag far out to one side frees the same)
                 bool held = Mathf.Abs(lean) >= 0.5f;
-                if (sn.soft)
+                if (sn.kind == "prop")
+                {
+                    // caught on a prop: the swept rod turns the line's pull; once it pulls the rig along the face past
+                    // its friction, the rig slides off (a notch between two faces holds it whichever way)
+                    if (held && Time.time - propSayT >= 0.5f)
+                    {
+                        propSayT = Time.time;
+                        Obstacles.Say(string.Format(CIo, "prop held: lean {0:+0.00;-0.00} sweep sin {1:+0.00;-0.00} slides {2} free side {3:+0;-0;0}", lean, SweepSin,
+                            tk.WouldSlide(ShorePoint, SweepSin), sn.freeSide));
+                    }
+                    if (held && tk.WouldSlide(ShorePoint, SweepSin))
+                    {
+                        snagRightT += dt;
+                        snagWrongT = 0f;
+                        if (snagRightT >= 0.3f)
+                        {
+                            FreeSnag("sweep");
+                            return;
+                        }
+                    }
+                    else if (held)
+                    {
+                        snagWrongT += dt;
+                        snagRightT = 0f;
+                        if (snagWrongT >= 1f && sn.freeSide != 0) snagArrow = true;
+                    }
+                    else snagRightT = snagWrongT = 0f;
+                }
+                else if (sn.soft)
                 {
                     snagSoftT = held ? snagSoftT + dt : 0f;
                     if (snagSoftT >= 0.5f)
@@ -696,7 +785,10 @@ namespace FishingKing
                 Sfx.PlayVar(Sfx.Tear, 0.5f);
                 tk.Surface = PadEdge(sn.zone, s);
             }
+            // (off a prop: out from its faces, a hair when the sweep slid it off, so winding on slides it along them)
+            else if (sn != null && sn.kind == "prop") tk.PopOff(how == "sweep" ? 0.03f : 0.3f);
             else tk.PopFree(ShorePoint, 0.3f, 0.3f);
+            TautLine();
             snagCoolUntil = Time.time + 1f;
             snagPrevOk = false;
             snagArrow = false;
@@ -714,6 +806,7 @@ namespace FishingKing
         void SnagBreak(bool cut)
         {
             var sn = Tackle.Snag;
+            bool prop = sn != null && sn.kind == "prop";
             var loss = SnagLoss(cut);
             if (cut) Sfx.Play(Sfx.Snap, 0.5f);
             else
@@ -734,7 +827,7 @@ namespace FishingKing
             Slide.Reset();
             snagArrow = false;
             snagPrevOk = false;
-            if (Tackle.UsesFloat)
+            if (Tackle.UsesFloat && !prop)
             {
                 // (caught on a pad: the float lies off its edge)
                 if (sn != null && sn.kind == "pad") Tackle.Surface = PadEdge(sn.zone, Tackle.Surface);
@@ -767,6 +860,11 @@ namespace FishingKing
         {
             if (State == S.Snagged) SnagBreak(true);
         }
+
+        float propSayT;
+
+        /// <summary>The prop's name in the texts (테트라포드, 바위, 말뚝 ...).</summary>
+        static string PropName(Obstacle o) => o == null ? "장애물" : !string.IsNullOrEmpty(o.Name) ? o.Name : o.Mat.name;
 
         /// <summary>Wound 0.8 m against a pad: it tears free; a natural bait is torn off (the rig is wound in), a lure loses nothing.</summary>
         void PadTear()

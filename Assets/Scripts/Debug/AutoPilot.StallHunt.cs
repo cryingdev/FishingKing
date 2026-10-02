@@ -11,9 +11,10 @@ namespace FishingKing
     /// float on or by a tetrapod field (a random point along a "tet" snag zone, out to 1.5 m past its edge) at a random tide
     /// (slack / the flood's peak / the ebb's, the old rules or the reach's, with or without the tetrapods' slack), no
     /// bites; then either waits for it to snag (forced with DebugSnag after 8 s) and cuts it (끊기: the spent float is wound
-    /// in) or winds it straight in (회수: a snag on the way cut too). The rig must be home (ready) without the stall
-    /// watch (FishingController.RetrieveStalls, its [BREAK] retrieve stalled line) within 40 game s. On the fixed 1/60 s
-    /// step as fast as it draws. [HUNT] lines; CHECK at the end.
+    /// in) or winds it straight in (회수: a snag on the way cut too). Caught on a prop on the way (a "prop" snag) it is cut,
+    /// or with -fkhuntsweep first swept to the strip's free side for up to 2.5 s (held there while it is wound on once it
+    /// slides off). The rig must be home (ready) without the stall watch (FishingController.RetrieveStalls, its [BREAK]
+    /// retrieve stalled line) within 40 game s. On the fixed 1/60 s step as fast as it draws. [HUNT] lines; CHECK at the end.
     /// </summary>
     public partial class AutoPilot
     {
@@ -58,7 +59,7 @@ namespace FishingKing
             // the stall watch (given 8 s) takes it in
             bool sweepTest = System.Array.IndexOf(System.Environment.GetCommandLineArgs(), "-fkhuntsweep") >= 0;
             if (sweepTest) FishingController.DebugStallTime = 8f;
-            int jams = 0, outLeft = 0, outRight = 0, outNone = 0;
+            int catches = 0, freedSweep = 0, cutCatch = 0;
             Log($"[HUNT] listener volume {AudioListener.volume}, sweep test {sweepTest}");
             Log($"[HUNT] {ctl.Stage.Def.id}: {tries} tries at {tets.Count} zones ({string.Join(", ", tets.Select(o => o.id))}), bait {baitId}, seed {seed}");
             // -fkhuntat <x>,<z>: every try lays the float there (a spot found jamming), the tide still random
@@ -125,70 +126,67 @@ namespace FishingKing
                     how = "wound";
                     winds++;
                 }
-                // home within 40 game s, a snag on the way cut too
+                // home within 40 game s: a snag on the way cut; caught on a prop, cut too, or (-fkhuntsweep) the rod held to
+                // the shown free side for up to 2.5 s first, and held there while it is wound on
                 int s0 = ctl.RetrieveStalls;
-                float g = 0f, still = 0f, sweepT = 0f, refZ = tk.LineEnd.z;
-                int sweep = 0;
-                var jamAt = Vector3.zero;
+                float g = 0f, sweepT = 0f;
+                bool sweeping = false;
+                SnagInfo caught = null;
                 while (g < 40f && ctl.State != FishingController.S.Ready)
                 {
-                    if (ctl.State == FishingController.S.Snagged || ctl.State == FishingController.S.Waiting) ctl.Retrieve();
-                    if (sweepTest && ctl.State == FishingController.S.Retrieving && tk.State == Tackle.Mode.Water)
+                    var sn = tk.Snag;
+                    if (ctl.State == FishingController.S.Snagged && sn != null && sn.kind == "prop" && sn != caught)
                     {
-                        // no 0.1 m nearer home in 1 s: jammed; the rod held left for 2.5 s, then right
-                        float zNow = tk.LineEnd.z;
-                        if (zNow <= refZ - 0.1f)
+                        caught = sn;
+                        catches++;
+                        if (sweepTest)
                         {
-                            refZ = zNow;
-                            still = 0f;
-                        }
-                        else still += Time.deltaTime;
-                        if (sweep > 0) sweepT += Time.deltaTime;
-                        if (sweep == 0 && still >= 1f)
-                        {
-                            sweep = 1;
-                            jamAt = tk.Surface;
-                            PointerInput.SimLeft = true;
-                            still = sweepT = 0f;
-                        }
-                        else if (sweep == 1 && sweepT >= 2.5f && still >= 1f)
-                        {
-                            sweep = 2;
-                            PointerInput.SimLeft = false;
-                            PointerInput.SimRight = true;
-                            still = sweepT = 0f;
+                            sweeping = true;
+                            sweepT = 0f;
+                            PointerInput.SimRight = sn.freeSide > 0;
+                            PointerInput.SimLeft = sn.freeSide <= 0;
                         }
                     }
+                    if (ctl.State == FishingController.S.Snagged)
+                    {
+                        if (!sweeping || sweepT >= 2.5f)
+                        {
+                            if (sn != null && sn.kind == "prop") cutCatch++;
+                            sweeping = false;
+                            PointerInput.SimLeft = PointerInput.SimRight = false;
+                            ctl.Retrieve();   // (끊기)
+                        }
+                    }
+                    else if (ctl.State == FishingController.S.Waiting)
+                    {
+                        if (caught != null && sweeping && sweepT < 2.5f)
+                        {
+                            freedSweep++;
+                            sweepT = 2.5f;   // (freed: wound on with the rod still held that way)
+                        }
+                        ctl.Retrieve();
+                    }
+                    if (sweeping) sweepT += Time.deltaTime;
+                    if (sweeping && sweepT >= 4f) PointerInput.SimLeft = PointerInput.SimRight = false;
                     g += Time.deltaTime;
                     yield return null;
                 }
                 PointerInput.SimLeft = PointerInput.SimRight = false;
                 bool stalled = ctl.RetrieveStalls > s0, home = ctl.State == FishingController.S.Ready;
-                if (sweep > 0)
-                {
-                    jams++;
-                    string res = !stalled && home ? sweep == 1 ? "out with the rod held left" : "out with the rod held right" : "not out by sweeping";
-                    if (!stalled && home)
-                    {
-                        if (sweep == 1) outLeft++;
-                        else outRight++;
-                    }
-                    else outNone++;
-                    Log(string.Format(CIc, "[HUNT] try {0}: jammed at ({1:0.00}, {2:0.00}): {3}", k, jamAt.x, jamAt.z, res));
-                }
                 if (!home) stuck++;
-                if (stalled || !home || k % 20 == 0)
-                    Log(string.Format(CIc, "[HUNT] try {0}: {1} at ({2:0.00}, {3:0.00}) by {4}, tide {5:0.00} {6}{7}: {8} after {9:0.0} s{10}",
+                if (stalled || !home || caught != null || k % 20 == 0)
+                    Log(string.Format(CIc, "[HUNT] try {0}: {1} at ({2:0.00}, {3:0.00}) by {4}, tide {5:0.00} {6}{7}: {8} after {9:0.0} s{10}{11}",
                         k, how, p.x, p.y, z.id, phase, old ? "old" : "reach", bare ? " no cushion" : "",
                         home ? "home" : $"NOT home ({ctl.State}, tackle {tk.State} at ({tk.Surface.x:0.00}, {tk.Surface.z:0.00}))", g,
-                        stalled ? " (STALLED: taken in by the stall watch)" : ""));
+                        stalled ? " (STALLED: taken in by the stall watch)" : "",
+                        caught != null ? string.Format(CIc, "; caught on {0} at ({1:0.00}, {2:0.00}) free side {3:+0;-0}", caught.zone != null ? caught.zone.id : "?", caught.at.x, caught.at.z, caught.freeSide) : ""));
             }
             FishingController.DebugOldTide = false;
             CurrentField.DebugNoCushion = false;
             FishingController.NoBites = false;
             int stalls = ctl.RetrieveStalls - stalls0;
             FishingController.DebugStallTime = 0f;
-            if (sweepTest) Log($"[HUNT] sweep test: {jams} jammed, {outLeft} out with the rod held left, {outRight} held right, {outNone} not out");
+            Log($"[HUNT] caught on a prop {catches} (prop catches {ctl.PropCatches}): {freedSweep} slid off with the rod held to the free side, {cutCatch} cut");
             Log($"[HUNT] {tries} tries: {cuts} cut ({forced} forced snags), {winds} wound, {perched} laid perched; stalls {stalls}, not home {stuck}");
             Log($"[HUNT] CHECK {(stalls == 0 && stuck == 0 ? "PASS" : "FAIL")} every rig wound in by the tetrapods came home (stalls {stalls}, not home {stuck})");
             Log("[HUNT] stall hunt done");
