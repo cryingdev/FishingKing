@@ -711,6 +711,72 @@ namespace FishingKing
             Check(feed != null && feed.LiveState(shrimp.id) == "Open" && feed.LiveState(sardine.id) == "Closed" && feed.BadgeOf(shrimp.id) == AquaCare.Pieces(shrimp).ToString(),
                 $"back in the aquarium: tub {feed?.LiveState(shrimp.id)} [{feed?.BadgeOf(shrimp.id)}], cooler {feed?.LiveState(sardine.id)} [{feed?.BadgeOf(sardine.id)}]");
 
+            // ---- the step-2 lake species (Docs/lake_phase2_spec.md C2): their diets and styles, the counts over the whole
+            // roster in the log; two of them in the tank: a sardine over the redfin culter (it surges and gulps it, a full
+            // meal), then a shrimp over the yellow catfish (a bottom feeder: it takes it off the gravel; the culter is full)
+            string[] newIds = { "white_crucian", "three_lips", "barbel_steed", "yellow_catfish", "freshwater_eel", "redfin_culter" };
+            FeedStyle StyleOf(string id) => GameDatabase.GetFish(id)?.feedStyle ?? FeedStyle.Grab;
+            Check(DietOf("white_crucian") == Diet.Pellet && DietOf("three_lips") == (Diet.Pellet | Diet.Shrimp) && DietOf("barbel_steed") == (Diet.Pellet | Diet.Shrimp)
+                  && DietOf("yellow_catfish") == Diet.Shrimp && DietOf("freshwater_eel") == Diet.Shrimp && DietOf("redfin_culter") == (Diet.Shrimp | Diet.Sardine)
+                  && StyleOf("white_crucian") == FeedStyle.Grab && StyleOf("three_lips") == FeedStyle.Grab && StyleOf("barbel_steed") == FeedStyle.Bottom
+                  && StyleOf("yellow_catfish") == FeedStyle.Bottom && StyleOf("freshwater_eel") == FeedStyle.Bottom && StyleOf("redfin_culter") == FeedStyle.Surge,
+                "the six new lake species: " + string.Join(", ", newIds.Select(id => $"{id} {AquaCare.DietText(DietOf(id))} [{StyleOf(id)}]")));
+            Log($"diet counts over {GameDatabase.Fish.Count} species: pellets {nP}, shrimp {nS}, sardines {nD}");
+            d.aquarium.Clear();
+            var culter = AddFish("redfin_culter", 70f, "lake");
+            var ycat = AddFish("yellow_catfish", 24f, "lake");
+            AquaCare.FastForward(d, 12f, null); // (both hungry)
+            scene = FindAnyObjectByType<AquariumScene>();
+            scene.AfterTimeJump();
+            yield return new WaitForSeconds(0.5f);
+            PlaceFish(scene, culter, new Vector2(5f, 1.6f), true);
+            PlaceFish(scene, ycat, new Vector2(0.5f, -1.2f), false);
+            yield return new WaitForSeconds(0.6f);
+            yield return Shot("new_species_tank");
+            yield return Tap(feed.LidPoint(sardine.id));
+            yield return new WaitForSeconds(0.8f);
+            var ct = scene.TankOf(culter);
+            var yt = scene.TankOf(ycat);
+            Check(ct != null && yt != null && feed.LiveState(sardine.id) == "Open", $"the redfin culter and the yellow catfish swim in the tank ({ct != null}, {yt != null}); the cooler open ({feed.LiveState(sardine.id)})");
+            if (ct != null && yt != null)
+            {
+                pickS = feed.PickPoint(sardine.id);
+                gulps0 = feed.Gulps;
+                float fCul = culter.fullness, fCat = ycat.fullness;
+                Down(pickS);
+                yield return null;
+                yield return null;
+                Func<Vector2> overCul = () => new Vector2(ct.Mouth.x + 0.5f, 6.9f);
+                yield return Carry(pickS, overCul, 1.0f);
+                yield return HoldAt(overCul, 0.5f);
+                Up();
+                t0 = Time.time;
+                while (feed.Gulps == gulps0 && Time.time - t0 < 8f) yield return null;
+                took = Time.time - t0;
+                while (Time.time - feed.LastGulpTime < 0.08f) yield return null; // (the burst frame)
+                yield return ShotAt("new_species_gulp", feed.LastGulpAt);
+                yield return new WaitForSeconds(1.2f);
+                Check(feed.Gulps == gulps0 + 1 && AquaCare.Full(culter) && ycat.fullness <= fCat + 1e-3f,
+                    $"a sardine over the redfin culter: it surged and gulped it in {took:0.00} s, fullness {fCul:0.00} -> {culter.fullness:0.00}; the yellow catfish left it ({fCat:0.00} -> {ycat.fullness:0.00})");
+                var pickN = feed.PickPoint(shrimp.id);
+                grabs0 = feed.Grabs;
+                fCat = ycat.fullness;
+                Down(pickN);
+                yield return null;
+                yield return null;
+                Func<Vector2> overCat = () => new Vector2(yt.Mouth.x + (yt.FacingLeft ? -0.4f : 0.4f), 6.6f);
+                yield return Carry(pickN, overCat, 1.0f);
+                yield return HoldAt(overCat, 0.4f);
+                Up();
+                t0 = Time.time;
+                while (feed.Grabs == grabs0 && Time.time - t0 < 20f) yield return null;
+                var by = feed.LastGrabBy;
+                yield return ShotAt("new_species_bottom", by != null ? by.Mouth : yt.Mouth);
+                yield return new WaitForSeconds(0.8f);
+                Check(by == yt && ycat.fullness > fCat + 0.1f,
+                    $"a shrimp over the yellow catfish: taken by {(by != null ? by.Data.speciesId : "nobody")} [{(by != null ? by.Style.ToString() : "")}] in {Time.time - t0 - 0.8f:0.0} s, fullness {fCat:0.00} -> {ycat.fullness:0.00}");
+            }
+
             Log($"done: {ok} ok, {fail} failed; coins {d.coins}, shrimp {AquaCare.Pieces(shrimp)}, sardines {AquaCare.Pieces(sardine)}");
             Game.I.Save();
             Application.Quit();

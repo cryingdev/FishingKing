@@ -13,8 +13,14 @@
       "fish": [
         { "id": "crucian_carp" },
         { "id": "bluegill" },
+        { "id": "white_crucian" },
+        { "id": "three_lips" },
         { "id": "carp" },
         { "id": "largemouth_bass" },
+        { "id": "barbel_steed" },
+        { "id": "yellow_catfish" },
+        { "id": "freshwater_eel" },
+        { "id": "redfin_culter" },
         { "id": "golden_carp" }
       ]
     },

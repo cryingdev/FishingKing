@@ -198,25 +198,28 @@ namespace FishingKing
                 var s = UIKit.Img(stars, Art.UI(i < st.difficulty ? "star" : "star_empty"), new Vector2(24, 24));
                 s.rectTransform.At(new Vector2(0, 0.5f), new Vector2(i * 28, 0), new Vector2(24, 24), new Vector2(0, 0.5f));
             }
-            // species of this spot
+            // species of this spot: 5 x 2 cells of 104 x 88; a stage with more than 10 (the lake's 11) gets 6 x 2 of 86 x 88
+            // (12 + 6 x 86 + 5 x 6 + 12 = 570 of the panel's 580; 7 + 88 + 6 + 88 + 7 = 196 of its 202)
             var grid = UIKit.Panel(w, "panel_paper", null, "Species");
             grid.rectTransform.At(new Vector2(0.5f, 1), new Vector2(0, -128), new Vector2(580, 202), new Vector2(0.5f, 1));
             var gl = grid.gameObject.AddComponent<GridLayoutGroup>();
-            gl.cellSize = new Vector2(104, 88);
+            var stageFish = GameDatabase.FishOfStage(st.id).ToList();
+            bool narrow = stageFish.Count > 10;
+            gl.cellSize = narrow ? new Vector2(86, 88) : new Vector2(104, 88);
             gl.spacing = new Vector2(6, 6);
             gl.padding = new RectOffset(12, 12, 7, 7);
             gl.childAlignment = TextAnchor.MiddleCenter;
-            foreach (var f in GameDatabase.FishOfStage(st.id))
+            foreach (var f in stageFish)
             {
                 var rec = Game.I.Record(f.id);
                 var cell = UIKit.Panel(grid.transform, "slot", null, f.id);
                 var spr = Art.Fish(f.id, 0);
-                var img = UIKit.Img(cell.transform, spr, new Vector2(88, 44));
+                var img = UIKit.Img(cell.transform, spr, narrow ? new Vector2(76, 38) : new Vector2(88, 44));
                 img.rectTransform.anchoredPosition = new Vector2(0, 10);
                 if (rec == null) img.color = new Color(0, 0, 0, 0.75f);
-                var t = UIKit.Label(cell.transform, rec != null ? f.name : "???", 15,
+                var t = UIKit.Label(cell.transform, rec != null ? f.name : "???", narrow ? 14 : 15,
                     rec != null ? RarityInfo.Color(f.rarity) : new Color(0.7f, 0.7f, 0.7f));
-                t.rectTransform.At(new Vector2(0.5f, 0), new Vector2(0, 6), new Vector2(100, 22), new Vector2(0.5f, 0));
+                t.rectTransform.At(new Vector2(0.5f, 0), new Vector2(0, 6), new Vector2(narrow ? 84 : 100, 22), new Vector2(0.5f, 0));
                 if (rec != null) ActivityChip(cell.transform, img, f);
             }
 

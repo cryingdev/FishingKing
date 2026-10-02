@@ -219,18 +219,19 @@ namespace FishingKing
 
         // ------------------------------------------------------------------ the feeding chance (Docs/lake_phase2_spec.md A5, A7)
         /// <summary>
-        /// The feeding chance before this bed's estimate is ready: the 50-seed medians of -fkauto depth D11' (bamboo 0.506,
-        /// carbon 0.451, dragon 0.405), the rods it does not measure lerped by their cast distance.
+        /// The feeding chance before this bed's estimate is ready: the 50-seed medians of -fkauto depth D11' with the lake's
+        /// ten ordinary species (bamboo 0.537, carbon 0.483, dragon 0.435), the rods it does not measure lerped by their cast
+        /// distance.
         /// </summary>
         public static float FDefault(string rodId) => rodId switch
         {
-            "rod_bamboo" => 0.506f,
-            "rod_glass" => 0.478f,
-            "rod_carbon" => 0.451f,
-            "rod_biggame" => 0.440f,
-            "rod_surf" => 0.413f,
-            "rod_dragon" => 0.405f,
-            _ => 0.45f,
+            "rod_bamboo" => 0.537f,
+            "rod_glass" => 0.510f,
+            "rod_carbon" => 0.483f,
+            "rod_biggame" => 0.471f,
+            "rod_surf" => 0.443f,
+            "rod_dragon" => 0.435f,
+            _ => 0.48f,
         };
 
         static readonly Dictionary<string, float> feedCache = new Dictionary<string, float>();

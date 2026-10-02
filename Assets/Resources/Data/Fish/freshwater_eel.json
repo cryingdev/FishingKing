@@ -1,0 +1,22 @@
+{
+  "id": "freshwater_eel",
+  "name": "뱀장어",
+  "desc": "먼 바다에서 태어나 호수까지 올라온다. 낮엔 깊은 웅덩이에 숨고 밤에만 나온다.",
+  "rarity": "rare",
+  "minCm": 40,
+  "maxCm": 100,
+  "weightK": 0.2,
+  "basePrice": 400,
+  "power": 4.0,
+  "stamina": 14,
+  "speed": 2.4,
+  "aggression": 0.55,
+  "jump": 0,
+  "depthMin": 4,
+  "depthMax": 9,
+  "baits": "worm:1,shrimp:0.8,glow:0.6,golden:0.5",
+  "activity": { "dawn": 0.2, "day": 0, "evening": 0.4, "night": 2.0 },
+  "cover": { "seek": 0.7, "reach": 8, "dig": 1.6, "types": ["log", "weed", "boat"] },
+  "diet": { "foods": ["shrimp"], "style": "bottom", "note": "a nocturnal hole-dweller: live shrimp on the bottom, never pellets" },
+  "habitat": "depth:p75-p100,hole:2.2,basin:1.4,channel:1.3,dropoff:0.9,open:0.8,hump:0.5,shoal:0.4,flat:0.3,shelf:0.3,mud:1.6,gravel:1.0,sand:0.8,weed:0.8,edge:0.2,col:bottom,beta:0.85,@night:-10p,@night.channel:1.4,@night.dropoff:1.3,runDeep"
+}

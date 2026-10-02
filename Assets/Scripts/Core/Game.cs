@@ -56,6 +56,8 @@ namespace FishingKing
         // ------------------------------------------------------------------ test switches
         // -fkfresh           start from a new save
         // -fkrich            test profile: lots of coins, high level, everything unlocked
+        // -fkrecords <stage|all>  (screenshots) every species of that stage (all: of every stage) in the encyclopedia: caught
+        //                    once, its best length the middle of its size range (a species already recorded is left)
         // -fkscene <name>    jump to a scene after boot (with -fkstage <id> for Fishing)
         // -fkfish <id>       stock the stage with this species only
         // -fkjump <kind>     a hooked fish jumps after every rest: hop | shake | tailwalk
@@ -115,6 +117,11 @@ namespace FishingKing
                 d.tutorialDone = true;
                 foreach (var s in GameDatabase.Stages) if (!d.unlockedStages.Contains(s.id)) d.unlockedStages.Add(s.id);
             }
+            string recs = Arg("-fkrecords");
+            if (!string.IsNullOrEmpty(recs))
+                foreach (var f in recs == "all" ? GameDatabase.Fish : GameDatabase.FishOfStage(recs))
+                    if (I.Record(f.id) == null)
+                        I.data.records.Add(new SpeciesRecord { id = f.id, caught = 1, bestCm = Mathf.Round((f.minCm + f.maxCm) * 5f) / 10f });
             if (Flag("-fkreverse")) I.data.reelReverse = true; // counter-clockwise winds in
             // -fkhand right|left, -fkrodpos side|centre: 설정 → 조작 forced (into the save, as if chosen there)
             string hand = Arg("-fkhand"), rodPos = Arg("-fkrodpos");

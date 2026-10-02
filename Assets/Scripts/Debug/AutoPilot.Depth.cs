@@ -413,7 +413,8 @@ namespace FishingKing
             var mean = new Dictionary<(string, int), float[]>();
             var uniMean = new float[3];
             var sh = new Dictionary<string, float[][]>();
-            float[] uni = null;
+            var shM = new Dictionary<string, float[][]>();   // (seed 1: the targets' share per bed material, for the niche gates)
+            float[] uni = null, uniM = null;
             for (int li = 0; li < 3; li++)
             {
                 var b = li == 0 ? L.Bathy : BathyGen.Build(L, r, seeds[li], raw);
@@ -421,19 +422,23 @@ namespace FishingKing
                 foreach (var sp in species)
                 {
                     var per = new float[4][];
+                    var perM = new float[4][];
                     for (int p = 0; p < 4; p++)
                     {
                         var (reg, cum, total) = hab.DebugSampler(sp, p, zMax);
                         var rng = new System.Random(1515 + p + 10 * sp.id.Length);
                         var c = new float[9];
+                        var cmat = new float[4];
                         double rk = 0;
                         for (int t = 0; t < 2000; t++)
                         {
                             int k = reg.nodes[HabitatModel.Pick(cum, (float)rng.NextDouble() * total)];
                             c[(int)b.NodeKind(k)] += 1f / 2000f;
+                            cmat[(int)b.NodeMat(k)] += 1f / 2000f;
                             rk += b.NodeRankPct(k);
                         }
                         per[p] = c;
+                        perM[p] = cmat;
                         if (!mean.TryGetValue((sp.id, p), out var m)) mean[(sp.id, p)] = m = new float[3];
                         m[li] = (float)(rk / 2000);
                         if (li == 0 && uni == null)
@@ -443,7 +448,13 @@ namespace FishingKing
                             for (int q = 0; q < u.Length; q++) u[q] = acc += reg.u[q];
                             var rng2 = new System.Random(1515 + 999);
                             uni = new float[9];
-                            for (int t = 0; t < 2000; t++) uni[(int)b.NodeKind(reg.nodes[HabitatModel.Pick(u, (float)rng2.NextDouble() * acc)])] += 1f / 2000f;
+                            uniM = new float[4];
+                            for (int t = 0; t < 2000; t++)
+                            {
+                                int k = reg.nodes[HabitatModel.Pick(u, (float)rng2.NextDouble() * acc)];
+                                uni[(int)b.NodeKind(k)] += 1f / 2000f;
+                                uniM[(int)b.NodeMat(k)] += 1f / 2000f;
+                            }
                         }
                         if (p == 0 && sp == species[0])
                         {
@@ -456,7 +467,11 @@ namespace FishingKing
                             uniMean[li] = us > 0 ? (float)(ru / us) : 50f;
                         }
                     }
-                    if (li == 0) sh[sp.id] = per;
+                    if (li == 0)
+                    {
+                        sh[sp.id] = per;
+                        shM[sp.id] = perM;
+                    }
                 }
                 Log(string.Format(CIc, "[DEPTH] D7' lake {0} (seed {1}, Q50 {2:0.00} m, \"{3}\"): uniform targets' mean rank {4:0.0}", li, seeds[li], b.Quantile(50f), b.Character.label, uniMean[li]));
                 yield return null;
@@ -478,18 +493,30 @@ namespace FishingKing
             var bgDay = hasBg ? mean[("bluegill", 1)] : new float[3];
             DCheck(string.Format(CIc, "D7' bluegill at dawn {0:0}/{1:0}/{2:0} and by day {3:0}/{4:0}/{5:0} (<= 40)", bgDawn[0], bgDawn[1], bgDawn[2], bgDay[0], bgDay[1], bgDay[2]),
                 hasBg && bgDawn.All(v => v <= 40f) && bgDay.All(v => v <= 40f));
-            float spread = 0f;
-            string worst = "";
+            // (the four phase-1 species within 10 points; the step-2 species within 12.5: their bed-material weights, gravel /
+            // sand up to 1.7, follow where a lake of that character keeps those beds, which moves their depth rank with it)
+            var phase1 = new HashSet<string> { "crucian_carp", "bluegill", "carp", "largemouth_bass" };
+            float spread = 0f, spread2 = 0f;
+            string worst = "", worst2 = "";
             foreach (var kv in mean)
             {
                 float d = kv.Value.Max() - kv.Value.Min();
-                if (d > spread)
+                bool p1 = phase1.Contains(kv.Key.Item1);
+                if (d <= (p1 ? spread : spread2)) continue;
+                string w = $" ({kv.Key.Item1} {GameClock.Id((Period)kv.Key.Item2)})";
+                if (p1)
                 {
                     spread = d;
-                    worst = $" ({kv.Key.Item1} {GameClock.Id((Period)kv.Key.Item2)})";
+                    worst = w;
+                }
+                else
+                {
+                    spread2 = d;
+                    worst2 = w;
                 }
             }
-            DCheck(string.Format(CIc, "D7' every species and period: the mean rank differs at most {0:0.0} points across the three lakes{1} (<= 10)", spread, worst), spread <= 10f);
+            DCheck(string.Format(CIc, "D7' every species and period: the mean rank differs at most {0:0.0} points across the three lakes{1} for the phase-1 species (<= 10), {2:0.0}{3} for the step-2 species (<= 12.5)", spread, worst, spread2, worst2),
+                spread <= 10f && spread2 <= 12.5f);
             // the six kind shifts on seed 1 (phase 1's checks; three thresholds eased to a clear preference, logged against the old)
             float S(float[] x, params BedKind[] ks) => ks.Sum(k => x[(int)k]);
             bool all = sh.ContainsKey("largemouth_bass") && sh.ContainsKey("crucian_carp") && sh.ContainsKey("carp");
@@ -506,6 +533,57 @@ namespace FishingKing
             float carpDay = S(sh["carp"][1], BedKind.Hole, BedKind.Channel, BedKind.Basin) / S(uni, BedKind.Hole, BedKind.Channel, BedKind.Basin);
             DCheck($"D7' seed 1's kind shifts (flat + shelf {F2(S(uni, BedKind.Flat, BedKind.Shelf))} of the uniform targets): bass by day on drop-off + hump + shoal x{F2(bassDay)} (>= 1.4), at dawn on flat + shelf x{F2(bassDawn)} (>= 1.1; phase 1 1.3); crucian at dawn on the flats x{F2(cruDawn)} (>= 1.1; phase 1 1.3), by day x{F2(cruDay)} of its dawn share (<= 0.8); carp at night on flat + shoal x{F2(carpNight)} (>= 1.1; phase 1 1.4), by day in hole + channel + basin x{F2(carpDay)} (>= 1.2)",
                 bassDay >= 1.4f && bassDawn >= 1.1f && cruDawn >= 1.1f && cruDay <= 0.8f && carpNight >= 1.1f && carpDay >= 1.2f);
+            // the step-2 species' niches on seed 1 (Docs/lake_phase2_spec.md C4), against the uniform targets' shares; the
+            // material shares are over the four periods by their length (3 / 9 / 3 / 9 h)
+            string[] niche = { "barbel_steed", "white_crucian", "freshwater_eel", "redfin_culter", "yellow_catfish" };
+            if (!niche.All(id => shM.ContainsKey(id)))
+            {
+                Log("[DEPTH] D7' the step-2 niches: skipped (" + string.Join(", ", niche.Where(id => !shM.ContainsKey(id))) + " not on the roster)");
+                yield break;
+            }
+            float M(string id, params BedMat[] ms)
+            {
+                float v = 0f;
+                for (int p = 0; p < 4; p++) v += LakeEconomy.PeriodW[p] * ms.Sum(m => shM[id][p][(int)m]);
+                return v / LakeEconomy.PeriodW.Sum();
+            }
+            float MU(params BedMat[] ms) => ms.Sum(m => uniM[(int)m]);
+            float barbel = M("barbel_steed", BedMat.Gravel, BedMat.Sand) / MU(BedMat.Gravel, BedMat.Sand);
+            float white = M("white_crucian", BedMat.Weed) / MU(BedMat.Weed);
+            float eel = sh["freshwater_eel"][3][(int)BedKind.Hole] / uni[(int)BedKind.Hole];
+            float ycat = mean[("yellow_catfish", 3)][0];
+            // the redfin culter's channel: the old creek starts at z 17-20 and runs 28-38 m out, its banks mostly drop-off, so
+            // the bamboo's water (z <= 30) holds almost none of it; judged on the dragon's water (z <= 50) with 4000 targets
+            // per period against the region's exact uniform share
+            var cul = GameDatabase.GetFish("redfin_culter");
+            var habW = new FishHabitat(ctl.Stage, ctl, L.Bathy, true);
+            const float zWide = 50f;
+            var chan = new float[4];
+            float uniChan = 0f;
+            for (int p = 0; p < 4; p++)
+            {
+                var (reg, cum, total) = habW.DebugSampler(cul, p, zWide);
+                var rng = new System.Random(2515 + p);
+                int nch = 0;
+                for (int t = 0; t < 4000; t++)
+                    if (L.Bathy.NodeKind(reg.nodes[HabitatModel.Pick(cum, (float)rng.NextDouble() * total)]) == BedKind.Channel) nch++;
+                chan[p] = nch / 4000f;
+                if (p == 0)
+                {
+                    double cu = 0, us = 0;
+                    for (int q = 0; q < reg.nodes.Length; q++)
+                    {
+                        us += reg.u[q];
+                        if (L.Bathy.NodeKind(reg.nodes[q]) == BedKind.Channel) cu += reg.u[q];
+                    }
+                    uniChan = us > 0 ? (float)(cu / us) : 0f;
+                }
+            }
+            float culDawn = uniChan > 0f ? chan[0] / uniChan : 0f, culEve = uniChan > 0f ? chan[2] / uniChan : 0f;
+            Log($"[DEPTH] D7' seed 1 uniform targets (z <= {zMax:0}): materials " + string.Join(" ", Enumerable.Range(0, 4).Select(m => $"{(BedMat)m}:{F2(uniM[m])}")) + $", hole {F2(uni[(int)BedKind.Hole])}, channel {uni[(int)BedKind.Channel]:0.000}");
+            Log($"[DEPTH] D7' seed 1 redfin_culter in the channel on the dragon's water (z <= {zWide:0}, uniform share {uniChan:0.0000}): " + string.Join(" ", Enumerable.Range(0, 4).Select(p => $"{GameClock.Id((Period)p)} {chan[p]:0.0000} x{(uniChan > 0f ? chan[p] / uniChan : 0f):0.00}")));
+            DCheck($"D7' seed 1's step-2 niches: barbel_steed on gravel + sand x{F2(barbel)} (>= 1.4), white_crucian on weed x{F2(white)} (>= 1.4), freshwater_eel at night in holes x{F2(eel)} (>= 2), redfin_culter in the channel (z <= {zWide:0}) at dawn x{F2(culDawn)} and evening x{F2(culEve)} (>= 1.5), yellow_catfish at night mean rank {ycat:0} (>= 50)",
+                barbel >= 1.4f && white >= 1.4f && eel >= 2f && culDawn >= 1.5f && culEve >= 1.5f && ycat >= 50f);
         }
 
         // ------------------------------------------------------------------ D12: the obstacle bands
