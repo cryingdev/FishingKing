@@ -195,7 +195,7 @@ factories leave `keyLures` empty) and the shop fan list. `bait_golden.desc` is s
 | | 황금잉어 | 피라루쿠 | 철갑상어 | 청새치 | 백상아리 |
 |---|---|---|---|---|---|
 | Stage / backdrop | lake / `lake` | swamp / `swamp` | ice / `ice` | ocean / `ocean` | ocean / `ocean` (shared) |
-| Lurk | weed edge of the drop-off (the generated bed's WeedEdge nodes ≥ 4.5 m, Docs/terrain_depth_spec.md 10), z 14–30, on the bottom | drowned-forest shade, z 10–30, **1.2 m under the surface** | under the ice beside the hole, z 6–14, on the bottom (~4.3 m) | blue water off the drift, z 20–45, 6 m deep (shared) | same lurk |
+| Lurk | weed edge of the drop-off (the generated bed's WeedEdge nodes ≥ 4.5 m, Docs/terrain_depth_spec.md 10; Docs/lake_phase2_spec.md for the free bed), z 14–30, on the bottom | drowned-forest shade, z 10–30, **1.2 m under the surface** | under the ice beside the hole, z 6–14, on the bottom (~4.3 m) | blue water off the drift, z 20–45, 6 m deep (shared) | same lurk |
 | Key lures (weight) | golden 1.0, corn 0.5, softworm 0.4 | frog 1.0, popper 0.8 | softworm 1.0, jig 0.5 | kona 1.0, jig 0.5 | kona 1.0, jig 0.6 |
 | Depth rule | ≥ 4.0 m, within 0.8 m of the bottom | ≤ 0.4 m (at the surface) | ≥ 3.5 m, within 0.8 m of the bottom | ≤ 3.0 m | kona any depth (crawl); jig ≥ 6 m |
 | Meter Q | Still (baits) / Lure (worm) | Lure | Lure | Lure (fast band) | Crawl (kona) / Lure (jig) |

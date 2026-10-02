@@ -75,12 +75,17 @@ flowchart LR
 `StageView.Init` 순서: 레이아웃(`Art.Layout`) → `Persp` → `TideOffset = 0` → `CurrentField` → `Obstacles.Load` → **`L.Bathy =
 Bathymetry.For(L, Bathymetry.SeedOverride ?? Game.I.WorldSeed)`**(호수의 생성 지형, 다른 스테이지는 null; `StageLayout`은 `Art.Data`가
 스테이지마다 하나를 캐시해 모든 뷰가 같이 쓰므로 매번 다시 넣음 — 타이틀의 호수 포함; 같은 시드면 캐시된 격자) → 시간대 레이어 …
-([terrain_depth_spec.md](terrain_depth_spec.md)). 새 파일: `Core/Bathymetry.cs`(격자·질의), `Core/BathyGen.cs`(생성기·검증),
-`Data/TerrainRecipes.cs`(호수 레시피), `Fishing/HabitatModel.cs`(서식지 계산), `Fishing/FishHabitat.cs`(실행 중 래퍼),
-`Debug/BathyOverlay.cs`(`-fkbathy show|dump`), `Debug/AutoPilot.Depth.cs`, `Debug/AutoPilot.Habitat.cs`.
+([terrain_depth_spec.md](terrain_depth_spec.md), [lake_phase2_spec.md](lake_phase2_spec.md)). 파일: `Core/Bathymetry.cs`(격자·질의·
+만든 바닥의 거리 프로필 `Profile`·호수 통계 `Quantile`/`NodeRankPct`/몫·성격 `Character`), `Core/BathyGen.cs`(생성기·검증 V1–V11),
+`Data/TerrainRecipes.cs`(호수 레시피 v2, 성격 범위 `CharacterSpec`), `Fishing/HabitatModel.cs`(서식지 계산: 상대 띠 `Resolve`, 밀도,
+끌어낸 가중치 `DerivedWeights`, 시뮬레이션), `Fishing/LakeEconomy.cs`(경제 추정, 순수), `Fishing/FishHabitat.cs`(실행 중 래퍼:
+샘플러·출현 가중치·먹이 확률 F·작업 스레드의 경제 추정), `Debug/BathyOverlay.cs`(`-fkbathy show|dump`), `Debug/AutoPilot.Depth.cs`,
+`Debug/AutoPilot.Economy.cs`(`-fkauto economy`). `StageLayout`의 `ProfileDepth`는 지형이 있으면 그 지형의 프로필 P\*이고,
+작성된 프로필은 `AuthoredDepth`/`AuthoredMeanDepth`로 남습니다.
 
 `FishingController.Init`이 만드는 것(`Assets/Scripts/Fishing/FishingController.cs`): `Angler.Create`, `Tackle.Create`, 지형이 있으면
-`FishHabitat`(`Spawner.Init` 전: 첫 물고기부터 서식지로 배치), `FishSpawner`, 조준 점·부채꼴 점, `CastArrow`, `SideArrow`, 목표 링·입질 마크, `FishingHUD.Create`, `InitObstacles()`(`ObstacleOverlay`), `LegendWatch.For(this)`, `InitZoom()`, `InitMusic()`(스테이지 곡, [music.md](music.md)), 그리고 `SetState(S.Ready)`. 얼음 스테이지에서 얼음 구멍에 못 쓰는 루어가 장착돼 있으면 스타터 미끼로 바꿉니다(`LureInfo.IceOk`).
+`FishHabitat`(`Spawner.Init` 전: 첫 물고기부터 서식지로 배치, 출현 가중치를 지형에서 끌어냄; `Prewarm`이 작업 스레드에서 경제
+추정을 돌려 먹이 확률 F를 정함), `FishSpawner`, 조준 점·부채꼴 점, `CastArrow`, `SideArrow`, 목표 링·입질 마크, `FishingHUD.Create`, `InitObstacles()`(`ObstacleOverlay`), `LegendWatch.For(this)`, `InitZoom()`, `InitMusic()`(스테이지 곡, [music.md](music.md)), 그리고 `SetState(S.Ready)`. 얼음 스테이지에서 얼음 구멍에 못 쓰는 루어가 장착돼 있으면 스타터 미끼로 바꿉니다(`LureInfo.IceOk`).
 
 ### 1.6 정적 데이터 (`GameDatabase`)와 어종 데이터 파일
 

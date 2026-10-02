@@ -10,6 +10,13 @@ scope; `-fkbathy show` is the radar's prototype.
 This merges design A (data and geometry) and design B (gameplay); every code claim was checked against the repo at
 `b9802e9`. Section 17 lists what was changed while building it and why. The Korean UI strings stay as they are.
 
+> **Phase 2** ([lake_phase2_spec.md](lake_phase2_spec.md)) changes this design in places, marked "phase 2" below: the bed
+> is generated freely from a per-seed character (no pull towards the old profile), the stage's distance profile is
+> re-derived from the bed (the finished rows' medians, P\*) and is the water off the grid, the habitat's depth bands are
+> relative to the lake (percentiles), the spawn weights are derived from the bed, the population is 15 with a
+> per-encounter feeding roll, and the reach scale and its estimator (section 8) are replaced by the economy estimator and
+> its gate. Recipe v2.
+
 ---
 
 ## 0. Decisions
@@ -26,7 +33,7 @@ This merges design A (data and geometry) and design B (gameplay); every code cla
 | Determinism | SplitMix64, FNV-1a, Murmur fmix32, integer-lattice value noise; no sin, cos, exp or pow in the generator (the camera's pitch constants are rounded to 1e-6); meanders by Catmull-Rom; depths quantized to whole cm. |
 | Retries | Up to 8 attempts, then the fallback recipe, which the tests prove always passes. |
 | How fish move | Global weighted targets from a node sampler, keeping today's motion style (12 s re-pick, far targets). |
-| Bite budget | The sense range scaled per (species, period, rig class, rod), clamped to 0.70–1.30 (§8). A deterministic estimator, lazy per key and cached. |
+| Bite budget | The sense range scaled per (species, period, rig class, rod), clamped to 0.70–1.30 (§8). A deterministic estimator, lazy per key and cached. **Phase 2: removed**; the per-encounter feeding chance F and the lake's economy gate replace it (lake_phase2_spec A5–A7). |
 | Body rule | `MinWater(cm) = clamp(0.2 + 0.4·cm/100, 0.3, 1.2)`. Wander, approach and flee get a move guard; fights a look-ahead plus a yaw snap. |
 | Deep runs | A separate `deepRnd` (seed + 2), drawn once per run on the lake; 30 % of a big runner's runs go to the deeper side. |
 | Legend spot | On the grid, `ChooseSpot` tries every node in reach; the depth check covers a disc of 0.6·r. |
@@ -146,7 +153,7 @@ every save's lake re-rolls on purpose and the golden hash changes.
 
 D is depth (m, + down); node k at `x = X0 + i·0.5`, `z = Z0 + j·0.5`.
 
-0. **Base**: `D = L.ProfileMeanDepth(z)`.
+0. **Base**: `D = L.ProfileMeanDepth(z)`. *Phase 2*: the character's free base `B(x, z)` (lake_phase2_spec A1, steps 0a/0b; `ProfileMeanDepth` is now `AuthoredMeanDepth`).
 1. **Flats** (set-to). Per blob, in table order, 4 draws: `scale U(1.0, 1.12)`, `wob U(0.4, 0.8)`, `e U(edge)`,
    `t U(depth)`. Per node: `sdf = segDist(p, a, b) − r·scale + wob·V(x/6, z/6, salt)`, for blobs with a gap
    `max(sdf, gap − sdfLane)`; `w = 1 − S(−e, 0, sdf)`; target `Σw·t/Σw + 0.12·V(x/4, z/4)`; `D = lerp(D, target, max w)`.
@@ -178,7 +185,7 @@ D is depth (m, + down); node k at `x = X0 + i·0.5`, `z = Z0 + j·0.5`.
    half(z, 640) − R; outside the lane by R + 1, clear of flats, pins, features; height `D(centre) − top ≥ 1.5`, capped at
    `1.3·0.55·R`; `D −= h·S(1, 0.45, rho)`.
 5. **Noise**: `D += (0.30·V(x/14, z/14) + 0.12·V(x/5, z/5))·(1 − 0.6·wFlat)`.
-6. **Feather**: `D = base + (D − base)·S(0, 6, min(x − X0, X1 − x, Z1 − z))` (none at the z = 0 shore).
+6. **Feather**: `D = base + (D − base)·S(0, 6, min(x − X0, X1 − x, Z1 − z))` (none at the z = 0 shore). *Phase 2*: feathered to the provisional profile P0, the edges re-set to the final P\* after step 9 (lake_phase2_spec A1, steps 5b, 6, 9b).
 7. **Pins, pass A** (§5): ring nodes blended towards each window in ascending priority, core nodes clamped into their
    effective window; then the global limits.
 8. **Slope limit** (§17.1): (1) every node's window (a core's, the far edges' profile value, else [0.35, 9]) spread at
@@ -212,7 +219,7 @@ remains an option if a load ever hitches.
 
 | Pin | Selector | Grow | Window [lo, hi] (m) | Blend | Prio |
 |---|---|---|---|---|---|
-| pier | rect x −3.5..3.5, z 0..3.5 | – | the profile | 3.0 | 10 |
+| pier | rect x −3.5..3.5, z 0..3.5 | – | the profile (phase 2: the authored profile, `authD`) | 3.0 | 10 |
 | sunklog | id `sunklog` | 0.3 | [6.125, 6.325] | 2.0 | 9 |
 | weedbed | id `weedbed` | 0.2 | [2.4, 3.0] | 1.5 | 8 |
 | reeds | kind weed with tag `reed` | 0.3 | [0.35, 1.2] | 2.0 | 7 |
@@ -238,13 +245,13 @@ today's depths); the far edges (x = ±48, z = 64) are the profile, so stepping o
 |---|---|
 | V1 | Every pin-core node inside its effective window (±0.0051: half a cm and the float's slop) |
 | V2 | 0.35 ≤ D ≤ 9.0 everywhere |
-| V3 | Pier core = the profile within 0.01 |
-| V4 | Far-edge nodes = the profile within 0.01 |
+| V3 | Pier core = the profile within 0.01 (phase 2: the authored profile) |
+| V4 | Far-edge nodes = the profile within 0.01 (phase 2: the side and far edges = P\*) |
 | V5 | Every 4-neighbour edge with a non-core node: \|Δcm\| ≤ 76 (1.52 m/m) |
 | V6 | Under every zone down to the bed, D ≥ −top + 0.15; under every `bed` solid, D ≥ 0.3 |
 | V7 | Lane core ≥ 4.5 |
 | V8 | For cast distances 16, 20, 24, 27, 34, 36: ≥ 6 legend spot centres (0.9 m disc ≥ 4.3 m, z ≥ zNear + 3, within cast − 0.5 of (0.375, 0), clear of pads by 0.9 m and solids by 1.0 m, within 6 m of a lurk candidate: WeedEdge, D ≥ 4.5, z 14..min(30, cast + 5), in view) |
-| V9 | (Information) the centre line's D / profile per 5 m of z |
+| V9 | (Information) the centre line's D / profile per 5 m of z (phase 2: P\* against the authored profile; the final rows' medians against P\*). Phase 2 adds V10 (R_ref's depth quantiles), V11 (R_ref's material and kind shares) and V12 (the sweep's spread): lake_phase2_spec A1 |
 
 ---
 
@@ -282,6 +289,8 @@ Not migrated (exporter only): `lake.py`'s `_depth_at` (comment added) and the ot
 
 ### 7.1 Data
 
+> **Phase 2**: the depth band is relative (`depth:pA-pB`, percentiles of the lake's depths over R_ref; shifts `@period:Np`), resolved per bed (`HabitatModel.Resolve`); the strings below are phase 1's. Lake_phase2_spec A3 has the conversion and the table for the four species.
+
 `FishSpecies.habitat` (`HabitatDef { a, b, kindW[9], matW[4], edge, col Mid|Bottom, beta, shift[4], periodKind[4, 9],
 runDeep }`), parsed from `"key:value,…"`, the species file's `"habitat"` (`Assets/Resources/Data/Fish/<id>.json`, read
 by `SpeciesData`; formerly `GameDatabase.Habitats()`): `depth:a-b`, kind and material keys, `edge`, `col`, `beta`,
@@ -307,6 +316,8 @@ node has less than `MinWater(maxCm)`.
 
 ### 7.3 Densities
 
+> **Phase 2**: `RowKeep` is 0.5 (half of each row's share kept), and the stage's spawn weights are derived from the bed (lake_phase2_spec A3, A4).
+
 Target region z in [zNear + 1.5, zMax] (spawn [zNear + 2, zMax], from distance [zMax − 4, zMax]), |x| ≤ half(z) =
 min(xLim − 0.5, VisibleHalfWidth(z, 600)). Today's density `U = 1/(2·half(z))`; `hn = clamp(h / mean_U(h), 0.25, 3)`;
 `W = U·((1 − β) + β·hn)` (0 under MinWater); then every row of the region (one z) is scaled back to today's share of it
@@ -327,6 +338,8 @@ Bottom `U[max(min(lo, bot), bot − 2), bot]`; ≥ 0.3. No def: today's rule.
 ---
 
 ## 8. Bite-rate budget
+
+> **Phase 2: replaced.** The reach scale, its estimator and the D11 gates of this section are removed. A per-encounter feeding chance F, set per bed and rod by the economy estimator (`LakeEconomy`), bounds the lake's catches and income per minute to 0.8–1.25 of today's (lake_phase2_spec A5–A7). This section is kept as the record of phase 1.
 
 **Rule** (the user's): for a reference player who casts evenly over the ±38° fan and keeps the rig unchanged, the stock's
 bites per minute per (bait, rig class, period, rod) stay within 0.8–1.25× of today on every seed. If it meant per spot,
@@ -478,13 +491,15 @@ game is a new lake. `StageView.Init` assigns `L.Bathy = Bathymetry.For(L, SeedOv
 | D4 | The queries (node values, cell means, gradient signs, DeeperDir across the point, EdgeDist, MinDepthAlong, MinDepthDisc, zone names) |
 | D5 | The world seed: minted once for an old save, kept through JSON, set for a new game; the test's seed leaves the save file byte for byte |
 | D6 | The lying float (set at 4 m on a flat: tilt, lie within settle + 0.3 s, "찌 누움", the hint once; at night the 케미 at its tip; shortened to 1 m it stands through the tilt; laid again no second hint; a fight from it stands it on the first frame) and its shots |
-| D7 | 2000 targets per species and period (bamboo's water): bass by day on drop-off + hump + shoal ≥ 1.4× today, at dawn on flat + shelf ≥ 1.3×; crucian at dawn on the flats ≥ 1.3×, by day ≤ 0.8× its dawn share; carp at night on flat + shoal ≥ 1.4×, by day in hole + channel + basin ≥ 1.2× |
+| D7 | 2000 targets per species and period (bamboo's water): bass by day on drop-off + hump + shoal ≥ 1.4× today, at dawn on flat + shelf ≥ 1.3×; crucian at dawn on the flats ≥ 1.3×, by day ≤ 0.8× its dawn share; carp at night on flat + shoal ≥ 1.4×, by day in hole + channel + basin ≥ 1.2×. *Phase 2*: D7′ on three lakes (lake_phase2_spec A8) |
 | D8 | 300 s soaks (carp, bass, the stock) and 10 fights by the lane's edges at 1/60 s: no free fish (wandering, coming, nibbling, biting, fleeing) in water shallower than its MinWater, none (wandering, coming, fleeing) under the bed − 0.3; no running fight frame in too little water, none under the bed − 0.2. (These soaks have no rig in the water; the habitat soak counts the nibbles and bites.) |
 | D9 | 60 fights each (carp 70 cm, crucian 25 cm): of the runs whose sides differ ≥ 0.3 m the deeper taken 0.58–0.75 (carp) / 0.40–0.60 (crucian); none into too little water with the other side open; the step draws match a fresh `System.Random(seed + 1)` |
 | D10 | 40 placements with the bamboo and the dragon rod: lurk ≥ 4.5 m, ≥ 75 % on WeedEdge, a spot every time with ≥ 4.3 m over 0.9 m |
-| D11 | The estimator over seeds 1..50 × 4 species × 4 periods × their rig classes × bamboo / carbon / dragon: the three gates of §8.2 |
+| D11 | The estimator over seeds 1..50 × 4 species × 4 periods × their rig classes × bamboo / carbon / dragon: the three gates of §8.2. *Phase 2*: replaced by D11′ (the economy gate), D11b and D14 (lake_phase2_spec A8) |
 | D12 | Every lake weed / snag zone, 20 points: the bed under its top |
 | D13 | `bathy_lake_1.png`, `bathy_lake_7.png` and the overlay for seeds 1 and 7 (`depth_show_lake_seed*`) |
+
+> **Phase 2**: `-fkauto habitat` is removed; `-fkauto economy` (lake_phase2_spec A8) soaks the new lake against today's (`-fkecomode legacy`).
 
 **`-fkauto habitat`**: lake, seed 1, the bamboo rod with the starter reel and line, the stock; the clock frozen at each
 period's centre; 떡밥 2 m, 옥수수 4 m, 지렁이 1 m floats; 70 spots over the reference player's fan (the estimator's: yaw
