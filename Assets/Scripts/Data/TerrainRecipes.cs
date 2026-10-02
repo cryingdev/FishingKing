@@ -56,11 +56,52 @@ namespace FishingKing
         public int tries = 40;
     }
 
+    /// <summary>
+    /// A lake's character (Docs/lake_phase2_spec.md A1): the ranges a seed draws its look from. Four draws u in [0, 1]
+    /// (depth, weed, rock, side) and a few plain ones set the base (shore 1.2 m, a shelf to zs, a drop over ws to the main
+    /// depth Dm, shallower towards the sides and the far end), how many holes and humps, the flats and the materials.
+    /// "lerp" ranges are read as x + (y - x) u of their u; the others are uniform draws.
+    /// </summary>
+    public sealed class CharacterSpec
+    {
+        /// <summary>Main depth Dm (lerp by u_depth), the shelf's end zs (U), the drop's width ws (U).</summary>
+        public Vector2 mainDepth = new Vector2(3.1f, 6.7f), shelfEnd = new Vector2(4f, 8f), dropWidth = new Vector2(8f, 18f);
+        /// <summary>The side shoaling sigma (lerp by u_side) round the axis x = xc (U), over 0.9 of the visible half width.</summary>
+        public Vector2 side = new Vector2(0.15f, 0.5f);
+        public Vector2 sideAxis = new Vector2(-6f, 6f);
+        /// <summary>The far end's rise phi = U farRiseMax over z farZ.</summary>
+        public float farRiseMax = 0.25f;
+        public Vector2 farZ = new Vector2(45f, 64f);
+        /// <summary>A second hole with this chance (lerp by u_depth).</summary>
+        public Vector2 hole2 = new Vector2(0.6f, 0.95f);
+        /// <summary>Humps: 1 + floor(3.99 u_rock); a top at Dloc U(humpTop) - humpRock u_rock within humpClamp m, a rise of at least max(1, 0.3 Dloc).</summary>
+        public Vector2 humpTop = new Vector2(0.40f, 0.65f), humpClamp = new Vector2(0.8f, 4.0f);
+        public float humpRock = 0.4f;
+        /// <summary>The noise's amplitude x U(noiseAmp).</summary>
+        public Vector2 noiseAmp = new Vector2(0.8f, 1.2f);
+        /// <summary>Weed: the flats' radius x (lerp by u_weed), their depth + (lerp by u_weed).</summary>
+        public Vector2 flatRadius = new Vector2(0.95f, 1.30f), flatBias = new Vector2(0.25f, -0.25f);
+        /// <summary>Extra weed flats floor(3.99 u_weed^2): radius, depth, edge, z range; 3 m off the lane and each other, 2 m off the pins.</summary>
+        public int extraMax = 3;
+        public Vector2 extraR = new Vector2(3f, 6f), extraDepth = new Vector2(1.0f, 2.2f), extraEdge = new Vector2(2f, 3.5f), extraZ = new Vector2(8f, 40f);
+        /// <summary>The shelf's weed within this of a reed (lerp by u_weed); a flat is sand where the noise is over this (lerp by u_weed).</summary>
+        public Vector2 shelfWeed = new Vector2(1.0f, 2.5f), flatSand = new Vector2(0.05f, 0.50f);
+        /// <summary>Gravel (lerp by u_rock): a slope at least this steep, a channel's noise over this, open water's noise over this.</summary>
+        public Vector2 slopeGravel = new Vector2(0.8f, 0.5f), channelGravel = new Vector2(0.75f, 0.15f), openGravel = new Vector2(0.85f, 0.45f);
+        /// <summary>The lane is carved towards max(laneMin, Dm x U(laneScale)), fully from laneEdge.y m inside it to nothing laneEdge.x m outside.</summary>
+        public float laneMin = 5.4f;
+        public Vector2 laneScale = new Vector2(0.9f, 1.1f), laneEdge = new Vector2(2.5f, -1.0f);
+
+        public static float Lerp(Vector2 r, float u) => r.x + (r.y - r.x) * u;
+    }
+
     /// <summary>A stage's terrain recipe (spec 3.3): every number of the generator. Bump <see cref="version"/> on any change.</summary>
     public sealed class TerrainRecipe
     {
         public string stage;
-        public int version = 1;
+        public int version = 2;
+        /// <summary>The lake's character ranges (phase 2): the base, the features' counts, the flats and the materials per seed.</summary>
+        public CharacterSpec character = new CharacterSpec();
         public float x0 = -48f, z0 = 0f;
         public int nx = 193, nz = 129;
         public float minDepth = 0.35f, maxDepth = 9.0f, maxSlope = 1.5f, feather = 6f;
@@ -76,10 +117,13 @@ namespace FishingKing
         public Vector2[] lane;
     }
 
-    /// <summary>The stages' terrain recipes: the lake only (phase 1); every other stage keeps its profile.</summary>
+    /// <summary>The stages' terrain recipes: the lake only; every other stage keeps its profile.</summary>
     public static class TerrainRecipes
     {
         public static TerrainRecipe For(string stageId) => stageId == "lake" ? Lake() : null;
+
+        /// <summary>A stage with a generated bed (its roster weights are optional, derived from the bed).</summary>
+        public static bool Has(string stageId) => stageId == "lake";
 
         static Blob B(string id, string flat, float ax, float az, float bx, float bz, float r, float d0, float d1, float e0 = 2f, float e1 = 3.5f, float gap = 0f, bool shoal = false) =>
             new Blob { id = id, flat = flat, a = new Vector2(ax, az), b = new Vector2(bx, bz), r = r, depth = new Vector2(d0, d1), edge = new Vector2(e0, e1), gap = gap, shoal = shoal };
@@ -88,15 +132,17 @@ namespace FishingKing
             new Pin { sel = sel, id = sel == PinSel.Id ? key : null, kind = sel == PinSel.Kind || sel == PinSel.KindTag ? key : null, tag = tag, grow = grow, lo = lo, hi = hi, blend = blend, prio = prio };
 
         /// <summary>
-        /// The lake (spec 4.2, 5.1): shallow flats under the pads and reeds on both sides, a weed shoal under the submerged
-        /// weed bed, a deep lane from the pier out past the sunken log (the legend's spot reachable with the bamboo rod),
-        /// an old creek, 1-2 holes and 1-3 humps further out. The pins mirror the baked obstacle tops of
-        /// Tools/Blender/variants/hybrid/obstacles/lake.py (sunklog bed 6.225, weedbed top -1.2): change both together.
+        /// The lake (spec 4.2, 5.1; Docs/lake_phase2_spec.md A1): a free base drawn from the seed's character (shallow or
+        /// deep, weedy or rocky), shallow flats under the pads and reeds on both sides (0-3 more weed flats on weedy lakes),
+        /// a weed shoal under the submerged weed bed, a deep lane from the pier out past the sunken log (the legend's spot
+        /// reachable with the bamboo rod), an old creek, 1-2 holes and 1-4 humps further out. The pins mirror the baked
+        /// obstacle tops of Tools/Blender/variants/hybrid/obstacles/lake.py (sunklog bed 6.225, weedbed top -1.2): change
+        /// both together.
         /// </summary>
         static TerrainRecipe Lake() => new TerrainRecipe
         {
             stage = "lake",
-            version = 1,
+            version = 2,
             blobs = new[]
             {
                 B("L1", "flatL", -40f, 3.0f, -7.5f, 3.2f, 3.2f, 0.6f, 1.0f),
@@ -114,13 +160,14 @@ namespace FishingKing
             channel = new ChannelSpec(),
             holes = new FeatureSpec
             {
-                countMin = 1, countMax = 2, radius = new Vector2(2f, 3.5f), aspect = new Vector2(1f, 1.5f), amount = new Vector2(1.0f, 1.8f),
-                z1 = new Vector2(18f, 32f), x1 = 6f, zN = new Vector2(30f, 50f), xNFrac = 0.8f,
+                countMin = 1, countMax = 2, radius = new Vector2(3f, 4.5f), aspect = new Vector2(1f, 1.5f), amount = new Vector2(1.0f, 1.8f),
+                z1 = new Vector2(18f, 32f), x1 = 6f, zN = new Vector2(30f, 50f), xNFrac = 0.8f, tries = 80,
             },
             humps = new FeatureSpec
             {
-                countMin = 1, countMax = 3, radius = new Vector2(3f, 6f), aspect = new Vector2(1f, 1.8f), amount = new Vector2(2.4f, 4.0f),
-                z1 = new Vector2(30f, 38f), zN = new Vector2(30f, 52f),
+                // (the top: relative to the water there, CharacterSpec.humpTop; amount is unused)
+                countMin = 1, countMax = 4, radius = new Vector2(3f, 6f), aspect = new Vector2(1f, 1.8f), amount = new Vector2(2.4f, 4.0f),
+                z1 = new Vector2(28f, 40f), zN = new Vector2(30f, 52f), tries = 80,
             },
             pins = new[]
             {
