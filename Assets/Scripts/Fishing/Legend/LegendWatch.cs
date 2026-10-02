@@ -276,7 +276,14 @@ namespace FishingKing
         /// point; the nearer the lurk point the better, and better still beside the legend's own cover (coverFor). On the
         /// ice: the hole.
         /// </summary>
-        bool ChooseSpot(out Vector3 spot, out float radius)
+        bool ChooseSpot(out Vector3 spot, out float radius) => ChooseSpotFor(new Vector2(Lurk.x, Lurk.z), true, out spot, out radius);
+
+        /// <summary>
+        /// <see cref="ChooseSpot"/> round any lurk point. On the generated bed (Docs/terrain_depth_spec.md 10) every node
+        /// within nearLurk - 1 of it and in his reach is tried (the depth over a disc of 0.6 x the radius), one drawn
+        /// among those scoring within 1 of the best; <paramref name="pick"/> false: only whether one exists (no draw).
+        /// </summary>
+        bool ChooseSpotFor(Vector2 lurk, bool pick, out Vector3 spot, out float radius)
         {
             var d = Primary;
             radius = d.spotRadius;
@@ -291,14 +298,13 @@ namespace FishingKing
             var sp = (entries.FirstOrDefault(e => !AwayOf(e.sp)) ?? entries[0]).sp;
             float reach = Game.I.Rod.castDist - 0.5f;
             var a = new Vector2(ctl.Angler.X, 0f);
-            var lurk = new Vector2(Lurk.x, Lurk.z);
             float maxOff = Mathf.Max(1.5f, d.nearLurk - 2f);
             float depthNeed = entries.Where(e => !AwayOf(e.sp)).Select(e => e.sp.encounter.depthMin).DefaultIfEmpty(0f).Min();
             float r = radius;
             bool Ok(Vector2 c)
             {
                 if (c.y < L.zNear + 3f || Mathf.Abs(c.x) > L.xLim - r) return false;
-                if (depthNeed > 0f && L.DepthAt(c.y) < depthNeed + 0.3f) return false;
+                if (depthNeed > 0f && (L.Terrain ? L.Bathy.MinDepthDisc(c.x, c.y, 0.6f * r) : L.DepthAt(c.x, c.y)) < depthNeed + 0.3f) return false;
                 if (water != null && (!water.OpenWater(c.x, c.y) || !water.OpenWater(c.x - r, c.y) || !water.OpenWater(c.x + r, c.y)
                                       || !water.OpenWater(c.x, c.y + r * 0.6f) || !water.OpenWater(c.x, c.y - r * 0.6f))) return false;
                 if (obs != null && !obs.Empty)
@@ -309,7 +315,47 @@ namespace FishingKing
                 }
                 return true;
             }
+            float Score(Vector2 c)
+            {
+                float score = -(c - lurk).magnitude * 0.3f;
+                if (obs != null && sp.coverFor != null)
+                    foreach (var cv in obs.Covers)
+                        if (Obstacles.CoverMatch(cv, sp) && !obs.Inside(cv, c) && Obstacles.Dist(cv, c) <= 2.5f)
+                        {
+                            score += 2f;
+                            break;
+                        }
+                return score;
+            }
             spot = default;
+            if (L.Terrain)
+            {
+                var b = L.Bathy;
+                float near = d.nearLurk - 1f;
+                var cands = new List<(Vector2 c, float score)>();
+                float top = float.MinValue;
+                int i0 = Mathf.Max(0, Mathf.FloorToInt((lurk.x - near - b.X0) / Bathymetry.Cell)), i1 = Mathf.Min(b.Nx - 1, Mathf.CeilToInt((lurk.x + near - b.X0) / Bathymetry.Cell));
+                int j0 = Mathf.Max(0, Mathf.FloorToInt((lurk.y - near - b.Z0) / Bathymetry.Cell)), j1 = Mathf.Min(b.Nz - 1, Mathf.CeilToInt((lurk.y + near - b.Z0) / Bathymetry.Cell));
+                for (int j = j0; j <= j1; j++)
+                for (int i = i0; i <= i1; i++)
+                {
+                    var c = b.NodePos(j * b.Nx + i);
+                    if ((c - lurk).magnitude > near || (c - a).magnitude > reach || !Ok(c)) continue;
+                    if (!pick)
+                    {
+                        spot = new Vector3(c.x, 0f, c.y);
+                        return true;
+                    }
+                    float sc = Score(c);
+                    cands.Add((c, sc));
+                    top = Mathf.Max(top, sc);
+                }
+                if (cands.Count == 0) return false;
+                var good = cands.Where(t => t.score >= top - 1f).ToList();
+                var pickC = good[Random.Range(0, good.Count)].c;
+                spot = new Vector3(pickC.x, 0f, pickC.y);
+                return true;
+            }
             bool found = false;
             float best = float.MinValue;
             for (int i = 0; i < 48; i++)
@@ -319,14 +365,7 @@ namespace FishingKing
                 var off = c - a;
                 if (off.magnitude > reach) c = a + off.normalized * reach;
                 if ((c - lurk).magnitude > d.nearLurk - 1f || !Ok(c)) continue;
-                float score = -(c - lurk).magnitude * 0.3f;
-                if (obs != null && sp.coverFor != null)
-                    foreach (var cv in obs.Covers)
-                        if (Obstacles.CoverMatch(cv, sp) && !obs.Inside(cv, c) && Obstacles.Dist(cv, c) <= 2.5f)
-                        {
-                            score += 2f;
-                            break;
-                        }
+                float score = Score(c);
                 if (score > best)
                 {
                     best = score;
@@ -343,8 +382,15 @@ namespace FishingKing
             if (!ChooseSpot(out var at, out float radius))
             {
                 Debug.Log($"[SPOT] no open water for a spot near the lurk point {Lurk:F1}: none this cue");
+                // (the generated bed: two cues in a row without a spot move the lurk point)
+                if (L.Terrain && ++spotFails >= 2)
+                {
+                    spotFails = 0;
+                    Place(default, false);
+                }
                 return;
             }
+            spotFails = 0;
             var d = Primary;
             Spot = at;
             SpotRadius = radius;
@@ -487,7 +533,22 @@ namespace FishingKing
         void PlaceNatural()
         {
             if (L.IsIce) Place(new Vector3(L.holeX, 0f, L.holeZ + 4f), true);
-            else Place(new Vector3(ctl.Angler.X, 0f, L.mode == "boat" ? 24f : 16f), true);
+            else
+            {
+                var want = new Vector2(ctl.Angler.X, L.mode == "boat" ? 24f : 16f);
+                // (the generated bed: on the drop-off beside the weed nearest that, within 4 m)
+                if (L.Terrain && Primary.lurkWeedEdge)
+                {
+                    float bd = 4f;
+                    foreach (var q in LurkCandidates())
+                        if ((q - want).magnitude <= bd)
+                        {
+                            bd = (q - want).magnitude;
+                            want = q;
+                        }
+                }
+                Place(new Vector3(want.x, 0f, want.y), true);
+            }
         }
 
         /// <summary>
@@ -525,6 +586,53 @@ namespace FishingKing
             cueT = 0f;
         }
 
+        // ---- the generated bed (Docs/terrain_depth_spec.md 10)
+        List<Vector2> lurkCands;
+        float lurkCandsCast = -1f;
+        int spotFails;
+
+        /// <summary>
+        /// The lurk candidates on the generated bed: WeedEdge nodes (a drop-off beside weed) at least depthMin + 0.5 deep,
+        /// z from lurkZMin out to where a spot within his cast can still sit over them, in the view (rebuilt when the
+        /// rod changes).
+        /// </summary>
+        List<Vector2> LurkCandidates()
+        {
+            float cd = Game.I.Rod.castDist;
+            if (lurkCands != null && Mathf.Abs(cd - lurkCandsCast) < 1e-3f) return lurkCands;
+            lurkCandsCast = cd;
+            lurkCands = new List<Vector2>();
+            var b = L.Bathy;
+            if (b == null) return lurkCands;
+            var d = Primary;
+            float zMax = Mathf.Min(Mathf.Min(ctl.FishZMax, d.lurkZMax), cd + d.nearLurk - 2f);
+            float viewW = PixelView.Current != null && PixelView.Current.Target != null ? PixelView.Current.Target.width : PixelView.BaseWidth;
+            for (int k = 0; k < b.NodeCount; k++)
+            {
+                if ((b.NodeFlags(k) & BedFlag.WeedEdge) == 0 || b.NodeDepth(k) < d.depthMin + 0.5f) continue;
+                var q = b.NodePos(k);
+                if (q.y < d.lurkZMin || q.y > zMax) continue;
+                float half = Mathf.Min(L.xLim - 1f, P.VisibleHalfWidth(q.y, viewW) - 1f);
+                if (Mathf.Abs(q.x) > half) continue;
+                lurkCands.Add(q);
+            }
+            Debug.Log($"[BATHY] lurk candidates for cast {cd:0}: {lurkCands.Count}");
+            return lurkCands;
+        }
+
+        /// <summary>Test hook (-fkauto depth): the lurk point placed as a cue would place it; where it went.</summary>
+        internal Vector3 DebugPlace()
+        {
+            Place(Vector3.zero, false);
+            return Lurk;
+        }
+
+        /// <summary>Test hook (-fkauto depth): a spot for the current lurk point (as a cue would choose it).</summary>
+        internal bool DebugChooseSpot(out Vector3 s) => ChooseSpot(out s, out _);
+
+        /// <summary>Test hook: the lurk candidates for the rod in hand.</summary>
+        internal IReadOnlyList<Vector2> DebugLurkCandidates => LurkCandidates();
+
         void Place(Vector3 near, bool exact)
         {
             var d = Primary;
@@ -544,7 +652,24 @@ namespace FishingKing
                 var obs = ctl.Stage.Obstacles;
                 var water = ctl.Stage.Water;
                 x = z = 0f;
-                for (int tries = 0; tries < 12; tries++)
+                bool onEdge = false;
+                // the generated bed (Docs/terrain_depth_spec.md 10): a drop-off node beside the weed, in open water he can
+                // see, with a spot within his cast
+                if (!exact && L.Terrain && d.lurkWeedEdge)
+                {
+                    var cands = LurkCandidates();
+                    for (int tries = 0; tries < 12 && cands.Count > 0; tries++)
+                    {
+                        var q = cands[Random.Range(0, cands.Count)];
+                        if ((obs != null && obs.BlockedAtSurface(q, 1f)) || (water != null && water.BehindFront(q.x, q.y))) continue;
+                        if (!ChooseSpotFor(q, false, out _, out _)) continue;
+                        x = q.x;
+                        z = q.y;
+                        onEdge = true;
+                        break;
+                    }
+                }
+                for (int tries = 0; tries < 12 && !onEdge; tries++)
                 {
                     z = exact ? near.z : Random.Range(d.lurkZMin, Mathf.Max(d.lurkZMin + 0.5f, zMax));
                     float half = Mathf.Min(L.xLim - 1f, P.VisibleHalfWidth(z, PixelView.Current != null && PixelView.Current.Target != null
@@ -553,7 +678,8 @@ namespace FishingKing
                     if (exact || ((obs == null || !obs.BlockedAtSurface(new Vector2(x, z), 1f)) && (water == null || !water.BehindFront(x, z)))) break;
                 }
             }
-            float depth = d.lurkDepth > 0f ? Mathf.Min(d.lurkDepth, L.DepthAt(z) - 0.5f) : L.DepthAt(z) - 0.5f;
+            float bed = L.DepthAt(x, z);
+            float depth = d.lurkDepth > 0f ? Mathf.Min(d.lurkDepth, bed - 0.5f) : bed - 0.5f;
             Lurk = new Vector3(x, -depth, z);
             HasLurk = true;
             relocateT = Random.Range(d.relocate.x, d.relocate.y);

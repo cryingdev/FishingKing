@@ -876,7 +876,9 @@ namespace FishingKing
             {
                 float h = new Vector2(hold.x - Anchor.x, hold.y - Anchor.z).magnitude;
                 float yaw = Mathf.Atan2(hold.x - Anchor.x, hold.y - Anchor.z);
-                return Mathf.Abs(yaw) <= MaxYawAt(h) + 1e-3f && h <= f.Line + 8f;
+                // (on the bed: a hold with water enough for it; a big carp does not run into the reeds' 1 m)
+                return Mathf.Abs(yaw) <= MaxYawAt(h) + 1e-3f && h <= f.Line + 8f
+                       && (!L.Terrain || L.DepthAt(hold.x, hold.y) >= FishHabitat.MinWater(Hooked.Cm) + 0.2f);
             });
             if (c == null) return;
             if (!forced && Obstacles.Roll() >= p)
@@ -903,7 +905,7 @@ namespace FishingKing
             RunT = 0f;
             turnProg = 0f;
             runTurned = false;
-            float bed = L.DepthAt(hold.y) - 0.3f;
+            float bed = L.DepthAt(hold.x, hold.y) - 0.3f;
             fishDepthTarget = Mathf.Clamp(bed - 0.2f, Mathf.Min(sp.depthMin, bed), Mathf.Min(sp.depthMax, bed));
             Fight.BeginCoverRun();
             horseT = 0f;

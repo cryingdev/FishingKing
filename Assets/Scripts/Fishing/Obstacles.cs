@@ -162,6 +162,31 @@ namespace FishingKing
 
         Obstacles(StageLayout l) { L = l; }
 
+        static readonly Dictionary<string, ObstacleSet> rawSets = new Dictionary<string, ObstacleSet>();
+
+        /// <summary>
+        /// The stage's obstacle data as exported (Resources/Data/obstacles_&lt;stage&gt;.json; null: none), read once and cached,
+        /// whatever -fkobstacles says: the terrain's pins come from it (Docs/terrain_depth_spec.md 5.1), so the lake's bed is
+        /// the same with the obstacles off.
+        /// </summary>
+        internal static ObstacleSet ReadSet(string stageId)
+        {
+            if (string.IsNullOrEmpty(stageId)) return null;
+            if (rawSets.TryGetValue(stageId, out var cached)) return cached;
+            ObstacleSet data = null;
+            var ta = Resources.Load<TextAsset>("Data/obstacles_" + stageId);
+            if (ta != null)
+            {
+                try { data = JsonUtility.FromJson<ObstacleSet>(ta.text); }
+                catch (Exception e) { Debug.LogWarning($"[OBST] obstacles_{stageId}.json unreadable: {e.Message}"); }
+            }
+            rawSets[stageId] = data;
+            return data;
+        }
+
+        /// <summary>An obstacle's plan footprint as the runtime builds it (convex, counter-clockwise), from its raw data.</summary>
+        internal static Vector2[] Footprint(Obstacle o) => BuildPoly(o.pts, o);
+
         public static Obstacles Load(StageLayout l)
         {
             var set = new Obstacles(l);
@@ -171,14 +196,15 @@ namespace FishingKing
                 Debug.Log($"[OBST] {l.id}: obstacles off");
                 return set;
             }
-            var ta = Resources.Load<TextAsset>("Data/obstacles_" + l.id);
-            if (ta == null)
+            var raw = ReadSet(l.id);
+            if (raw == null)
             {
                 Debug.Log($"[OBST] {l.id}: no obstacle data");
                 return set;
             }
+            // (a fresh copy for the runtime set: Add / Resolve fill the obstacles' runtime fields)
             ObstacleSet data = null;
-            try { data = JsonUtility.FromJson<ObstacleSet>(ta.text); }
+            try { data = JsonUtility.FromJson<ObstacleSet>(Resources.Load<TextAsset>("Data/obstacles_" + l.id).text); }
             catch (Exception e) { Debug.LogWarning($"[OBST] obstacles_{l.id}.json unreadable: {e.Message}"); }
             if (data?.obstacles == null) return set;
             var c = data.camera;
@@ -354,9 +380,9 @@ namespace FishingKing
         /// <summary>Plan distance from a point to the obstacle's footprint (0 inside).</summary>
         public static float Dist(Obstacle o, Vector2 xz) => InPoly(o.Poly, xz) ? 0f : EdgeDist(o.Poly, xz, out _, out _);
 
-        public float Bed(float z) => -L.DepthAt(z);
-        /// <summary>The obstacle's lowest y at this z (bot = -99: down to the bed).</summary>
-        public float BotAt(Obstacle o, float z) => o.bot <= -98f ? Bed(z) : o.bot;
+        public float Bed(float x, float z) => -L.DepthAt(x, z);
+        /// <summary>The obstacle's lowest y at this plan point (bot = -99: down to the bed).</summary>
+        public float BotAt(Obstacle o, float x, float z) => o.bot <= -98f ? Bed(x, z) : o.bot;
 
         /// <summary>The footprint (+ <paramref name="grow"/> m) holds this plan point.</summary>
         public bool Inside(Obstacle o, Vector2 xz, float grow = 0f)
@@ -489,7 +515,7 @@ namespace FishingKing
         bool InBand(Obstacle o, Vector3 p, bool film)
         {
             if (film) return o.top >= -0.1f;
-            return p.y <= o.top + 1e-3f && p.y >= BotAt(o, p.z) - 0.3f;
+            return p.y <= o.top + 1e-3f && p.y >= BotAt(o, p.x, p.z) - 0.3f;
         }
 
         /// <summary>Inside a standing solid's waterline footprint (+ grow): no rig in the water goes there (spec 4.9).</summary>
@@ -650,7 +676,7 @@ namespace FishingKing
                 float k = s.Mat.rough * s.roughK;
                 if (k <= best) continue;
                 // the fish inside the zone, its depth in the band
-                if (Inside(s, f2) && -dF <= s.top + 1e-3f && -dF >= BotAt(s, fish.z) - 0.3f)
+                if (Inside(s, f2) && -dF <= s.top + 1e-3f && -dF >= BotAt(s, fish.x, fish.z) - 0.3f)
                 {
                     best = k;
                     o = s;
@@ -664,7 +690,7 @@ namespace FishingKing
                 if (!Clip(entry, f2, s.Poly, 0f, out float c0, out float c1)) continue;
                 var deep = entry + seg * c1;
                 float y = -dF * c1;
-                if (y > s.top + 1e-3f || y < BotAt(s, deep.y) - 0.3f) continue;
+                if (y > s.top + 1e-3f || y < BotAt(s, deep.x, deep.y) - 0.3f) continue;
                 best = k;
                 o = s;
                 var p = entry + seg * c0;

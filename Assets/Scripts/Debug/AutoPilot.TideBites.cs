@@ -216,7 +216,7 @@ namespace FishingKing
                         // where it lies: in the slack against the tetrapods, the depth under it, when it came to rest
                         var s = tk.Surface;
                         if (cf != null && cf.Slack(s.x, s.z)) r.slackT += dt;
-                        r.depthSum += ctl.Stage.L.DepthAt(s.z) * dt;
+                        r.depthSum += ctl.Stage.L.DepthAt(s.x, s.z) * dt;
                         if (still >= 5f && r.restT <= 0f) r.restT = r.soak;
                         // the fish within the game's reach and depth tests while none is coming (the stock the bites come from)
                         if (!ctl.Spawner.Fish.Any(f => f.Engaged))
