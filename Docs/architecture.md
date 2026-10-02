@@ -93,7 +93,7 @@ Bathymetry.For(L, Bathymetry.SeedOverride ?? Game.I.WorldSeed)`**(호수의 생�
    조우 행을 받고, 유인 미끼(`keyLures`)는 어종의 `baits`에서 채웁니다.
 2. `BuildItems()`(낚싯대·릴·줄·미끼·루어·수조), `BuildSets()`(조우 배경)
 3. `Install` — 어종·스테이지 목록과 id 사전(정적 생성자에서 한 번). 예전 C# 표와 비교하는 동등성 검사(`LegacySpecies`)는
-   커밋 f092c7c에만 있습니다(22383d9에서 지움): 예전 표와 다시 비교하려면 그 커밋을 꺼내 쓰세요.
+   커밋 aeaeb2d에만 있습니다(e8138ee에서 지움): 예전 표와 다시 비교하려면 그 커밋을 꺼내 쓰세요.
 4. `LoadErrors` — 읽지 못한 것(망가진 파일의 어종은 빠짐)을 `[DATA]` 오류 로그로 한 번씩. 생성자는 예외를 던지지 않습니다(정적
    생성자의 예외는 그 세션 내내 `TypeInitializationException`이 됨).
 
