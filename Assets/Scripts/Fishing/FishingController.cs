@@ -347,6 +347,13 @@ namespace FishingKing
             if (State == S.Waiting) Retrieve();
         }
 
+        /// <summary>The rod, reel or line changed (내 채비, at the ready): the angler's gear and the HUD redrawn.</summary>
+        public void GearChanged()
+        {
+            Angler.RefreshGear();
+            hud.RefreshTackle();
+        }
+
         public void Retrieve()
         {
             // (snagged, the button reads 끊기: it cuts the line)
@@ -505,7 +512,7 @@ namespace FishingKing
                 if (Time.time - noLineT > 1.5f)
                 {
                     noLineT = Time.time;
-                    hud.Flash("줄이 없어요 — 지도의 상점에서 줄을 사거나 장착해요", UIKit.Bad, 2f);
+                    hud.Flash("줄이 없어요 — 채비에서 다른 줄을 장착하거나 지도의 상점에서 사요", UIKit.Bad, 2f);
                     Sfx.Play(Sfx.Error, 0.5f);
                 }
             }

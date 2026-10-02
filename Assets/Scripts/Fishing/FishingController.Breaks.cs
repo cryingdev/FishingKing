@@ -213,7 +213,7 @@ namespace FishingKing
             Tween.After(LossToastDelay + 0.1f, () =>
             {
                 if (this == null) return;
-                Toast.Show($"{line.name}: 남은 줄 {r.lineLeft:0}m — 비거리 {castDist:0}m보다 짧아 버렸어요\n지도의 상점에서 새 줄을 사거나 다른 줄을 장착해요", UIKit.Bad, 4f);
+                Toast.Show($"{line.name}: 남은 줄 {r.lineLeft:0}m — 비거리 {castDist:0}m보다 짧아 버렸어요\n채비에서 다른 줄을 장착하거나 지도의 상점에서 새로 사요", UIKit.Bad, 4f);
             });
         }
 
