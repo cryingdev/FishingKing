@@ -22,7 +22,7 @@ namespace FishingKing
     {
         int depthFails;
         /// <summary>The golden hash per recipe version (D1: seed 12345); 0 = record it (print and pass with a note).</summary>
-        static readonly Dictionary<int, uint> GoldenHash = new Dictionary<int, uint> { [1] = 0u };
+        static readonly Dictionary<int, uint> GoldenHash = new Dictionary<int, uint> { [1] = 0x5866ac8fu };   // (v1: recorded by the Mono player)
 
         void DCheck(string what, bool ok)
         {
