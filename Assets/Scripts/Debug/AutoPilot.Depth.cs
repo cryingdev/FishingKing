@@ -512,11 +512,12 @@ namespace FishingKing
             return best;
         }
 
-        /// <summary>A crop of the screen round a scene point, x<paramref name="scale"/> (nearest), as a texture.</summary>
+        /// <summary>A crop of the screen round a scene point, x<paramref name="scale"/> (nearest), as a texture (call it at the end
+        /// of a frame after <see cref="AutoShot.Frame"/>, so the test label is not in it).</summary>
         static Texture2D ScreenCrop(Vector2 world2D, int w, int h, int scale)
         {
             var pv = PixelView.Current;
-            var tex = ScreenCapture.CaptureScreenshotAsTexture();
+            var tex = AutoShot.Texture();
             var c = pv != null ? pv.WorldToScreen(world2D) : new Vector2(tex.width * 0.5f, tex.height * 0.5f);
             w = Mathf.Min(w, tex.width);
             h = Mathf.Min(h, tex.height);
@@ -575,6 +576,7 @@ namespace FishingKing
                 spot.x, spot.z, water, settleT, tiltT, lieT, label, ctl.LieHints - hints0),
                 settleT >= 0f && tiltT >= settleT - 1e-3f && lieT >= tiltT && lieT <= settleT + 0.3f + 1e-3f && label == "찌 누움" && ctl.LieHints - hints0 == 1 && tk.LieR.enabled && !tk.FloatR.enabled);
             yield return NamedShot("depth_float_lie");
+            yield return AutoShot.Frame();
             lieCrop = ScreenCrop(tk.LieShown2D, 240, 150, 2);
             File.WriteAllBytes(Path.Combine(shots, "depth_float_lie_zoom.png"), lieCrop.EncodeToPNG());
             // the night: the 케미 light at the lying float's tip
@@ -602,6 +604,7 @@ namespace FishingKing
             DCheck(string.Format(CIc, "D6 shortened to 1.0 m it tilts at {0:0.00} s and stands at {1:0.00} s; the label says '{2}' (찌 수심), the standing sprite drawn ({3})",
                 tilt2, up2, ctl.DepthLabelText, tk.FloatR.enabled), tilt2 >= 0f && up2 > tilt2 && ctl.DepthLabelText == "찌 수심" && tk.FloatR.enabled && !tk.LieR.enabled);
             yield return NamedShot("depth_float_up");
+            yield return AutoShot.Frame();
             upCrop = ScreenCrop(tk.FloatShown2D, 240, 150, 2);
             // laid again: no second hint
             ctl.DebugFloatDepth(4.0f);
