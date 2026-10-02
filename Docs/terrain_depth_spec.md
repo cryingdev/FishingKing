@@ -501,3 +501,19 @@ in [0.8, 1.25] and fish in reach on / off in [0.85, 1.18]; each period's ratio i
 8. **Noise salts vary per attempt** (a blob's rim, the flats' texture, the materials), so every seed's noise differs.
 9. **Agents already in too little water** (dragged there in a fight) may still move to deeper water.
 10. **Build time**: ~70 ms per attempt in the Mono player (target 30 ms), once per stage and seed at a load.
+
+### 17.1 Open: the live A/B soak
+
+`-fkauto habitat` (seed 1, the bamboo rod, 75 s × 12 spots per rig and period, the bed on against off) at commit time:
+
+| Rig | Bites on / off (pooled) | Ratio | Fish in reach ratio | Single periods |
+|---|---|---|---|---|
+| 떡밥 2 m | 142 / 120 | ×1.18 | ×1.49 | dawn ×0.59, day ×1.52, evening ×1.03, night ×1.73 |
+| 옥수수 4 m | 33 / 20 | ×1.65 | ×1.08 | dawn 6 / 1, day 14 / 4, evening 5 / 5, night 8 / 10 bites |
+| 지렁이 1 m | 198 / 178 | ×1.11 | ×0.78 | 1.02, 0.98, 1.17, 1.32 |
+
+All three rigs together: 373 / 318 bites, ×1.17. Two rigs are inside 0.8–1.25 pooled; the corn rig's off rate (20 bites in
+3600 s) is too low for the band (Poisson ±29 %), and the fish-in-reach ratios and several single periods are outside
+theirs. The estimator (§8, the whole fan) says every rig and period is within ±10 %; the soak's 12 spots put 4 in the
+central lane, where the carp gather by day (the corn rig's dawn and day). Next: a longer soak with spots drawn evenly
+over the fan, then β or the period weights of the carp and crucian if the gap stays.
