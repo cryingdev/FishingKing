@@ -75,7 +75,7 @@ namespace FishingKing
                     var prev = RenderTexture.active;
                     RenderTexture.active = rt;
                     var f = new Texture2D(w, h, TextureFormat.RGB24, false);
-                    f.ReadPixels(new Rect(0, 0, w, h), 0, 0, false);
+                    AutoShot.Read(f, new Rect(0, 0, w, h));
                     f.Apply(false);
                     RenderTexture.active = prev;
                     File.WriteAllBytes(Path.Combine(dir, $"{id}_f{i}.png"), f.EncodeToPNG());

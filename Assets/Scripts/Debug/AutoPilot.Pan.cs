@@ -631,13 +631,13 @@ namespace FishingKing
 
         IEnumerator PanShot(FishingController ctl, string name)
         {
-            yield return new WaitForEndOfFrame();
+            yield return AutoShot.Frame();
             var z = ZoomNow;
             string fish = ctl.Hooked != null ? ZV(z.WorldToPx(ctl.Fish2D(ctl.Hooked))) : "-";
             bool fishIn = ctl.Hooked != null && InCrop(z, ctl.Fish2D(ctl.Hooked), 0f);
             Log(string.Format(CIp, "[PAN] SHOT {0} state {1} fish {2} in view {3} tip {4}; {5}", name, ctl.State, fish, fishIn, ZV(z.WorldToPx(ctl.RodTip2D)), ZDesc(z)));
             string p = Path.Combine(shots, name + ".png");
-            ScreenCapture.CaptureScreenshot(p);
+            AutoShot.Save(p);
             Log("shot " + p);
             yield return null;
         }

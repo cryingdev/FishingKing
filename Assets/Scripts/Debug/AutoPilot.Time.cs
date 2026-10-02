@@ -39,7 +39,7 @@ namespace FishingKing
             var prev = RenderTexture.active;
             RenderTexture.active = rt;
             var t = new Texture2D(rt.width, rt.height, TextureFormat.RGB24, false);
-            t.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0, false);
+            AutoShot.Read(t, new Rect(0, 0, rt.width, rt.height));
             t.Apply(false);
             RenderTexture.active = prev;
             return t;
@@ -47,9 +47,9 @@ namespace FishingKing
 
         IEnumerator NamedShot(string name)
         {
-            yield return new WaitForEndOfFrame();
+            yield return AutoShot.Frame();
             string p = Path.Combine(shots, name + ".png");
-            ScreenCapture.CaptureScreenshot(p);
+            AutoShot.Save(p);
             Log("shot " + p);
             yield return null;
         }

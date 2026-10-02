@@ -337,7 +337,7 @@ namespace FishingKing
             var prev = RenderTexture.active;
             RenderTexture.active = rt;
             var f = new Texture2D(HoldCropW, HoldCropH, TextureFormat.RGB24, false);
-            f.ReadPixels(new Rect(x0, y0, HoldCropW, HoldCropH), 0, 0, false);
+            AutoShot.Read(f, new Rect(x0, y0, HoldCropW, HoldCropH));
             f.Apply(false);
             RenderTexture.active = prev;
             return f;

@@ -35,7 +35,7 @@ namespace FishingKing
             Graphics.Blit(tex, rt);
             RenderTexture.active = rt;
             var t = new Texture2D(W, H, TextureFormat.RGBA32, false);
-            t.ReadPixels(new Rect(0, 0, W, H), 0, 0, false);
+            AutoShot.Read(t, new Rect(0, 0, W, H));
             t.Apply(false);
             RenderTexture.active = prev;
             RenderTexture.ReleaseTemporary(rt);

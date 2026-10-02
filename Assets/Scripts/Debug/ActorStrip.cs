@@ -153,7 +153,7 @@ namespace FishingKing
                 var prev = RenderTexture.active;
                 RenderTexture.active = rt;
                 var f = new Texture2D(rt.width, rt.height, TextureFormat.RGB24, false);
-                f.ReadPixels(new Rect(0, 0, rt.width, rt.height), 0, 0, false);
+                AutoShot.Read(f, new Rect(0, 0, rt.width, rt.height));
                 f.Apply(false);
                 RenderTexture.active = prev;
                 File.WriteAllBytes(Path.Combine(dir, $"actor_hook_{i:00}.png"), f.EncodeToPNG());
@@ -193,7 +193,7 @@ namespace FishingKing
                 var prev = RenderTexture.active;
                 RenderTexture.active = rt;
                 var f = new Texture2D(CropW, CropH, TextureFormat.RGB24, false);
-                f.ReadPixels(new Rect(x0, y0, CropW, CropH), 0, 0, false);
+                AutoShot.Read(f, new Rect(x0, y0, CropW, CropH));
                 f.Apply(false);
                 RenderTexture.active = prev;
                 File.WriteAllBytes(Path.Combine(dir, $"actor_{tag}_{i}.png"), f.EncodeToPNG());
@@ -291,8 +291,8 @@ namespace FishingKing
                 forceFace = face;
                 yield return new WaitForSeconds(0.8f);
             }
-            yield return new WaitForEndOfFrame();
-            ScreenCapture.CaptureScreenshot(Path.Combine(cdir, "ready.png"));
+            yield return AutoShot.Frame();
+            AutoShot.Save(Path.Combine(cdir, "ready.png"));
             yield return null;
             yield return Strip(ctl, cdir, "ready", 1, 1);
             var poses = (Arg("-fkcrankposes") ?? "reel,fight,idle").Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
@@ -832,7 +832,7 @@ namespace FishingKing
             var prev = RenderTexture.active;
             RenderTexture.active = rt;
             var f = new Texture2D(CropW, CropH, TextureFormat.RGB24, false);
-            f.ReadPixels(new Rect(x0, y0, CropW, CropH), 0, 0, false);
+            AutoShot.Read(f, new Rect(x0, y0, CropW, CropH));
             f.Apply(false);
             RenderTexture.active = prev;
             feetLocal = feet - new Vector2(x0, y0);

@@ -213,9 +213,9 @@ namespace FishingKing
 
         IEnumerator Shot(string name)
         {
-            yield return new WaitForEndOfFrame();
+            yield return AutoShot.Frame();
             string p = Path.Combine(shots, $"{shotIndex++:00}_{name}.png");
-            ScreenCapture.CaptureScreenshot(p);
+            AutoShot.Save(p);
             Log("shot " + p);
             yield return null;
         }
@@ -333,7 +333,7 @@ namespace FishingKing
         /// <summary>A shot with the float's screen spot logged ("floatshot" lines: screen px, y down) for the review crops.</summary>
         IEnumerator FloatShot(FishingController ctl, string name)
         {
-            yield return new WaitForEndOfFrame();
+            yield return AutoShot.Frame();
             var tk = ctl.Tackle;
             var pv = PixelView.Current;
             if (pv != null)
@@ -346,7 +346,7 @@ namespace FishingKing
                     ctl.FishRun, ctl.State, tk.State, ar != null && ar.Visible, ar != null ? ar.AnchorKind : "-"));
             }
             string p = Path.Combine(shots, $"{shotIndex++:00}_{name}.png");
-            ScreenCapture.CaptureScreenshot(p);
+            AutoShot.Save(p);
             Log("shot " + p);
             yield return null;
         }
@@ -925,7 +925,7 @@ namespace FishingKing
             float lt0 = Time.unscaledTime;
             for (int k = 1; k <= 8 && Time.unscaledTime - lt0 < 8f;)
             {
-                yield return new WaitForEndOfFrame();
+                yield return AutoShot.Frame();
                 int want = k % 8;
                 if (ctl.Arrow.Frame != want) continue;
                 Log($"windup loop frame {want}: t={Time.time:0.000}");
@@ -975,8 +975,8 @@ namespace FishingKing
         /// </summary>
         IEnumerator WindupShot(FishingController ctl, string st, string name, bool atEnd = false)
         {
-            if (!atEnd) yield return new WaitForEndOfFrame();
-            var tex = ScreenCapture.CaptureScreenshotAsTexture();
+            if (!atEnd) yield return AutoShot.Frame();
+            var tex = AutoShot.Texture();
             string p = Path.Combine(shots, $"{st}_{shotIndex++:00}_{name}.png");
             File.WriteAllBytes(p, tex.EncodeToPNG());
             Destroy(tex);

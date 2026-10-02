@@ -112,7 +112,7 @@ namespace FishingKing
 
         IEnumerator ArrowShot(FishingController ctl, string name)
         {
-            yield return new WaitForEndOfFrame();
+            yield return AutoShot.Frame();
             var ar = ctl.PushArrow;
             var pv = PixelView.Current;
             if (pv != null)
@@ -123,7 +123,7 @@ namespace FishingKing
                     shotIndex, name, s.x, Screen.height - s.y, a.x, Screen.height - a.y, ar.State, ar.Side, ar.Frame, ar.Alpha, ar.Scale, ar.GapNow, ar.AnchorKind, ctl.FishRun, ctl.SideNow));
             }
             string p = System.IO.Path.Combine(shots, $"{shotIndex++:00}_{name}.png");
-            ScreenCapture.CaptureScreenshot(p);
+            AutoShot.Save(p);
             Log("shot " + p);
             yield return null;
         }

@@ -96,13 +96,13 @@ namespace FishingKing
 
         IEnumerator ZShot(FishingController ctl, string name)
         {
-            yield return new WaitForEndOfFrame();
+            yield return AutoShot.Frame();
             var z = ZoomNow;
             string fish = ctl.Hooked != null ? ZV(z.WorldToPx(ctl.Fish2D(ctl.Hooked))) : "-";
             Log(string.Format(CIz, "[ZOOM] SHOT {0} state {1} {2} tip {3} rig {4} fish {5}", name, ctl.State, ZDesc(z),
                 ZV(z.WorldToPx(ctl.RodTip2D)), ctl.Tackle.State != Tackle.Mode.Hidden ? ZV(z.WorldToPx(ctl.RigShown2D)) : "-", fish));
             string p = Path.Combine(shots, $"zoom_{name}.png");
-            ScreenCapture.CaptureScreenshot(p);
+            AutoShot.Save(p);
             Log("shot " + p);
             yield return null;
         }
@@ -527,6 +527,15 @@ namespace FishingKing
                 lx += left ? -0.05f : 0.05f;
             }
             w.DebugLurk(new Vector3(lx, 0f, lz), 1.2f);
+            // far: the whole of the coming shadow's glide (not only the lurk point) inside the view's left edge, so "in the
+            // 1x view every frame" is the cue's due and not the test's placement (the glide is 3 m across the lurk point)
+            for (int i = 0; far && i < 400; i++)
+            {
+                float minX = Mathf.Min(z.WorldToPx(w.CueShadeFrom2D).x, z.WorldToPx(w.CueShadeTo2D).x, z.WorldToPx(w.CueRings2D).x);
+                if (minX >= want) break;
+                lx += 0.05f;
+                w.DebugLurk(new Vector3(lx, 0f, lz), 1.2f);
+            }
             yield return new WaitForEndOfFrame();
             var ring0 = z.WorldToPx(w.CueRings2D);
             bool wasOut = !InCropPx(z, ring0, 0f);
@@ -1098,9 +1107,9 @@ namespace FishingKing
             var hud = FindObjectsByType<Canvas>(FindObjectsSortMode.None).Where(cv => cv.enabled && cv.isRootCanvas && cv.name != "PixelCanvas").ToList();
             foreach (var cv in hud) cv.enabled = false;
             yield return null;
-            yield return new WaitForEndOfFrame();
+            yield return AutoShot.Frame();
             var rt = GrabRT();
-            var scr = ScreenCapture.CaptureScreenshotAsTexture();
+            var scr = AutoShot.Texture();
             var uv = z.UV;
             string desc = ZDesc(z);
             bool exact = z.PixelExact || z.Level <= 0f;

@@ -772,7 +772,7 @@ namespace FishingKing
             for (int g = 0; g < got.Count; g++)
             {
                 RenderTexture.active = got[g];
-                tmp.ReadPixels(new Rect(x0, y0, cw, ch), 0, 0, false);
+                AutoShot.Read(tmp, new Rect(x0, y0, cw, ch));
                 tmp.Apply(false);
                 var px = tmp.GetPixels32();
                 int ox = g * (cw * S + Gap);

@@ -722,8 +722,8 @@ namespace FishingKing
 
         IEnumerator EncShot(FishingController ctl, string name)
         {
-            yield return new WaitForEndOfFrame();
-            var tex = ScreenCapture.CaptureScreenshotAsTexture();
+            yield return AutoShot.Frame();
+            var tex = AutoShot.Texture();
             string p = Path.Combine(shots, name + ".png");
             File.WriteAllBytes(p, tex.EncodeToPNG());
             var e = ctl.Encounter;

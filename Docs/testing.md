@@ -43,8 +43,24 @@
 | `-fksidelog` | 파이트 중 0.25초마다 `[SIDELOG]` 줄: 단계·달리기 방향·fightYaw·목표·물고기 방위·기울임(lean = 보이는 기울기: 사이드 프레셔·파이트 바가 쓰는 값, leanReq = 요청, shown = 보이는 기울기(도), req/eff = 요청/한계 적용(도))·낚싯대 yaw·사이드 프레셔·장력·배율(Tmult), 낚싯대-줄 각도(rodOff 도, 달리는 반대쪽 비율 ang)·물고기가 도는 속도(sweep rad/s)·낚싯대를 가로지르는 정도(across)·옆으로 휩쓰는 중인지(sweeping 0/1)·사이드 프레셔가 셈하는지(active 0/1)·요청 기울기로 잰 예전 낚싯대-줄 각도(rodOffReq 도) |
 | `-fkauto legendspot` | 전설어의 물보라 자리 검사 (`-fkencounter natural`과 함께, 예: `-fkfresh -fkrich -fkgear -fksave ls -fkscene Fishing -fkstage lake -fkencounter natural -fkauto legendspot -fkshots <폴더>`): 자리가 홈 화면 안·물 위·캐스팅 거리 안인지, 무시하면 창(기본 12초)이 끝나 놓침·조우 없음, 사라진 뒤 그 자리에 던져도(늦게) 안 됨, 다음 자리가 놓친 뒤 spotRetry(기본 8초)에 뜨는지, 이미 물에 있던 채비는 안 셈, 옆(반경 + 2.5 m)에 던지면 바로 놓침, 키가 아닌 미끼로 던지면 놓침, 놓쳐도 쿨다운·보정 그대로, 키를 제때 자리에 던지면 차지 → 조우 시작(손 떼면 돌아서서 Waiting으로), 물보라(물방울)가 그려지는지, 창 끝 4초 동안 물보라 간격이 1.5초에서 0.8초 아래로 빨라지는지. 자리 둘러보기(`-fkzoommode`로 모드 지정, 기본은 세이브 값): 첫 자리(자연 첫 신호의 둘러보기가 끝난 뒤 준비 상태에서 새로 띄움)와 줌인된 대기 중의 다음 자리에서 둘러보기가 자리 뜬 뒤 0.2초 안에 시작하는지, 정점에서 단계가 모드의 단계 + 1·픽셀 정확·자리가 크롭이 잡을 수 있는 중심에서 2 px 이내로 0.8초 넘게 머무는지, 전체 길이가 LookIn + LookHold(2.0초) ~ + LookBackMax(1.2초)인지, 카메라 속도가 MaxCameraSpeed 이하인지, 끝나면 홈(준비: 1x·카메라 0 / 대기: 초릿대·채비가 크롭 안, 단계가 모드의 것)인지; 둘러보기 0.3초에 준비 동작(누름)을 시작하면 2프레임 안에 끊기고 0.15초(+3프레임) 안에 1x 홈인지; 끔이면 자리가 떠도 둘러보기 없음·화면 그대로; 옆에 던져 놓친 뒤 곧 다시 뜬 자리는 둘러보기 없음(retry). 캡처 legspot_look_0_before·legspot_look_1_peak(정점, 물보라가 튀는 중)·legspot_look_2_home(돌아온 뒤)·legspot_shadow_1·_2(그 신호의 그림자가 미끄러지는 중간, 그려지고 움직이는지 검사)·legspot_1_splash(물보라가 튀는 순간)·legspot_2_late(창 마지막 몇 초, 잦아진 물보라)·legspot_3_land(자리에 착수, 차지의 큰 물보라)·legspot_4_miss(옆에 던짐); `[SPOT] CHECK` 줄, 끝에 "legend spot test done: N failed". 게임 중 `[SPOT]` 줄: 자리 제시·착수 거리·끝난 이유(claim/timeout/outside/rig/lost), `[ZOOM] spot N: look from …` / `no look (off\|ice\|busy\|retry)` / `spot look ends: back\|windup\|state\|spot` |
 | `-fkencplay coolsave` → `-fkauto legcool` | 저장된 전설어 쿨다운 검사: `-fkencounter natural -fkauto encounter -fkencplay coolsave`로 실패 조우(쿨다운 저장) 후, 같은 `-fksave`로 `-fkencounter` 없이 `-fkscene Fishing -fkstage <같은 곳> -fkauto legcool` 재실행 → 아직 자리 비움·시간 지나면 복귀·시계 되돌림 상한 확인 |
+| `-fknolabel` | `-fkauto`의 화면 하단 테스트 표시 끔 (아래 "실행 중인 테스트 표시") |
 | `-fkmusic off\|chiptune` | 배경음 없이 (세이브의 설정은 그대로) / `music.json`을 무시하고 모든 곡을 예전 합성 칩튠으로 (sting 없음) |
 | `-fkmusiclog` | 배경음 이벤트(재생·스템·sting·덕킹·시작·해제)마다 `[MUSIC]` 로그 |
 | `-fkauto music` | 배경음·오디오 설정 검사 (처음부터 포인터를 가져감): 타이틀 → 지도(없는 곡 → 칩튠) → 오디오 설정(옛 세이브: `musicOn` 켬·슬라이더 100·`soundOn=false` 유지, `Sanitize` 범위, 설정 → 음량 → 배경음 끔/켬, 배경음악 50%·효과음 0·환경음 50%·전체 50%·소리 끔/켬을 버튼·막대 탭·드래그로 바꾸며 실제 `AudioSource`·리스너 음량을 `[MIX]` 줄로 확인, 디스크에서 다시 읽기, 100으로 되돌림) → 스테이지 낮·밤(8초 크로스페이드) → 입질 덕킹 · 파이트 스템 · 잡음/희귀/놓침/줄 끊김/밑걸림 끊김 sting · `끊기`는 sting 없음 · 문턱에서 줄 튕김 간격 → `-fkencounter`가 있으면 조우 성공·실패 → 지도 · 수족관 → 스테이지별 환경음 RMS(`[MIX] ambience`). `[MUSIC] CHECK` 줄과 요약, 스템 동기(5 ms 이내) 검사, 캡처 `settings_main`·`audio_settings`·`audio_settings_changed` (예: `-fkfresh -fkrich -fkgear -fksave au_music -fkstage lake -fkencounter now -fkauto music -fkmusiclog -fkshots <폴더> -screen-width 960 -screen-height 540`, `-fkscene` 없이 타이틀에서 시작; 자세히 [music.md](music.md) 6절) |
+
+## 실행 중인 테스트 표시 (`-fkauto`)
+
+`-fkauto`로 실행하면 화면 중앙 하단에 지금 도는 테스트가 픽셀 글꼴(외곽선)로 나옵니다: `[<시나리오> · <스테이지>] <지금 단계> <검사 수>/<전체>`.
+일반 플레이에선 절대 안 나오고, `-fknolabel`이면 `-fkauto`에서도 끕니다.
+
+- 단계는 자동 플레이의 로그 줄(`[AUTO]`·`[PAN]`·`[ZOOM]`·`[BREAK]`·`[OBST]`·`[OCC]`·`[HOLD]`·`[SPOT]`·`[CUR]`·`[TIDE]`·`[AQUA]` …의 마지막 줄, `shot` 줄은 파일 이름만)에서 자동으로 가져옴 — 시나리오를 고칠 필요 없음. 직접 정하려면 `AutoLabel.Step("...")`·`AutoLabel.Total(n)`.
+- 모든 `CHECK` 줄(형식 무관: `CHECK PASS|FAIL 내용`, `CHECK 이름 PASS|FAIL 수치`, 수족관 `CHECK ok|FAIL`)을 세어 위 줄에 마지막 결과를 2.5초 동안 초록(PASS)/빨강(FAIL)으로 띄움. 하나라도 실패하면 아래 줄이 빨개지고 `FAIL <개수>`가 붙음.
+- 전체 수는 같은 시나리오의 지난 실행이 남긴 `CHECK` 수(`persistentDataPath/autolabel_checks.txt`, 종료 때 기록)이거나 `AutoLabel.Total`; 모르면 검사 수만.
+- 자체 화면 오버레이 캔버스(정렬 32000, 레이캐스터 없음)라 HUD 위에 있고 줌·팬과 무관. 가로 400 캔버스 단위 안에서 잘리므로 왼쪽 채비 패널·오른쪽 `회수`/걷기 버튼에 안 닿음.
+
+**규칙 (새 테스트도 반드시): 표시는 캡처·픽셀 비교에 절대 들어가면 안 됨.** 화면을 읽는 모든 길은 `AutoShot`(Assets/Scripts/Debug/AutoLabel.cs)을 거침:
+`new WaitForEndOfFrame()` 대신 `yield return AutoShot.Frame();`(그 프레임과 다음 프레임 렌더에서 표시를 숨기고 프레임 끝까지 기다림 — 이미 프레임 끝에서 바로 찍는 반복문도 그 대기를 `AutoShot.Frame()`으로),
+`ScreenCapture.CaptureScreenshot` → `AutoShot.Save(path)`, `CaptureScreenshotAsTexture` → `AutoShot.Texture()`, `Texture2D.ReadPixels` → `AutoShot.Read(tex, rect)`(렌더 타깃엔 오버레이 캔버스가 안 그려져 원래 깨끗함; 화면을 읽을 때만 `Frame()` 필요).
+표시가 그려진 프레임을 캡처하면 `[LABEL] ERROR ...` 줄이 남음 — 로그에 이 줄이 있으면 그 캡처 경로가 `AutoShot.Frame()`을 빼먹은 것. ScreenCapture/ReadPixels를 Debug 코드에서 직접 부르지 말 것.
 
 에디터 빌드: `Unity.exe -batchmode -quit -projectPath <프로젝트> -executeMethod FishingKing.EditorTools.FishingKingSetup.BuildWindows [-fkBuildOut <폴더>]` (기본 출력 `Builds/Windows`).

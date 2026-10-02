@@ -41,10 +41,9 @@ namespace FishingKing
             bool shot = false, fake = false, noseDone = false;
             float noseMax = 0f;
             int n = 0;
-            var end = new WaitForEndOfFrame();
             while (true)
             {
-                yield return end;
+                yield return AutoShot.Frame();   // (captures at its end: the test label hidden)
                 if (ctl == null)
                 {
                     ctl = FindAnyObjectByType<FishingController>();
@@ -69,7 +68,7 @@ namespace FishingKing
                     if (!string.IsNullOrEmpty(dir))
                     {
                         Directory.CreateDirectory(dir);
-                        var tex = ScreenCapture.CaptureScreenshotAsTexture();
+                        var tex = AutoShot.Texture();
                         File.WriteAllBytes(Path.Combine(dir, name + ".png"), tex.EncodeToPNG());
                         Destroy(tex);
                     }

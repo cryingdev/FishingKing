@@ -80,9 +80,9 @@ namespace FishingKing
 
         IEnumerator Shot(string name)
         {
-            yield return new WaitForEndOfFrame();
+            yield return AutoShot.Frame();
             string p = Path.Combine(shots, name + ".png");
-            ScreenCapture.CaptureScreenshot(p);
+            AutoShot.Save(p);
             var feed = AquaFeed.Current;
             if (feed != null && PixelView.Current != null)
             {
@@ -407,8 +407,8 @@ namespace FishingKing
         /// <summary>A shot, logging the screen spot of interest (px from the top left) for the sheet's close-up.</summary>
         IEnumerator ShotAt(string name, Vector2 world)
         {
-            yield return new WaitForEndOfFrame();
-            ScreenCapture.CaptureScreenshot(Path.Combine(shots, name + ".png"));
+            yield return AutoShot.Frame();
+            AutoShot.Save(Path.Combine(shots, name + ".png"));
             var s = Scr(world);
             Log($"shot {name} focus {s.x:0} {Screen.height - s.y:0}");
             yield return null;

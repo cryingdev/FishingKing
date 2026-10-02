@@ -209,11 +209,11 @@ namespace FishingKing
         /// <summary>A crop of the screen around a scene point, scaled up (nearest) for review.</summary>
         IEnumerator BrCrop(string name, Vector2 world2D, int w, int h, int scale)
         {
-            yield return new WaitForEndOfFrame();
+            yield return AutoShot.Frame();
             var pv = PixelView.Current;
             if (pv == null) yield break;
             var c = pv.WorldToScreen(world2D);
-            var tex = ScreenCapture.CaptureScreenshotAsTexture();
+            var tex = AutoShot.Texture();
             w = Mathf.Min(w, tex.width);
             h = Mathf.Min(h, tex.height);
             int x0 = Mathf.Clamp(Mathf.RoundToInt(c.x) - w / 2, 0, tex.width - w), y0 = Mathf.Clamp(Mathf.RoundToInt(c.y) - h / 2, 0, tex.height - h);
