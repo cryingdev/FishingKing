@@ -83,7 +83,7 @@ namespace FishingKing
         /// <summary>The lure is still being lifted / pulled by the last flick.</summary>
         public bool Hopping => twitchLeft > 0f;
         /// <summary>The bottom under the rig (hook depth limit).</summary>
-        public float Bottom => stage.L.DepthAt(Surface.z) - 0.25f;
+        public float Bottom => stage.L.DepthAt(Surface.x, Surface.z) - 0.25f;
         /// <summary>
         /// Where a sinking lure comes to rest: the bottom; through the ice the depth the drag let it down to
         /// (<see cref="FloatDepth"/>), no deeper than the bottom, and on it within <see cref="IceFloorSnap"/> (the full drag
@@ -153,12 +153,41 @@ namespace FishingKing
         int dartSide = 1;
         float kick, fxT, lookT;
 
+        // ---- the lying float (Docs/terrain_depth_spec.md 11): on the generated bed a stick float set deeper than the water
+        // lies flat once the bait rests on the bottom (the player can plumb the depth this way), and stands up again through
+        // a tilt when the float is shortened or a fish lifts the bait
+        public enum FloatSit : byte { Up, Tilt, Lie }
+        /// <summary>How the float sits on the water now (Up everywhere but a stick float on the generated bed).</summary>
+        public FloatSit Sit { get; private set; }
+        public bool FloatLying => Sit == FloatSit.Lie;
+        /// <summary>The float has just lain down (the controller's one-time hint).</summary>
+        public event Action FloatLaid;
+        /// <summary>Slack of float depth past the bed that lays the float down / that it stands up again under (m), and the tilt's time.</summary>
+        public const float LieOn = 0.30f, LieOff = 0.20f, TiltTime = 0.18f;
+        /// <summary>The tip's (케미 light's) pixel offset from the lying / tilting sprite's centre (tip to the right; Tools/Blender fk_items.py floatlie).</summary>
+        static readonly Vector2 LieTipPx = new Vector2(12.93f, 0f), TiltTipPx = new Vector2(9.14f, 9.73f);
+        SpriteRenderer lieSr;
+        Sprite lieSprite, tiltSprite;
+        bool lieTarget;
+        float sitT;
+        /// <summary>The lying / tilting float as drawn (the occlusion watch, the tests).</summary>
+        internal SpriteRenderer LieR => lieSr;
+        public Vector2 LieShown2D => lieSr != null ? (Vector2)lieSr.transform.position : Vector2.zero;
+
         public static Tackle Create(StageView s)
         {
             var t = new GameObject("Tackle").AddComponent<Tackle>();
             t.stage = s;
             t.P = s.P;
             t.floatSr = t.Sprite("Float", Fx.OrderRipple + 1);
+            t.lieSr = t.Sprite("FloatLie", Fx.OrderRipple + 1);
+            t.lieSr.enabled = false;
+            FrontOcclusion.Use(t.lieSr);
+            if (s.L.Terrain)
+            {
+                t.lieSprite = Art.Get("World/float_stick_lie");
+                t.tiltSprite = Art.Get("World/float_stick_tilt");
+            }
             t.baitSr = t.Sprite("Bait", 12);
             t.haloSr = t.Sprite("Halo", 11);
             t.haloSr.sprite = Halo;
@@ -538,6 +567,55 @@ namespace FishingKing
             HookOverride = null;
             floatSr.enabled = baitSr.enabled = underLine.enabled = haloSr.enabled = false;
             if (chemiSr != null) chemiSr.enabled = false;
+            StandUp();
+        }
+
+        /// <summary>The float stands (no lying / tilting sprite).</summary>
+        void StandUp()
+        {
+            Sit = FloatSit.Up;
+            lieTarget = false;
+            sitT = 0f;
+            if (lieSr != null) lieSr.enabled = false;
+        }
+
+        /// <summary>
+        /// The lying float (spec 11.1), after the sink step: a stick float on the generated bed whose bait has settled on the
+        /// bottom with at least <see cref="LieOn"/> m of float depth to spare lies down (under <see cref="LieOff"/> it
+        /// stands again), passing through the tilt for <see cref="TiltTime"/> s either way; lying down it rings the water
+        /// once and raises <see cref="FloatLaid"/>.
+        /// </summary>
+        void UpdateSit(float dt)
+        {
+            bool active = UsesFloat && stage.L.Terrain && lieSprite != null && FloatSprite == "World/float_stick" && State == Mode.Water && Snag == null;
+            if (!active)
+            {
+                if (Sit != FloatSit.Up || lieTarget) StandUp();
+                return;
+            }
+            float bottom = Bottom;
+            float slack = FloatDepth - bottom;
+            bool settled = Depth >= bottom - 0.01f;
+            bool want = settled && slack >= (lieTarget ? LieOff : LieOn);
+            if (want != lieTarget)
+            {
+                lieTarget = want;
+                // (turning back half way: the tilt plays back from where it is)
+                sitT = Sit == FloatSit.Tilt ? Mathf.Max(0f, TiltTime - sitT) : 0f;
+                Sit = FloatSit.Tilt;
+            }
+            if (Sit != FloatSit.Tilt) return;
+            sitT += dt;
+            if (sitT < TiltTime) return;
+            Sit = lieTarget ? FloatSit.Lie : FloatSit.Up;
+            if (Sit == FloatSit.Lie)
+            {
+                // a small ring as it settles flat (0.4 x the nibble's ring)
+                var p2 = P.To2D(Surface);
+                Fx.Ripple(p2, Mathf.Clamp(P.PixelsPerMetre(Surface) / 64f, 0.1f, 0.5f) * 0.4f, P.Foreshorten(Surface) * 1.6f + 0.15f,
+                    new Color(1, 1, 1, 0.5f), 0.5f);
+                FloatLaid?.Invoke();
+            }
         }
 
         public void Launch(Vector3 from, Vector3 to, Action<Landing> landed)
@@ -562,6 +640,7 @@ namespace FishingKing
             State = Mode.Flying;
             FlyPos = from;
             floatSr.enabled = false;
+            StandUp();
             baitSr.enabled = true;
             var tint = stage.ActorTint;
             baitSr.color = new Color(tint.r, tint.g, tint.b, 1f);
@@ -585,6 +664,7 @@ namespace FishingKing
             lastHook = HookPos;
             dip = dipTarget = 0;
             floatSr.enabled = UsesFloat;
+            StandUp();
             windT = 99f;
             twitchLeft = 0f;
             fallArmed = touched = Falling = false;
@@ -1072,6 +1152,7 @@ namespace FishingKing
             Snag = null;
             Hanging = false;
             floatSr.enabled = false;
+            StandUp();
             baitSr.enabled = true;
         }
 
@@ -1197,6 +1278,7 @@ namespace FishingKing
                 else if (padSlideT >= 0f) UpdatePadSlide(dt);
                 else UpdateLure(dt, Floor);   // (through the ice it rests at the drag's depth)
             }
+            UpdateSit(dt);
             if (Time.frameCount - currentFrame > 1) FreeDrift = Vector2.zero;   // (the current is not stepped outside waiting / retrieving)
             if (State == Mode.Water || State == Mode.Held)
             {
@@ -1295,6 +1377,7 @@ namespace FishingKing
             {
                 // resting on a prop's top / the bank, over the front layer
                 floatSr.enabled = underLine.enabled = haloSr.enabled = chemiSr.enabled = false;
+                lieSr.enabled = false;
                 baitSr.enabled = true;
                 baitSr.sortingOrder = 45;
                 baitSr.transform.position = Snap(P.To2D(PerchAt, out float perchD) + stage.DeckBob);
@@ -1307,6 +1390,7 @@ namespace FishingKing
             }
             if (State != Mode.Water && State != Mode.Held)
             {
+                lieSr.enabled = false;
                 if (State == Mode.Hidden) floatSr.enabled = baitSr.enabled = underLine.enabled = haloSr.enabled = chemiSr.enabled = false;
                 else
                 {
@@ -1318,10 +1402,14 @@ namespace FishingKing
             bobT += dt;
             dip = Mathf.MoveTowards(dip, dipTarget, dt * 30f);
             bool showFloat = UsesFloat && State == Mode.Water;
-            floatSr.enabled = showFloat;
+            // (lying flat or tilting: the lying sprite instead; floatSr keeps its sprite, the fight's float reads its height)
+            bool lying = showFloat && Sit != FloatSit.Up && lieSprite != null;
+            floatSr.enabled = showFloat && !lying;
+            lieSr.enabled = lying;
             if (showFloat)
             {
                 FrontOcclusion.SetDepth(floatSr, 0f);   // (on the water: under the front layer, or on a pad over it)
+                FrontOcclusion.SetDepth(lieSr, 0f);
                 FrontOcclusion.SetDepth(chemiSr, 0f);
             }
             FloatScale = P.ScaleAt(Surface, floatSr.sprite.rect.height, FloatMinPx);
@@ -1332,22 +1420,45 @@ namespace FishingKing
                 // bob, dip and the lift above the waterline are sprite pixels, so they shrink with the float
                 float s = FloatScale;
                 var fp = P.To2D(Surface);
-                float bob = Mathf.Round(Mathf.Sin(bobT * 2.3f) * 0.8f);
-                floatSr.transform.position = Snap(fp + new Vector2(0, ((bob + dip) / PixelView.PPU + 0.25f) * s));
-                floatSr.transform.localScale = Vector3.one * s;
-                floatSr.transform.rotation = Quaternion.identity;   // (upright again after a fight)
                 // (caught on a lily pad: over the painted pad, which is in the front layer)
                 bool onPad = Snag != null && Snag.kind == "pad";
-                floatSr.sortingOrder = onPad ? StageView.OrderLight : Fx.OrderRipple + 1;
                 chemiSr.sortingOrder = onPad ? StageView.OrderLight + 1 : Fx.OrderRipple + 2;
                 float a = Snag != null ? 0.7f : dip < -4f ? 0.45f : 1f;
-                floatSr.color = new Color(tint.r, tint.g, tint.b, a);
-                if (chemiSr.enabled)
+                if (lying)
                 {
-                    // the 케미 light on the float's top pixel: it dips with the float, so a bite still reads
-                    float top = (floatSr.sprite.rect.height * 0.5f - 1f) * s / PixelView.PPU;
-                    chemiSr.transform.position = Snap((Vector2)floatSr.transform.position + new Vector2(0f, top));
-                    chemiSr.color = new Color(1f, 1f, 1f, Mathf.Clamp01(night) * (dip < -4f ? 0.5f : 1f));
+                    // lying flat on the water (its centre on the surface point, its tip away from the middle of the view)
+                    // or half way down; a half-size bob, the dips as the standing float's
+                    bool flip = Surface.x < 0f;
+                    lieSr.sprite = Sit == FloatSit.Lie ? lieSprite : tiltSprite;
+                    lieSr.flipX = flip;
+                    float lbob = Mathf.Round(Mathf.Sin(bobT * 2.3f) * 0.5f);
+                    lieSr.transform.position = Snap(fp + new Vector2(0, (lbob + dip) / PixelView.PPU * s));
+                    lieSr.transform.localScale = Vector3.one * s;
+                    lieSr.transform.rotation = Quaternion.identity;
+                    lieSr.sortingOrder = onPad ? StageView.OrderLight : Fx.OrderRipple + 1;
+                    lieSr.color = new Color(tint.r, tint.g, tint.b, a);
+                    if (chemiSr.enabled)
+                    {
+                        var tip = Sit == FloatSit.Lie ? LieTipPx : TiltTipPx;
+                        chemiSr.transform.position = Snap((Vector2)lieSr.transform.position + new Vector2(tip.x * (flip ? -1f : 1f), tip.y) * s / PixelView.PPU);
+                        chemiSr.color = new Color(1f, 1f, 1f, Mathf.Clamp01(night) * (dip < -4f ? 0.5f : 1f));
+                    }
+                }
+                else
+                {
+                    float bob = Mathf.Round(Mathf.Sin(bobT * 2.3f) * 0.8f);
+                    floatSr.transform.position = Snap(fp + new Vector2(0, ((bob + dip) / PixelView.PPU + 0.25f) * s));
+                    floatSr.transform.localScale = Vector3.one * s;
+                    floatSr.transform.rotation = Quaternion.identity;   // (upright again after a fight)
+                    floatSr.sortingOrder = onPad ? StageView.OrderLight : Fx.OrderRipple + 1;
+                    floatSr.color = new Color(tint.r, tint.g, tint.b, a);
+                    if (chemiSr.enabled)
+                    {
+                        // the 케미 light on the float's top pixel: it dips with the float, so a bite still reads
+                        float top = (floatSr.sprite.rect.height * 0.5f - 1f) * s / PixelView.PPU;
+                        chemiSr.transform.position = Snap((Vector2)floatSr.transform.position + new Vector2(0f, top));
+                        chemiSr.color = new Color(1f, 1f, 1f, Mathf.Clamp01(night) * (dip < -4f ? 0.5f : 1f));
+                    }
                 }
             }
             // bait / lure under water (or the bare hook; on the line-snap's free end while that flies back)
@@ -1437,9 +1548,12 @@ namespace FishingKing
             sunk = rideInit = false;
             tugT = skipCool = 0f;
             tugCool = 0.6f;
-            // (from where the waiting float was drawn: it glides onto the line over a few frames)
-            lastKind = floatSr.enabled ? 99 : -1;
-            lastShown = floatSr.transform.position;
+            // (from where the waiting float was drawn: it glides onto the line over a few frames; a lying one from where it
+            // lay, standing up on the line)
+            bool wasLying = lieSr.enabled;
+            lastKind = floatSr.enabled || wasLying ? 99 : -1;
+            lastShown = wasLying ? lieSr.transform.position : floatSr.transform.position;
+            StandUp();
             blend = fightRel = Vector2.zero;
             FightTaut = 0f;
             FightHard = false;

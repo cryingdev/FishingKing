@@ -6,7 +6,9 @@ Run:  blender -b --python Tools/Blender/fk_items.py [-- group ...]   groups: rod
       (also: lures = only the spec-v1 lures (spinner crank kona popper softworm egi: Items/<id>.png 32 px +
        World/<id>_w.png 11 px) and the lure action chips (UI/act_*.png 12 px), plus the review sheet
        _tmp/legend_art/lure_sheet.png - the existing bait icons are not re-rendered;
-       world = float sprites; worldreels = the small reel under the angler's rod, 2 handle frames per reel;
+       world = float sprites; floatlie = the stick float lying flat / tilting (World/float_stick_lie.png 28 x 7,
+       float_stick_tilt.png 24 x 24, the lake's lying float: Docs/terrain_depth_spec.md 11.4) + _tmp/floatlie/sheet.png
+       and strip.png, float_stick.png left as it is; worldreels = the small reel under the angler's rod, 2 handle frames per reel;
        barehook = the bare hook a float rig comes home with once its bait is gone (World/hook_bare_w.png 11 px, the
        paste sprite's scale) + the floats as item icons for the line-break loss toast (Items/float_stick.png,
        float_ball.png 32 px), review sheets in _tmp/barehook;
@@ -807,6 +809,72 @@ def render_float_icons():
         paths.append(path)
         print(f"float icon -> {path}")
     return paths
+
+
+FLOATLIE_OUT = os.path.join(C.TMP, "floatlie")
+
+
+def render_float_lie():
+    """
+    Group "floatlie" (Docs/terrain_depth_spec.md 11.4): the stick float lying flat on the water (set deeper than the
+    water: the bait rests on the bottom) and half way down (the 0.18 s between standing and lying), the same geometry,
+    materials, palette, outline and 8 ppu as World/float_stick.png. Lie: turned 90 degrees about Y (the tip to +x) and
+    20 degrees about Z (the tip a little away from the camera), its axis on z = 0, World/float_stick_lie.png 32 x 7 (28
+    cut the tip off: it sits 12.9 px out); tilt:
+    45 degrees about Y (+ the same 20 about Z), World/float_stick_tilt.png 24 x 24. Both frames are centred on the model
+    origin, so the sprite's centre is the point on the water (the Tackle places it there, flipped for floats left of the
+    middle). Prints the tip sphere's pixel offset from the frame's centre (Tackle.LieTipPx / TiltTipPx: the 케미 light).
+    Review: _tmp/floatlie/sheet.png (x12) and strip.png (1x on the lake's water at scale 1 and 0.36).
+    """
+    from mathutils import Matrix
+    made = []
+    tips = {}
+    ppu = 8.0
+    for name, tilt, res in (("float_stick_lie", 90.0, (32, 7)), ("float_stick_tilt", 45.0, (24, 24))):
+        C.clear_objects()
+        objs = build_float_stick()
+        # (about the world origin, as render_float_icons: the tip sphere has its own origin up at the top). The thin top
+        # (0.03, a quarter pixel) stays a 1 px column standing, but breaks into dots laid over: twice as thick here.
+        T = Matrix.Rotation(math.radians(20), 4, "Z") @ Matrix.Rotation(math.radians(tilt), 4, "Y")
+        S = Matrix.Diagonal((2.0, 2.0, 1.0, 1.0))
+        for ob in objs:
+            ob.matrix_world = T @ (S @ ob.matrix_world if ob.name.startswith("Top") else ob.matrix_world)
+        bpy.context.view_layer.update()
+        tip = T @ Vector((0.0, 0.0, 1.72))
+        tips[name] = (tip.x * ppu, tip.z * ppu)
+        C.ortho_camera(0, 0, res[0], res[1], ppu)
+        path = os.path.join(WORLD, name + ".png")
+        C.render_sprite(path)
+        made.append(path)
+        print(f"float lie -> {path} ({res[0]}x{res[1]}) tip px ({tips[name][0]:+.2f}, {tips[name][1]:+.2f})")
+    upright = os.path.join(WORLD, "float_stick.png")
+    C.contact_sheet([upright] + made, os.path.join(FLOATLIE_OUT, "sheet.png"), scale=12, cols=3)
+    # 1x on the lake's water (#456a8a): at the sprite's own scale and at the far float's 0.36
+    water = (0x45 / 255, 0x6a / 255, 0x8a / 255)
+    imgs = [C.load_pixels(p) for p in [upright] + made]
+    small = []
+    for im in imgs:
+        h, w, _ = im.shape
+        sw, sh = max(1, int(round(w * 0.36))), max(1, int(round(h * 0.36)))
+        ys = (np.arange(sh) * h / sh).astype(int)
+        xs = (np.arange(sw) * w / sw).astype(int)
+        small.append(im[ys][:, xs])
+    W = sum(i.shape[1] for i in imgs) + sum(i.shape[1] for i in small) + 4 * (len(imgs) * 2 + 1)
+    H = max(i.shape[0] for i in imgs) + 8
+    strip = np.zeros((H, W, 4), np.float32)
+    strip[..., :3] = water
+    strip[..., 3] = 1
+    x = 4
+    for im in imgs + small:
+        h, w, _ = im.shape
+        y = (H - h) // 2
+        a = im[..., 3:4]
+        reg = strip[y:y + h, x:x + w]
+        reg[..., :3] = reg[..., :3] * (1 - a) + im[..., :3] * a
+        x += w + 4
+    C.save_pixels(strip, os.path.join(FLOATLIE_OUT, "strip.png"))
+    print("float lie tips:", ", ".join(f"{k} ({v[0]:+.2f}, {v[1]:+.2f})" for k, v in tips.items()))
+    return made
 
 
 def bare_hook_art():
@@ -4630,6 +4698,9 @@ def main():
         C.ortho_camera(0, 0.2, 12, 16, 11.0)
         C.render_sprite(os.path.join(WORLD, "float_ball.png"))
         made += [os.path.join(WORLD, "float_stick.png"), os.path.join(WORLD, "float_ball.png")]
+    if "floatlie" in groups:
+        # the stick float lying flat / half way down (the lake's lying float; float_stick.png itself is not re-rendered)
+        made += render_float_lie()
     if "barehook" in groups:
         # the bare hook a float rig is reeled home with (the bait gone) + the floats' icons for the loss toast
         for p in bare_hook_art():

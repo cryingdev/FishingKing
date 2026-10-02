@@ -32,7 +32,7 @@ namespace FishingKing
         // The feet stay within ~240 units of the centre (1 m at the feet is ~92 units at every aspect) and the canvas is
         // at least 960 wide, so the pair (from 160 units in from the right edge) never covers him or the props at his feet
         const float WalkBtn = 64, WalkGap = 12, WalkInset = 20, WalkBottom = 26;
-        Text hint, flash, tensionLabel, fishName, distance, phaseLabel, baitCount, depthText, aimText;
+        Text hint, flash, tensionLabel, fishName, distance, phaseLabel, baitCount, depthText, aimText, depthLabel;
         RectTransform stageName;
         TopBar topBar;
         CanvasGroup hintGroup;
@@ -100,8 +100,8 @@ namespace FishingKing
             baitCount = UIKit.Label(baitBtn.transform, "", 16, UIKit.Cream, TextAnchor.LowerRight);
             baitCount.rectTransform.Fill(4, 6, 4, 8);
             depthGroup = UIKit.Rect(tacklePanel, "Depth").At(new Vector2(0, 0.5f), new Vector2(92, 0), new Vector2(152, 76), new Vector2(0, 0.5f));
-            var dl = UIKit.Label(depthGroup, "찌 수심", 15, UIKit.Sky, TextAnchor.UpperCenter);
-            dl.rectTransform.Fill(0, 0, 3, 49);
+            depthLabel = UIKit.Label(depthGroup, "찌 수심", 15, UIKit.Sky, TextAnchor.UpperCenter);
+            depthLabel.rectTransform.Fill(0, 0, 3, 49);
             depthText = UIKit.Label(depthGroup, "2.0m", 22, UIKit.Cream);
             depthText.horizontalOverflow = HorizontalWrapMode.Overflow; // "18.0m" must never split into two lines
             depthText.rectTransform.Fill(34, 34, 36, 6);                // same band as the -/+ buttons
@@ -511,8 +511,11 @@ namespace FishingKing
 
         void ChangeDepth(float d)
         {
-            float max = Mathf.Max(0.5f, ctl.Stage.L.DepthAt(Mathf.Max(ctl.Stage.L.zNear + 2f, 20f)) - 0.3f);
-            ctl.Tackle.FloatDepth = Mathf.Clamp(Mathf.Round((ctl.Tackle.FloatDepth + d) * 2f) / 2f, 0.5f, Mathf.Max(max, 8f));
+            var L = ctl.Stage.L;
+            // (on the generated bed: down to its deepest node, so every depth can be plumbed with a lying float)
+            float top = L.Terrain ? Mathf.Max(8f, Mathf.Ceil(L.Bathy.DepthMax * 2f) / 2f)
+                : Mathf.Max(Mathf.Max(0.5f, L.ProfileDepth(Mathf.Max(L.zNear + 2f, 20f)) - 0.3f), 8f);
+            ctl.Tackle.FloatDepth = Mathf.Clamp(Mathf.Round((ctl.Tackle.FloatDepth + d) * 2f) / 2f, 0.5f, top);
             RefreshTackle();
         }
 
@@ -710,6 +713,8 @@ namespace FishingKing
             UIKit.FitPlate(hint, hintPlate);
         }
 
+        internal string DepthLabelText => depthLabel != null ? depthLabel.text : null;
+
         public void Flash(string text, Color c, float time = 1.5f)
         {
             // during an encounter the top-centre flash would sit inside the window: its captions carry the message
@@ -758,6 +763,17 @@ namespace FishingKing
             if (clockPanel.gameObject.activeSelf) UpdateClock();
             RefreshWalk();
             if (lureGroup.gameObject.activeInHierarchy) UpdateLureSlot();
+            // a float rig waiting: "찌 누움" in gold while the float lies flat (set deeper than the water: plumbing)
+            if (depthLabel != null)
+            {
+                bool lying = ctl.Tackle.FloatLying && ctl.State == FishingController.S.Waiting;
+                string want = lying ? "찌 누움" : "찌 수심";
+                if (depthLabel.text != want)
+                {
+                    depthLabel.text = want;
+                    depthLabel.color = lying ? UIKit.Gold : UIKit.Sky;
+                }
+            }
             if (lureWordT > 0f)
             {
                 lureWordT -= dt;
