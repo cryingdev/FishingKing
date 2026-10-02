@@ -79,6 +79,33 @@ namespace FishingKing.EditorTools
             Debug.Log($"[FishingKing] Build {report.summary.result} -> {opts.locationPathName}: {report.summary.totalSize / 1024 / 1024} MB, errors {report.summary.totalErrors}");
         }
 
+        [MenuItem("FishingKing/Build Mac")]
+        public static void BuildMac()
+        {
+            // the species data first (Docs/data_reference.md 2.7): nothing is built from data the validator rejects
+            if (!SpeciesValidator.Gate())
+            {
+                if (Application.isBatchMode) EditorApplication.Exit(1);
+                else EditorUtility.DisplayDialog("Build Mac", "The species data has errors (see the Console): nothing was built.", "OK");
+                return;
+            }
+            var scenes = System.Array.ConvertAll(EditorBuildSettings.scenes, s => s.path);
+            // -fkBuildOut <dir>: build somewhere else (e.g. while Builds/Mac is in use); default Builds/Mac
+            string outDir = "Builds/Mac";
+            var args = System.Environment.GetCommandLineArgs();
+            int oi = System.Array.IndexOf(args, "-fkBuildOut");
+            if (oi >= 0 && oi + 1 < args.Length && !string.IsNullOrWhiteSpace(args[oi + 1])) outDir = args[oi + 1];
+            var opts = new BuildPlayerOptions
+            {
+                scenes = scenes,
+                locationPathName = System.IO.Path.Combine(outDir, "FishingKing.app"),
+                target = BuildTarget.StandaloneOSX,
+                options = BuildOptions.None,
+            };
+            var report = BuildPipeline.BuildPlayer(opts);
+            Debug.Log($"[FishingKing] Build {report.summary.result} -> {opts.locationPathName}: {report.summary.totalSize / 1024 / 1024} MB, errors {report.summary.totalErrors}");
+        }
+
         static string CreateScene(string name, System.Type bootstrap)
         {
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
