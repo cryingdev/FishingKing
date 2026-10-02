@@ -547,8 +547,8 @@ sting); the rest is the same as a forced break.
   float whips back from the snag point with the hook on its end), and after 0.7 s it is wound in **spent** (`S.Retrieving`,
   `SpentRetrieve`: no snag rolls, no fish engage, until `FinishRetrieve`);
 - the **loss toast** (`Toast.ShowItems` under the flash, 3.2 s, title `잃어버린 채비`) lists what went with item icons:
-  the lure (gold, with its price at >= 5,000 coins; gold with the eye `icon_eye` when it is a legend's key), the bait
-  `×1`. Nothing lost (a bare hook cut free): no toast.
+  the lure (gold, with its price at >= 5,000 coins; gold with the eye `icon_eye` when it is a legend's key), the unused bait (name only: a break
+  never takes more than one, and a bait eaten at the hook-set is not a loss of the break). Nothing lost (a bare hook cut free): no toast.
 
 ### 6.7 Weedless
 
@@ -800,7 +800,7 @@ the reef and the weed mat show in the open water in front of it).
 | a crank deflection | `딱!` | `LureFeedback`, `UIKit.Sky`, 0.6 s |
 | broken by forcing | `밑걸림으로 줄이 끊어졌다!` | flash, `UIKit.Bad`, 2 s |
 | cut with 끊기 | `줄을 끊었어요` | flash, `UIKit.Bad`, 1.6 s |
-| what a parted line took | `잃어버린 채비` + item icons: `{lure}` (gold, `({price}코인)` at >= 5,000; gold + `icon_eye` for a legend's key), `{bait} ×n`, `찌` | `Toast.ShowItems`, 70 under the top toast spot (under the flash), 3.2 s; none when nothing was lost |
+| what a parted line took | `잃어버린 채비` + item icons: `{lure}` (gold, `({price}코인)` at >= 5,000; gold + `icon_eye` for a legend's key), `{bait}` (name only, always one), `찌` | `Toast.ShowItems`, 70 under the top toast spot (under the flash), 3.2 s; none when nothing was lost |
 
 New strings are checked with `Tools/font_coverage.py` (README).
 

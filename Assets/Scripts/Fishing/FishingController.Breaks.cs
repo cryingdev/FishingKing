@@ -210,7 +210,7 @@ namespace FishingKing
             if (r.bait != null && r.baitN > 0)
             {
                 bool key = GameDatabase.Fish.Any(f => f.encounter != null && f.encounter.KeyWeight(r.bait.id) > 0f);
-                items.Add(new Toast.Item { icon = Art.Item(r.bait.id), text = $"{r.bait.name} ×{r.baitN}", highlight = key || r.bait.price >= ExpensiveLure,
+                items.Add(new Toast.Item { icon = Art.Item(r.bait.id), text = r.bait.name, highlight = key || r.bait.price >= ExpensiveLure,
                     badge = key ? Art.UI("icon_eye") : null });
             }
             if (r.floatLost) items.Add(new Toast.Item { icon = Art.Item(Tackle.FloatItemId), text = "찌" });

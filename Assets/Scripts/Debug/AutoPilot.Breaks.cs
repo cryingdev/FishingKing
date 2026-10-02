@@ -454,7 +454,7 @@ namespace FishingKing
             int n1 = Game.I.BaitCount(bait.id);
             BCheck("snag_float", snagged && ctl.SnagBreaks == b0 + 1 && r != null && r.cause == "snag" && kept && w.home && w.floatFrames > 0 && w.bareFrames > 0 && w.baitFrames == 0,
                 $"snagged {snagged}, forced until it parted {ctl.SnagBreaks - b0}: float kept, wound in spent with the bare hook {kept}; {w.Brief}");
-            BCheck("snag_float_bait", n1 == n0 - 1 && r != null && r.baitN == 1 && shown && icons >= 1 && r.items.Any(s => s.Contains(bait.name + " ×1")),
+            BCheck("snag_float_bait", n1 == n0 - 1 && r != null && r.baitN == 1 && shown && icons >= 1 && r.items.Any(s => s == bait.name),
                 $"{bait.id} {n0} -> {n1} (the unused bait once), toast '{(r != null ? string.Join(" | ", r.items) : "-")}' ({icons} icon(s))");
             BCheck("snag_float_snap", snap.Plays == plays0 + 1 && snap.LastKind == LineSnap.Kind.Recoil && snap.LastFrames >= 8,
                 $"snaps {snap.Plays - plays0} ({snap.LastKind}), drawn {snap.LastFrames} frames");
