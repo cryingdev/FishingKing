@@ -363,11 +363,18 @@ namespace FishingKing
                 SpotCheck($"look_retry: the spot {w.SpotOffers} {w.SpotT:0.0}s up, {Time.time - w.SpotEndedAt:0.0}s after the 'outside' miss, gets no look (skip '{ctl.LookSkip}' for offer {ctl.LookSkipOffer}, looking {ctl.SpotLooking})",
                     mode0 == ZoomMode.Off || (ctl.LookSkip == "retry" && ctl.LookSkipOffer == w.SpotOffers && !ctl.SpotLooking));
                 miss0 = w.SpotMisses;
+                // (no ordinary fish on the wrong rig while it is watched: a bite on it is not what this checks, and on the
+                // lake's bed the crucians gather where it lands)
+                bool noBitesW = FishingController.NoBites;
+                FishingController.NoBites = true;
+                foreach (var f in ctl.Spawner.Fish)
+                    if (f.State == FishAgent.St.Approach || f.State == FishAgent.St.Nibble) f.LoseInterest();
                 yield return CastAt(ctl, w.Spot);
                 landD = new Vector2(ctl.Tackle.Surface.x - w.Spot.x, ctl.Tackle.Surface.z - w.Spot.z).magnitude;
                 for (float t = 0f; t < 4f && ctl.State == FishingController.S.Waiting; t += Time.deltaTime) yield return null;
                 SpotCheck($"a wrong rig ({wrong.id}) {landD:0.0} m from the spot misses it: end '{w.SpotEnd}', misses {miss0} -> {w.SpotMisses}, claimed {w.SpotClaimed}, state {ctl.State}",
                     w.SpotEnd == "rig" && w.SpotMisses == miss0 + 1 && !w.SpotClaimed && ctl.State == FishingController.S.Waiting);
+                FishingController.NoBites = noBitesW;
             }
             else Log("[SPOT] no wrong bait to try");
             SpotCheck($"the misses spent no cooldown or pity ({encId}: pity {pity0} -> {rec.pity}, {LegendWatch.Remaining(encId)}s away)",
