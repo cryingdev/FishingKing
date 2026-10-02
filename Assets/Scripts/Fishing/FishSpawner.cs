@@ -126,16 +126,28 @@ namespace FishingKing
             var L = ctl.Stage.L;
             var P = ctl.Stage.P;
             float zMax = Mathf.Min(L.zFar - 2f, ctl.FishZMax);
-            float z = fromDistance ? zMax - Random.Range(0f, 4f) : Random.Range(L.zNear + 2f, zMax);
-            float half = Mathf.Min(L.xLim - 0.5f, P.VisibleHalfWidth(z, 600));
-            float bottom = L.DepthAt(z) - 0.3f;
-            float d = Random.Range(Mathf.Min(sp.depthMin, bottom), Mathf.Min(sp.depthMax, bottom));
-            var pos = new Vector3(Random.Range(-half, half), -Mathf.Max(0.3f, d), z);
-            if (L.IsIce) pos = new Vector3(L.holeX + Random.Range(-8f, 8f), pos.y, Random.Range(L.zNear + 1f, 18f));
+            float cm;
+            Vector3 pos;
+            if (L.Terrain && ctl.Habitat != null)
+            {
+                // on a generated bed (the lake): where its habitat puts it (Docs/terrain_depth_spec.md 7.4)
+                cm = RollSize(sp);
+                pos = ctl.Habitat.SpawnPoint(sp, fromDistance, zMax);
+            }
+            else
+            {
+                float z = fromDistance ? zMax - Random.Range(0f, 4f) : Random.Range(L.zNear + 2f, zMax);
+                float half = Mathf.Min(L.xLim - 0.5f, P.VisibleHalfWidth(z, 600));
+                float bottom = L.ProfileDepth(z) - 0.3f;
+                float d = Random.Range(Mathf.Min(sp.depthMin, bottom), Mathf.Min(sp.depthMax, bottom));
+                pos = new Vector3(Random.Range(-half, half), -Mathf.Max(0.3f, d), z);
+                if (L.IsIce) pos = new Vector3(L.holeX + Random.Range(-8f, 8f), pos.y, Random.Range(L.zNear + 1f, 18f));
+                cm = RollSize(sp);
+            }
             var go = new GameObject("Fish_" + sp.id);
             go.transform.SetParent(transform, false);
             var a = go.AddComponent<FishAgent>();
-            a.Init(ctl, sp, RollSize(sp), pos);
+            a.Init(ctl, sp, cm, pos);
             fish.Add(a);
         }
     }

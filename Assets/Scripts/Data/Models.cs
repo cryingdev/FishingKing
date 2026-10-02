@@ -105,6 +105,8 @@ namespace FishingKing
         // rim, hull, crystal)
         public float coverSeek, coverReach, coverDig = 1f;
         public string[] coverFor;
+        /// <summary>Where it lives on a generated bed (Docs/terrain_depth_spec.md 7; GameDatabase.Habitats): null = h 1 everywhere, today's swim depths.</summary>
+        public HabitatDef habitat;
         // ---- the aquarium (GameDatabase.Diets): the foods it eats and how it takes a dropped piece
         public Diet diet = Diet.Pellet;
         public FeedStyle feedStyle;
@@ -388,7 +390,9 @@ namespace FishingKing
 
         // ---- the rollout (Docs/legends_rollout.md 1.1); the defaults play and look exactly like the coelacanth
         public float depthMax;                    // the lure at most this deep (0 = off)
-        public float lurkDepth;                   // lurk depth under the surface (0 = DepthAt(z) - 0.5)
+        public float lurkDepth;                   // lurk depth under the surface (0 = DepthAt(x, z) - 0.5)
+        /// <summary>On a generated bed the lurk point sits on a drop-off beside weed (WeedEdge nodes; Docs/terrain_depth_spec.md 10).</summary>
+        public bool lurkWeedEdge;
         public Dictionary<string, KeyRule> keyRules = new Dictionary<string, KeyRule>();
         public MeterQ meterQ = MeterQ.Lure;
         public int fakeOuts;                      // fake-outs in NoseIn (0 or 1)

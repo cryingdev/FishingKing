@@ -17,6 +17,8 @@ namespace FishingKing
 
         public S State { get; private set; }
         public StageView Stage { get; private set; }
+        /// <summary>The fish's ecology on the stage's generated bed (null: no bed, every stage but the lake).</summary>
+        public FishHabitat Habitat { get; private set; }
         public Tackle Tackle { get; private set; }
         public FishSpawner Spawner { get; private set; }
         public Angler Angler { get; private set; }
@@ -203,7 +205,10 @@ namespace FishingKing
             Tackle = Tackle.Create(stage);
             Angler.Rig = Tackle;   // (the line's end resting on a perched rig: read from the rig's state as the line is drawn)
             snap = LineSnap.Create(stage, Angler, Tackle);
-            Tackle.FloatDepth = Mathf.Clamp(2f, 0.5f, L.DepthAt(15f) - 0.3f);
+            Tackle.FloatDepth = Mathf.Clamp(2f, 0.5f, L.ProfileDepth(15f) - 0.3f);
+            // the fish's ecology on the generated bed (the lake; Docs/terrain_depth_spec.md 7.6)
+            Habitat = L.Terrain ? new FishHabitat(Stage, this, L.Bathy) : null;
+            Tackle.FloatLaid += OnFloatLaid;
             Spawner = new GameObject("Spawner").AddComponent<FishSpawner>();
             Spawner.Init(this);
             for (int i = 0; i < 14; i++)
@@ -250,6 +255,7 @@ namespace FishingKing
             Sfx.Rasp(0f);
             LeaveMusic();
             GameClock.PeriodBegan -= OnPeriodBegan;
+            if (Tackle != null) Tackle.FloatLaid -= OnFloatLaid;
             GameClock.Stopped();
             if (Game.I != null)
             {
@@ -263,6 +269,22 @@ namespace FishingKing
         /// A new period began on the stage (the clock's cross-fade passed its middle): a toast, and the first time ever a hint
         /// that the fish's activity changes with it.
         /// </summary>
+        /// <summary>Lying-float hints shown (for the tests).</summary>
+        internal int LieHints { get; private set; }
+
+        /// <summary>
+        /// The float lay down flat (Tackle.FloatLaid: set deeper than the water, the bait on the bottom): the first time ever a
+        /// hint, so a lying float does not read as a bug.
+        /// </summary>
+        void OnFloatLaid()
+        {
+            if (Game.Data.lieHint) return;
+            Game.Data.lieHint = true;
+            Game.I.Save();
+            LieHints++;
+            hud.Flash("찌가 누웠어요! 미끼가 바닥에 닿았다는 뜻이에요 — 찌 수심을 줄이면 다시 서요", UIKit.Gold, 2.6f);
+        }
+
         void OnPeriodBegan(Period p)
         {
             Toast.Show(GameClock.BeginText(p), GameClock.TextColor(p), 2f);
@@ -521,7 +543,7 @@ namespace FishingKing
             var d = PointerInput.Position - pressPos;
             AimPower = Mathf.Clamp01(-d.y / (Screen.height * 0.3f));
             aimTarget = new Vector3(L.holeX, 0, L.holeZ);
-            AimDepth = Mathf.Lerp(0.6f, L.DepthAt(L.holeZ) - 0.3f, AimPower);
+            AimDepth = Mathf.Lerp(0.6f, L.DepthAt(L.holeX, L.holeZ) - 0.3f, AimPower);
             Angler.SetPose(AimPower > 0.04f ? "aim" : "idle");
             DrawAim(AimPower > 0.04f);
             if (!PointerInput.IsDown)
@@ -1044,6 +1066,12 @@ namespace FishingKing
             return sense * TideReach();
         }
 
+        /// <summary>
+        /// How far this fish senses the rig now (m): <see cref="SenseRange"/>, on the generated bed x the bite budget's reach
+        /// scale for its species, the period and the rig (FishHabitat.ReachScale).
+        /// </summary>
+        public float SenseFor(FishAgent f) => Habitat == null ? SenseRange() : SenseRange() * Habitat.ReachScale(f.Sp, GameClock.Look, Tackle);
+
         /// <summary>A lure's strike roll x clamp(sqrt(activity) x the tide, 0.5, 1.5).</summary>
         public float StrikeMult(FishAgent f) => Mathf.Clamp(Mathf.Sqrt(Mathf.Max(0f, TimeActivity.Now(f.Sp.id))) * TideMult(), 0.5f, 1.5f) * StrikeBonus();
 
@@ -1095,6 +1123,15 @@ namespace FishingKing
         // ------------------------------------------------------------------ legend encounter
         /// <summary>A message in the HUD's flash spot (the encounter's captions while one is on).</summary>
         public void Flash(string text, Color c, float time = 1.5f) => hud.Flash(text, c, time);
+        /// <summary>Test hook (-fkauto depth): the float depth set as the HUD's -/+ would (the HUD shows it).</summary>
+        internal void DebugFloatDepth(float d)
+        {
+            Tackle.FloatDepth = d;
+            hud.RefreshTackle();
+        }
+
+        /// <summary>The HUD's float depth label as shown ("찌 수심" / "찌 누움"; for the tests).</summary>
+        internal string DepthLabelText => hud != null ? hud.DepthLabelText : null;
 
         /// <summary>The ordinary fish within <paramref name="radius"/> m of the lure scatter (the legend is near).</summary>
         public void ScatterFish(float radius)
@@ -1371,7 +1408,10 @@ namespace FishingKing
             float dist = new Vector2(hook.x - f.Pos.x, hook.z - f.Pos.z).magnitude;
             var bait = Tackle.Bait;
             float q = Rhythm.Q;
-            if (dist > SenseRange()) return false;
+            // on the generated bed the reach is scaled to keep the bites per minute (Docs/terrain_depth_spec.md 8.1), and no
+            // fish comes into water shallower than it swims in
+            if (dist > SenseFor(f)) return false;
+            if (Habitat != null && L.DepthAt(hook.x, hook.z) < FishHabitat.MinWater(f.Cm)) return false;
             if (Mathf.Abs(f.Depth - Tackle.Depth) > 2.5f) return false;
             float appeal = f.Sp.Appeal(bait);
             if (appeal <= 0) return false;
@@ -1534,6 +1574,8 @@ namespace FishingKing
             Fight = new FightModel(Hooked.Sp, Hooked.Cm, Game.I.Rod, Game.I.Reel, Game.I.Line, Stage.Def.powerMult,
                 Vector3.Distance(tip, Hooked.Pos), land, seed);
             runRnd = new System.Random(seed + 1);   // which way each run heads (the same fish fought again runs the same ways)
+            deepRnd = new System.Random(seed + 2);  // (the bed: a big runner's pull for the deep, its own stream so runRnd is untouched)
+            shallowWarned = false;
             Fight.PhaseChanged += OnPhase;
             var rel = Hooked.Pos - Anchor;
             fightYaw = fightYawTarget = Mathf.Atan2(rel.x, Mathf.Max(0.1f, rel.z));
@@ -1560,6 +1602,90 @@ namespace FishingKing
             float h = new Vector2(Hooked.Pos.x - Anchor.x, Hooked.Pos.z - Anchor.z).magnitude;
             float maxYaw = h > 0.5f ? Mathf.Asin(Mathf.Clamp01((L.xLim - 0.5f) / h)) : 0.8f;
             return Mathf.Min(maxYaw, L.IsIce ? Mathf.PI : 0.8f);
+        }
+
+        // ---- the generated bed in the fight (Docs/terrain_depth_spec.md 9.2, 9.3; the lake only)
+        System.Random deepRnd = new System.Random();
+        bool shallowWarned;
+        /// <summary>Test counters (-fkauto depth): running fight frames in water shallower than the fish swims in, fight
+        /// frames under the bed (- 0.2), runs whose side the bed chose, and every run's two sides' water (the deep-run share).</summary>
+        internal static int FightShallowFrames, FightUnderBedFrames, BedRunsForced;
+        internal static readonly List<Vector4> RunSides = new List<Vector4>();   // (side taken +-1, water taken, water other, forced)
+        internal static readonly List<float> RunSteps = new List<float>();       // the step as drawn (before the bed's choice)
+        internal static bool RecordRuns;                                           // (the two lists above fill only with this on)
+
+        /// <summary>Where a run heading at <paramref name="yaw"/> goes: 6 m beyond where the fish is now, round him.</summary>
+        Vector3 RunDest(float yaw)
+        {
+            float h = new Vector2(Hooked.Pos.x - Anchor.x, Hooked.Pos.z - Anchor.z).magnitude;
+            return Anchor + new Vector3(Mathf.Sin(yaw), 0f, Mathf.Cos(yaw)) * (h + 6f);
+        }
+
+        /// <summary>A big runner (a 40 cm+ fish whose habitat runs for the deep: the carp, the bass, the golden carp).</summary>
+        bool BigRunner => Hooked != null && Hooked.Cm >= 40f && Hooked.Sp.habitat != null && Hooked.Sp.habitat.runDeep;
+
+        /// <summary>
+        /// The bed picks the run's side (spec 9.3): away from water too shallow for the fish when the other side has
+        /// enough, and a big runner takes the deeper side 30 % of the runs (deepRnd, drawn on every run).
+        /// </summary>
+        float BedRunSide(float step, float maxYaw)
+        {
+            float need = FishHabitat.MinWater(Hooked.Cm);
+            if (RecordRuns) RunSteps.Add(step);
+            float yC = Mathf.Clamp(fightYaw + step, -maxYaw, maxYaw), yO = Mathf.Clamp(fightYaw - step, -maxYaw, maxYaw);
+            float wC = L.DepthAt(RunDest(yC)), wO = L.DepthAt(RunDest(yO));
+            bool roomO = Mathf.Abs(yO - fightYaw) >= 0.2f;
+            bool deep = deepRnd.NextDouble() < 0.3;
+            bool forced = false;
+            if (wC < need + 0.3f && wO >= need + 0.3f && roomO) forced = true;
+            else if (BigRunner && deep && wO >= wC + 0.3f && roomO) forced = true;
+            if (forced)
+            {
+                step = -step;
+                BedRunsForced++;
+            }
+            float taken = step >= 0f ? 1f : -1f;
+            if (RecordRuns) RunSides.Add(new Vector4(taken, forced ? wO : wC, forced ? wC : wO, forced ? 1f : 0f));
+            Debug.Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "[BATHY] run {0} side {1} wC {2:0.00} wO {3:0.00} forced {4}",
+                Hooked.Sp.id, step >= 0f ? "R" : "L", wC, wO, forced ? 1 : 0));
+            return step;
+        }
+
+        /// <summary>
+        /// The hooked fish's place this frame against the bed (spec 9.2; a run or a cover run, not a jump): looking 1.5 m
+        /// ahead along its heading, water too shallow turns the run towards the deeper side; a fish that still lands in
+        /// water shallower than it swims in is turned (up to 8 steps of 0.05 rad either way) to the nearest yaw with enough.
+        /// </summary>
+        void BedGuard(ref Vector3 pos, float depth, System.Func<float, float, Vector3> onLineAt)
+        {
+            float need = FishHabitat.MinWater(Hooked.Cm);
+            float maxYaw = MaxFightYaw();
+            var u = new Vector3(Mathf.Sin(fightYaw), 0f, Mathf.Cos(fightYaw));
+            float h = new Vector2(pos.x - Anchor.x, pos.z - Anchor.z).magnitude;
+            if (L.DepthAt(Anchor + u * (h + 1.5f)) < need + 0.2f)
+            {
+                float side = Mathf.Sign(L.DepthAt(onLineAt(-depth, fightYaw + 0.15f)) - L.DepthAt(onLineAt(-depth, fightYaw - 0.15f)));
+                fightYawTarget = Mathf.Clamp(fightYaw + 0.3f * side, -maxYaw, maxYaw);
+            }
+            if (L.DepthAt(pos) >= need) return;
+            for (int k = 1; k <= 8; k++)
+                for (int si = 0; si < 2; si++)
+                {
+                    float s = si == 0 ? 1f : -1f;
+                    float y = Mathf.Clamp(fightYaw + s * 0.05f * k, -maxYaw, maxYaw);
+                    var p = onLineAt(-depth, y);
+                    if (L.DepthAt(p) < need) continue;
+                    fightYaw = y;
+                    pos = p;
+                    fightYawTarget = Mathf.Clamp(y + 0.25f * s, -maxYaw, maxYaw);
+                    return;
+                }
+            if (!shallowWarned)
+            {
+                shallowWarned = true;
+                Debug.LogWarning(string.Format(System.Globalization.CultureInfo.InvariantCulture, "[BATHY] WARN shallow fight: {0} {1:0} cm at ({2:0.00}, {3:0.00}) in {4:0.00} m (needs {5:0.00})",
+                    Hooked.Sp.id, Hooked.Cm, pos.x, pos.z, L.DepthAt(pos), need));
+            }
         }
 
         /// <summary>The current run (if any) is over: reported to the tests, the side-pressure strip goes back to no run.</summary>
@@ -1605,6 +1731,7 @@ namespace FishingKing
                         // where it is, the other way if that side has no room
                         float step = (0.3f + 0.4f * (float)runRnd.NextDouble()) * (runRnd.NextDouble() < 0.5 ? -1f : 1f);
                         if (Mathf.Abs(Mathf.Clamp(fightYaw + step, -maxYaw, maxYaw) - fightYaw) < 0.2f) step = -step;
+                        if (L.Terrain) step = BedRunSide(step, maxYaw);
                         fightYawTarget = Mathf.Clamp(fightYaw + step, -maxYaw, maxYaw);
                         // the stream: a third of the runs turn and ride the lane down past his side (to the side with more room)
                         if (ph == FightModel.Phase.Run && Stage.Current.K == CurrentField.Kind.Stream && runRnd.NextDouble() < 0.35)
@@ -1623,7 +1750,8 @@ namespace FishingKing
                         turnProg = 0f;
                         runTurned = false;
                     }
-                    float bottom = L.DepthAt(Hooked.Pos.z) - 0.3f;
+                    // (on the bed: the water where the run is heading)
+                    float bottom = (L.Terrain ? L.DepthAt(RunDest(fightYawTarget)) : L.DepthAt(Hooked.Pos.x, Hooked.Pos.z)) - 0.3f;
                     fishDepthTarget = Random.Range(Mathf.Min(sp.depthMin, bottom), Mathf.Min(sp.depthMax, bottom));
                     if (DownstreamRun) fishDepthTarget = Mathf.Min(1f, sp.depthMin);   // (up in the fast water)
                     if (ph == FightModel.Phase.Burst) hud.Flash("질주한다! 감지 말고 버텨요!", UIKit.Bad, 0.9f);
@@ -1888,10 +2016,10 @@ namespace FishingKing
             // both following the fish; measured from it, the fish's place fed back into itself through the line's direction,
             // and close in the rod, the line, the water entry and the fish swapped between two places every frame)
             var tip = Angler.RodTipPlan;
-            var u = new Vector3(Mathf.Sin(fightYaw), 0, Mathf.Cos(fightYaw));
-            // the point at height y out along u whose distance from the tip is the line's length
-            Vector3 OnLine(float y)
+            // the point at height y out along the heading yaw whose distance from the tip is the line's length
+            Vector3 OnLineAt(float y, float yaw)
             {
+                var u = new Vector3(Mathf.Sin(yaw), 0, Mathf.Cos(yaw));
                 var a = Anchor - tip + new Vector3(0, y, 0);
                 float au = Vector3.Dot(a, u);
                 float disc = au * au - a.sqrMagnitude + f.Line * f.Line;
@@ -1904,8 +2032,11 @@ namespace FishingKing
                 }
                 return p;
             }
+            Vector3 OnLine(float y) => OnLineAt(y, fightYaw);
             var pos = OnLine(-depth);
-            depth = Mathf.Min(depth, L.DepthAt(pos.z) - 0.2f);
+            // the bed (the lake): a run never takes the fish into water shallower than it swims in
+            if (L.Terrain && !DebugFishHold.HasValue && jumpTime < 0 && (running || f.CoverRun)) BedGuard(ref pos, depth, OnLineAt);
+            depth = Mathf.Min(depth, L.DepthAt(pos.x, pos.z) - 0.2f);
             pos.y = -Mathf.Max(0.15f, depth);
 
             if (DebugFishHold.HasValue)
@@ -1937,6 +2068,12 @@ namespace FishingKing
             lastFishPos = pos;
             Hooked.Pos = pos;
             Hooked.Frantic = running || f.Exhausted;
+            if (L.Terrain && !DebugFishHold.HasValue && jumpTime < 0f)
+            {
+                float w = L.DepthAt(pos.x, pos.z);
+                if (running && w < FishHabitat.MinWater(Hooked.Cm) - 1e-3f) FightShallowFrames++;
+                if (pos.y < -Mathf.Max(0.15f, w - 0.2f) - 1e-3f) FightUnderBedFrames++;
+            }
             // the cover (the run's arrival, the hold) and the line rubbing on structure
             FightObstacles(dt, f, pos);
 

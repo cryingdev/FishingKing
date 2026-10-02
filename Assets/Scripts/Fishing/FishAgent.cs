@@ -111,11 +111,16 @@ namespace FishingKing
             if (LeaveAt < 0f && TimeActivity.A(Sp.id, GameClock.Now) <= 0f) LeaveAt = Time.unscaledTime + Random.Range(2f, 20f);
             var L = stage.L;
             float zMax = Mathf.Min(L.zFar - 2f, ctl.FishZMax);
-            float z = Random.Range(L.zNear + 1.5f, zMax);
-            float half = Mathf.Min(L.xLim - 0.5f, P.VisibleHalfWidth(z, 600));
-            float bottom = L.DepthAt(z) - 0.3f;
-            float d = Random.Range(Mathf.Min(Sp.depthMin, bottom), Mathf.Min(Sp.depthMax, bottom));
-            target = new Vector3(Random.Range(-half, half), -Mathf.Max(0.3f, d), z);
+            var hab = ctl.Habitat;
+            // on a generated bed (the lake): a node drawn by its habitat (Docs/terrain_depth_spec.md 7.4); else uniform
+            if (!(L.Terrain && hab != null && hab.Target(this, zMax, out target)))
+            {
+                float z = Random.Range(L.zNear + 1.5f, zMax);
+                float half = Mathf.Min(L.xLim - 0.5f, P.VisibleHalfWidth(z, 600));
+                float bottom = L.ProfileDepth(z) - 0.3f;
+                float d = Random.Range(Mathf.Min(Sp.depthMin, bottom), Mathf.Min(Sp.depthMax, bottom));
+                target = new Vector3(Random.Range(-half, half), -Mathf.Max(0.3f, d), z);
+            }
             var cur = stage.Current;
             bool heldInPocket = false;
             if (cur != null && cur.K == CurrentField.Kind.Stream && Random.value < HoldChance(Sp.id))
@@ -127,9 +132,10 @@ namespace FishingKing
                 {
                     var o = Random.insideUnitCircle;
                     float pz = Mathf.Clamp(pk.z + o.y * pk.az, L.zNear + 1.5f, zMax);
-                    float pb = L.DepthAt(pz) - 0.3f;
+                    float px = Mathf.Clamp(pk.x + o.x * pk.ax, -L.xLim + 0.5f, L.xLim - 0.5f);
+                    float pb = L.DepthAt(px, pz) - 0.3f;
                     float pd = Random.Range(Mathf.Min(Sp.depthMin, pb), Mathf.Min(Sp.depthMax, pb));
-                    target = new Vector3(Mathf.Clamp(pk.x + o.x * pk.ax, -L.xLim + 0.5f, L.xLim - 0.5f), -Mathf.Max(0.3f, pd), pz);
+                    target = new Vector3(px, -Mathf.Max(0.3f, pd), pz);
                 }
             }
             if (L.IsIce)
@@ -147,14 +153,18 @@ namespace FishingKing
                 bool holder = cur != null && cur.K == CurrentField.Kind.Stream && HoldChance(Sp.id) > 0f;
                 if (holder ? heldInPocket && Random.value < 0.5f : Random.value < 0.6f * Sp.coverSeek)
                 {
-                    var c = obs.RandomCover(Sp, zMax);
+                    // (on the bed: only a cover whose hold has water enough for it)
+                    float need = HabitatModel.MinWater(Cm) + 0.2f;
+                    var c = L.Terrain ? obs.RandomCover(Sp, zMax, cv => L.DepthAt(cv.hx, cv.hz) >= need) : obs.RandomCover(Sp, zMax);
                     if (c != null)
                     {
                         var q = Obstacles.RandomPoint(c);
                         float cz = Mathf.Clamp(q.y, L.zNear + 1.5f, zMax);
-                        float cb = L.DepthAt(cz) - 0.3f;
-                        float cd = Random.Range(Mathf.Min(Sp.depthMin, cb), Mathf.Min(Sp.depthMax, cb));
-                        target = new Vector3(Mathf.Clamp(q.x, -L.xLim + 0.5f, L.xLim - 0.5f), -Mathf.Max(0.3f, cd), cz);
+                        float cx = Mathf.Clamp(q.x, -L.xLim + 0.5f, L.xLim - 0.5f);
+                        float cb = L.DepthAt(cx, cz) - 0.3f;
+                        float cd = L.Terrain && hab != null ? hab.SwimDepth(Sp, FishHabitat.DrawPeriod(), L.DepthAt(cx, cz))
+                            : Random.Range(Mathf.Min(Sp.depthMin, cb), Mathf.Min(Sp.depthMax, cb));
+                        target = new Vector3(cx, -Mathf.Max(0.3f, cd), cz);
                     }
                 }
             }
@@ -201,6 +211,7 @@ namespace FishingKing
                 case St.Bite: UpdateBite(dt); break;
                 case St.Flee: UpdateFlee(dt); break;
             }
+            CountBed();
         }
 
         void LateUpdate() => Render(Time.deltaTime);
@@ -214,6 +225,7 @@ namespace FishingKing
                 Flee();
                 return;
             }
+            var before = Pos;
             Steer(target, speed, dt);
             // the current carries it a little (it holds station against most of it)
             var cur = stage.Current;
@@ -222,6 +234,7 @@ namespace FishingKing
                 var w = cur.Water(Pos.x, Pos.z) * (0.25f * CurrentField.Kd(Depth));
                 Pos += new Vector3(w.x, 0f, w.y) * dt;
             }
+            if (KeepInWater(before)) return;
             if (new Vector2(target.x - Pos.x, target.z - Pos.z).magnitude < 0.6f || stateT > 12f)
             {
                 PickTarget();
@@ -257,7 +270,9 @@ namespace FishingKing
             var hook = tk.HookPos;
             var toHook = new Vector3(hook.x - Pos.x, 0, hook.z - Pos.z);
             var goal = hook - toHook.normalized * VisLen * 0.45f;
+            var before = Pos;
             Steer(goal, Sp.speed * 0.45f, dt, 3.5f);
+            if (KeepInWater(before)) return;
             float dist = Vector3.Distance(MouthPos, hook);
             // (a float drifting with the water is not "moving": its speed through the water counts)
             if (tk.UsesFloat && tk.RelSpeed > 1.3f && Random.value < dt * 0.8f)
@@ -353,7 +368,7 @@ namespace FishingKing
             // swims off with the bait, dragging the float under
             var away = new Vector3(Mathf.Cos(Heading), 0, Mathf.Sin(Heading));
             Pos += away * Sp.speed * 0.25f * dt;
-            Pos.y = Mathf.MoveTowards(Pos.y, -Mathf.Min(Sp.depthMax, stage.L.DepthAt(Pos.z) - 0.3f), dt * 0.4f);
+            Pos.y = Mathf.MoveTowards(Pos.y, -Mathf.Min(Sp.depthMax, stage.L.DepthAt(Pos.x, Pos.z) - 0.3f), dt * 0.4f);
             var tk = ctl.Tackle;
             tk.Surface = new Vector3(MouthPos.x, 0, MouthPos.z);
             tk.Depth = Depth;
@@ -380,12 +395,79 @@ namespace FishingKing
             stateT = 0;
             fleeTimer = 0;
             var L = stage.L;
-            target = new Vector3(Pos.x + Random.Range(-15f, 15f), -Mathf.Min(Sp.depthMax, L.DepthAt(Pos.z + 20) - 0.3f), Mathf.Min(L.zFar, Pos.z + 40f));
+            float fx = Pos.x + Random.Range(-15f, 15f);
+            float fz = Mathf.Min(L.zFar, Pos.z + 40f);
+            // (on the bed: the shallower of the way out and the end)
+            float bed = L.Terrain ? Mathf.Min(L.DepthAt((Pos.x + fx) * 0.5f, Pos.z + 20f), L.DepthAt(fx, fz)) : L.ProfileDepth(Pos.z + 20);
+            target = new Vector3(fx, -Mathf.Min(Sp.depthMax, bed - 0.3f), fz);
+        }
+
+        // ------------------------------------------------------------------ the bed (Docs/terrain_depth_spec.md 9.1)
+        /// <summary>Test counters (-fkauto depth): frames a free fish stood in water shallower than it swims in / below the bed.</summary>
+        internal static int ShallowFrames, UnderBedFrames;
+
+        /// <summary>
+        /// On a generated bed, after a wander / approach / flee step from <paramref name="before"/>: a fish never swims into
+        /// water shallower than <see cref="FishHabitat.MinWater"/> of its size (it stays where it was and wanders elsewhere,
+        /// gives up the bait, or flees down the slope instead), and never under the bed (lifted to 0.3 m over it). True when
+        /// the step was refused.
+        /// </summary>
+        bool KeepInWater(Vector3 before)
+        {
+            var L = stage.L;
+            if (!L.Terrain) return false;
+            bool refused = false;
+            float now = L.DepthAt(Pos.x, Pos.z);
+            // (a fish already in too little water, dragged there in a fight, may still make for deeper water)
+            if (now < HabitatModel.MinWater(Cm) && now < L.DepthAt(before.x, before.z))
+            {
+                refused = true;
+                Pos.x = before.x;
+                Pos.z = before.z;
+                switch (State)
+                {
+                    case St.Wander:
+                        PickTarget();
+                        stateT = 0f;
+                        break;
+                    case St.Approach:
+                        LoseInterest();
+                        break;
+                    case St.Flee:
+                        var dd = L.Bathy.DeeperDir(Pos.x, Pos.z);
+                        if (dd == Vector2.zero) dd = new Vector2(0f, 1f);
+                        target.x = Pos.x + dd.x * 15f;
+                        target.z = Pos.z + dd.y * 15f;
+                        break;
+                }
+            }
+            KeepOffBed();
+            return refused;
+        }
+
+        /// <summary>Lifted to at least 0.3 m over the bed (a bed only lifts).</summary>
+        void KeepOffBed()
+        {
+            var L = stage.L;
+            if (!L.Terrain) return;
+            Pos.y = Mathf.Max(Pos.y, -Mathf.Max(0.3f, L.DepthAt(Pos.x, Pos.z) - 0.3f));
+        }
+
+        /// <summary>For the tests: this free fish is in water shallower than it swims in / under the bed now.</summary>
+        void CountBed()
+        {
+            var L = stage.L;
+            if (!L.Terrain || (State != St.Wander && State != St.Approach && State != St.Flee)) return;
+            float w = L.DepthAt(Pos.x, Pos.z);
+            if (w < HabitatModel.MinWater(Cm) - 1e-3f) ShallowFrames++;
+            if (Pos.y < -Mathf.Max(0.3f, w - 0.3f) - 1e-3f) UnderBedFrames++;
         }
 
         void UpdateFlee(float dt)
         {
+            var before = Pos;
             Steer(target, Sp.speed * 1.4f, dt, 5f);
+            KeepInWater(before);
             fleeTimer += dt;
             if (fleeTimer > 3.5f) Kill();
         }
