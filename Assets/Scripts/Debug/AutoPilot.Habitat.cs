@@ -33,6 +33,37 @@ namespace FishingKing
             public float Reach => free > 0f ? inReach / free : 0f;
         }
 
+        /// <summary>
+        /// A soak spot at (yaw, distance) from him, moved to the nearest open water clear of pads, standing props and weed /
+        /// snag zones (a float laid on a pad snags and is cut over and over): from the obstacles alone, so the bed on and
+        /// off soak the same spots.
+        /// </summary>
+        static Vector3 SoakSpot(FishingController ctl, float yaw, float dist)
+        {
+            var obs = ctl.Stage.Obstacles;
+            var water = ctl.Stage.Water;
+            float yr = yaw * Mathf.Deg2Rad;
+            var b = new Vector2(ctl.Angler.X + Mathf.Sin(yr) * dist, Mathf.Cos(yr) * dist);
+            bool Clear(Vector2 p)
+            {
+                if (water != null && !water.OpenWater(p.x, p.y)) return false;
+                if (obs == null || obs.Empty) return true;
+                if (obs.BlockedAtSurface(p, 1f) || obs.PadAt(p) != null) return false;
+                foreach (var o in obs.All)
+                    if ((o.kind == "pad" || o.kind == "weed" || o.kind == "snag") && obs.Inside(o, p, 0.8f)) return false;
+                return true;
+            }
+            if (Clear(b)) return new Vector3(b.x, 0f, b.y);
+            for (float r = 0.5f; r <= 5f; r += 0.5f)
+                for (int a = 0; a < 12; a++)
+                {
+                    float ar = a * 30f * Mathf.Deg2Rad;
+                    var p = b + new Vector2(Mathf.Cos(ar), Mathf.Sin(ar)) * r;
+                    if (Clear(p)) return new Vector3(p.x, 0f, p.y);
+                }
+            return new Vector3(b.x, 0f, b.y);
+        }
+
         IEnumerator HabitatSoakTest()
         {
             PointerInput.SimActive = true;
@@ -95,11 +126,12 @@ namespace FishingKing
                         {
                             yield return ToReady(ctl);
                             tk.FloatDepth = depth;
-                            float yr = yaw * Mathf.Deg2Rad;
-                            var spot = new Vector3(ctl.Angler.X + Mathf.Sin(yr) * dist, 0f, Mathf.Cos(yr) * dist);
+                            var spot = SoakSpot(ctl, yaw, dist);
                             ctl.DebugPlaceRig(spot);
-                            float soak = 0f, game = 0f;
-                            while (soak < secs && game < secs * 3f)
+                            float soak = 0f, start = Time.time;
+                            int relays = 0;
+                            // (game time from the spot's start, the frames spent winding in and laying it again included)
+                            while (soak < secs && Time.time - start < secs * 3f && relays <= 8)
                             {
                                 if (ctl == null)
                                 {
@@ -107,7 +139,6 @@ namespace FishingKing
                                     break;
                                 }
                                 float dt = Time.deltaTime;
-                                game += dt;
                                 if (ctl.State == FishingController.S.Biting)
                                 {
                                     cell.bites++;
@@ -140,6 +171,7 @@ namespace FishingKing
                                 }
                                 else if (ctl.State != FishingController.S.Waiting)
                                 {
+                                    relays++;
                                     yield return ToReady(ctl);
                                     ctl.DebugPlaceRig(spot);
                                     continue;
