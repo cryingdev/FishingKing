@@ -26,7 +26,7 @@ namespace FishingKing
     {
         int depthFails;
         /// <summary>The golden hash per recipe version (D1: seed 12345); 0 = record it (print and pass with a note).</summary>
-        static readonly Dictionary<int, uint> GoldenHash = new Dictionary<int, uint> { [1] = 0x5866ac8fu, [2] = 0u };   // (v1: recorded by the Mono player; v2: records on its first run)
+        static readonly Dictionary<int, uint> GoldenHash = new Dictionary<int, uint> { [1] = 0x5866ac8fu, [2] = 0xc778575cu };   // (v1, v2: recorded by the Mono player)
         /// <summary>D2's Q50 per seed (D7' picks the shallowest and the deepest lake).</summary>
         readonly Dictionary<int, float> sweepQ50 = new Dictionary<int, float>();
 

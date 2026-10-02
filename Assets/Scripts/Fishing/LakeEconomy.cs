@@ -123,6 +123,8 @@ namespace FishingKing
             public double C, I, Xp;
             /// <summary>Per rig (periods by length, casts averaged; not weighted by the rig's share), per period (rigs by share), per species.</summary>
             public double[] rigC, rigI, perC, perI, spC, spI;
+            /// <summary>Per rig: the expected number of fish that like the bait within its window (N pi occ, before the feeding chance and the take).</summary>
+            public double[] rigWin;
             /// <summary>Per species, rig and cast: the takes over the periods by length (the positive gate).</summary>
             public double[,,] spRigCast;
         }
@@ -135,7 +137,7 @@ namespace FishingKing
         public static Eval Evaluate(HabitatModel.CastSet cs, Side side, Rig[] rigs, float[] periodW, float stealth, float biteMult, bool perCast = false)
         {
             int nc = cs.at.Length, nr = rigs.Length, ns = side.species.Count;
-            var e = new Eval { rigC = new double[nr], rigI = new double[nr], perC = new double[4], perI = new double[4], spC = new double[ns], spI = new double[ns] };
+            var e = new Eval { rigC = new double[nr], rigI = new double[nr], perC = new double[4], perI = new double[4], spC = new double[ns], spI = new double[ns], rigWin = new double[nr] };
             if (perCast) e.spRigCast = new double[ns, nr, nc];
             var water = side.today ? cs.profileWater : cs.gridWater;
             double pwSum = 0, rwSum = 0;
@@ -187,16 +189,18 @@ namespace FishingKing
                         double take = 1.0 - Math.Pow(1.0 - pr, TakeRolls);
                         double k = side.population * pi * side.feed * take;
                         var win = Window(s, p, rig.cls);
-                        double sc = 0, si = 0;
+                        double sc = 0, si = 0, sw = 0;
                         for (int c = 0; c < nc; c++)
                         {
                             double lam = k * win[c];
                             sc += lam;
                             si += lam * ep[s, c];
+                            sw += win[c];
                             if (perCast) e.spRigCast[s, r, c] += pw * lam;
                         }
                         sc /= nc;
                         si /= nc;
+                        e.rigWin[r] += pw * side.population * pi * sw / nc;
                         double rw = rig.weight / rwSum;
                         e.C += pw * rw * sc;
                         e.I += pw * rw * si;

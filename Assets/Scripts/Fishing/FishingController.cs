@@ -1442,10 +1442,16 @@ namespace FishingKing
             {
                 f.Feeding = FeedAll || Random.value < (Habitat != null ? Habitat.FeedP : 1f);
                 f.FeedDecided = true;
+                FeedRolls++;
+                if (f.Feeding) FeedYes++;
             }
             f.LastInReach = Time.time;
             return f.Feeding;
         }
+
+        /// <summary>The feeding decisions made since the scene opened, and how many were "feeding" (for the tests).</summary>
+        public int FeedRolls { get; private set; }
+        public int FeedYes { get; private set; }
 
         /// <summary>Test hook (-fkauto economy): the fish biting now (null when none).</summary>
         internal FishAgent DebugBiter => State == S.Biting ? biter : null;
