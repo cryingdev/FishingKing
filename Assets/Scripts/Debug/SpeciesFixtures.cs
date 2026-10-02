@@ -224,6 +224,8 @@ namespace FishingKing
             // ---- E10 legends
             yield return new Fx { name = "an unknown encounter", rule = "E10", file = F("golden_carp"), contains = "golden_karp",
                 make = () => Species(real, "golden_carp", j => j.Set("encounter", JNode.Str("golden_karp"))) };
+            yield return new Fx { name = "a legend without its \"encounter\"", rule = "E10", file = F("sturgeon"), contains = "no \"encounter\"",
+                make = () => Species(real, "sturgeon", j => j.Set("encounter", null)) };
             yield return new Fx { name = "a legend with an @action", rule = "E10", file = F("sturgeon"), contains = "@action",
                 make = () => Species(real, "sturgeon", j => j.Set("baits", JNode.Str(j["baits"].text + ",@bottom:0.5"))) };
             yield return new Fx { name = "a key rule off the key lures", rule = "E10", file = F("great_white"), contains = "bait_jig",

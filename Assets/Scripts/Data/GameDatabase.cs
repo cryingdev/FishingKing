@@ -55,7 +55,7 @@ namespace FishingKing
             foreach (var e in errors) Debug.LogError("[DATA] " + e);
         }
 
-        /// <summary>Puts these species and stages in place (the loader's; the parity test swaps in others and back).</summary>
+        /// <summary>Puts these species and stages in place (the loader's, from the static constructor).</summary>
         internal static void Install(List<FishSpecies> fish, List<StageDef> stages)
         {
             Fish.Clear();

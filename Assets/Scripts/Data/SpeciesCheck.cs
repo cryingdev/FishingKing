@@ -351,8 +351,21 @@ namespace FishingKing
                     !GameDatabase.Baits.Any(b => LureInfo.IceOk(b) && sp.Appeal(b) > 0f))
                     W(file, "on the ice, but likes no bait usable in the hole (natural baits, 바닥 and 수직 lures)");
             }
+            // ---- E10: a legend whose species file lost its "encounter" would be stocked as an ordinary fish (FishSpawner.Pick
+            // skips only fish with an encounter) and its stage would lose its encounter (LegendWatch)
             foreach (var k in LegendEncounters.Keys)
-                if (!r.fish.Any(f => f.id == k)) W("", $"LegendEncounters has a factory '{k}' that no species file names");
+            {
+                var sp = r.fish.FirstOrDefault(f => f.id == k);
+                if (sp != null)
+                {
+                    if (sp.encounter == null)
+                        E("E10", F(k), $"LegendEncounters has its encounter, but the species file has no \"encounter\": \"{k}\" (it would swim as an ordinary fish)");
+                }
+                else if (!r.fileIds.Contains(k)) W("", $"LegendEncounters has a factory '{k}' that no species file names");
+            }
+            foreach (var sp in r.fish)
+                if (sp.rarity == Rarity.Legendary && sp.encounter == null && !LegendEncounters.Keys.Contains(sp.id))
+                    W(F(sp.id), "legendary without an \"encounter\": it swims about as an ordinary fish (allowed, but no legend so far does)");
 
             // ---- E7: the four sprites of every species file
             foreach (var id in r.fileIds.Where(i => SpeciesData.IdPattern.IsMatch(i)).OrderBy(i => i, StringComparer.Ordinal))

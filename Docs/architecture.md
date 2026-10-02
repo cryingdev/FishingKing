@@ -92,12 +92,14 @@ Bathymetry.For(L, Bathymetry.SeedOverride ?? Game.I.WorldSeed)`**(호수의 생�
    읽어 키가 없는 것과 기본값을 구분하고 숫자는 쓴 그대로 파싱합니다. 전설어는 `"encounter"`가 `LegendEncounters.Make(id)`의 새
    조우 행을 받고, 유인 미끼(`keyLures`)는 어종의 `baits`에서 채웁니다.
 2. `BuildItems()`(낚싯대·릴·줄·미끼·루어·수조), `BuildSets()`(조우 배경)
-3. `Install` — 어종·스테이지 목록과 id 사전. 테스트가 다른 목록으로 바꿔 끼울 때도 이것을 씁니다.
+3. `Install` — 어종·스테이지 목록과 id 사전(정적 생성자에서 한 번). 예전 C# 표와 비교하는 동등성 검사(`LegacySpecies`)는
+   커밋 f092c7c에만 있습니다(22383d9에서 지움): 예전 표와 다시 비교하려면 그 커밋을 꺼내 쓰세요.
 4. `LoadErrors` — 읽지 못한 것(망가진 파일의 어종은 빠짐)을 `[DATA]` 오류 로그로 한 번씩. 생성자는 예외를 던지지 않습니다(정적
    생성자의 예외는 그 세션 내내 `TypeInitializationException`이 됨).
 
 `LoadErrors`가 있으면 `SaveSystem.Sanitize`는 모르는 어종의 수족관 물고기를 지우지 않고 둡니다(`[DATA] aquarium kept: N fish of
-unloaded species`). 데이터 검사기 `SpeciesCheck`(런타임 어셈블리, public)는 같은 `Build`에 교차 검사를 더합니다: 에디터 메뉴
+unloaded species`). 수족관 씬은 그 물고기를 그리지 않고(`[DATA] aquarium: N fish of unloaded species not shown`) 세이브에만 둡니다.
+데이터 검사기 `SpeciesCheck`(런타임 어셈블리, public)는 같은 `Build`에 교차 검사를 더합니다: 에디터 메뉴
 `FishingKing > Validate Species Data`와 batch `SpeciesValidator.Batch`(`Assets/Editor/SpeciesValidator.cs`, 프로젝트 파일을 직접
 읽음), `FishingKingSetup.BuildWindows`의 첫 단계(오류면 빌드 안 함), 플레이어 `-fkauto species`(Resources를 읽음). 규칙과 어종
 추가 순서는 [data_reference.md](data_reference.md) 2.7절.

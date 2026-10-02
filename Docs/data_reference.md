@@ -442,17 +442,17 @@
 | E7 그림 | `Sprites/Fish/<id>_0`, `_1`, `_t0`, `_t1` 네 장 |
 | E8 노출·스테이지 | 어느 스테이지에도 없는 어종, 두 스테이지에 있는 어종, 목록의 모르는 어종·같은 어종 두 번, 가중치 없음·≤ 0, 스테이지 값의 범위(난이도 1–5, 요구 레벨 ≥ 1, 해금 가격 ≥ 0, 배율 > 0, 개체 수 ≥ 1), `stage_<id>.json` 없음, 일반 어종이 없는 스테이지, `lake` 없음 |
 | E9 서식지 | 생성 지형 스테이지의 일반 어종에 `habitat`이 없거나 `depth`/`col`이 없음, 서식지 문자열의 모르는 키 |
-| E10 전설어 | `encounter` ≠ `id`이거나 `LegendEncounters`에 없음, 팩토리가 `keyLures`를 채움, `keyRules`의 미끼가 `baits`에 없음, `baits`에 `@액션`, 모델·팔레트 없음, 모르는 조우 배경 |
+| E10 전설어 | `encounter` ≠ `id`이거나 `LegendEncounters`에 없음, `LegendEncounters`에 팩토리가 있는데 어종 파일에 `encounter`가 없음(일반 물고기로 헤엄침), 팩토리가 `keyLures`를 채움, `keyRules`의 미끼가 `baits`에 없음, `baits`에 `@액션`, 모델·팔레트 없음, 모르는 조우 배경 |
 | E11 Blender | `fk_fish.py`에 `fish("<id>"` 줄이 없음, `hyb_fish.py`가 모든 모델을 렌더하지 않음(`FF.F.keys()`), 전설어 리그 `legends/<id>.py` 없음 (에디터는 항상, 플레이어는 `-fkrepo <저장소>`일 때) |
 | E12 로드 | 실행 중인 게임의 `GameDatabase.LoadErrors` (플레이어만) |
-| 경고 | 읽히지 않는 `habitat`, 전설어 음악 `legend_<id>` 없음, 리그의 `CM`이 크기와 다름, 어종 파일이 없는 `fk_fish.py` 모델, `reach` 0인데 `rim`이 아닌 커버, 얼음 구멍에서 쓸 미끼를 하나도 안 좋아하는 얼음 어종, 어종이 없는 `LegendEncounters` 팩토리 |
+| 경고 | 읽히지 않는 `habitat`, 전설어 음악 `legend_<id>` 없음, 리그의 `CM`이 크기와 다름, 어종 파일이 없는 `fk_fish.py` 모델, `reach` 0인데 `rim`이 아닌 커버, 얼음 구멍에서 쓸 미끼를 하나도 안 좋아하는 얼음 어종, 어종이 없는 `LegendEncounters` 팩토리, `encounter` 없는 `legendary` 어종 |
 
 실행:
 
 - 에디터 batch: `Unity.exe -batchmode -nographics -projectPath <프로젝트> -executeMethod FishingKing.EditorTools.SpeciesValidator.Batch -logFile <로그> [-fkspeciesfixtures]`
-  — 오류가 있으면 종료 코드 1. `-fkspeciesfixtures`면 일부러 망가뜨린 데이터 48가지(`SpeciesFixtures`)를 모두 잡는지도 확인합니다.
+  — 오류가 있으면 종료 코드 1. `-fkspeciesfixtures`면 일부러 망가뜨린 데이터 49가지(`SpeciesFixtures`)를 모두 잡는지도 확인합니다.
 - 플레이어: `FishingKing.exe -fkfresh -fkrich -fksave <이름> -fkauto species -fkrepo <저장소> -fkshots <폴더>` — 검사기·로드 오류·
-  망가뜨린 데이터 48가지, 그리고 `species_dump.txt`(모든 어종·스테이지 값, float는 비트 패턴까지)와 `spawn_baseline.txt`
+  망가뜨린 데이터 49가지, 그리고 `species_dump.txt`(모든 어종·스테이지 값, float는 비트 패턴까지)와 `spawn_baseline.txt`
   (스테이지 × 시각 × 장비마다 `FishSpawner.Pick`의 몫, 스테이지 × 시간대 × 미끼마다 재고 전체의 입질 질량 Σ 가중치·a·√a·매력도)를
   `-fkshots`에 씁니다. 데이터를 바꾼 뒤 두 파일을 비교하면 무엇이 달라졌는지 보입니다. [testing.md](testing.md)
 

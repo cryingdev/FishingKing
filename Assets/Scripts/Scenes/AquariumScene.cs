@@ -76,14 +76,22 @@ namespace FishingKing
         {
             foreach (var f in fish) if (f != null) Destroy(f.gameObject);
             fish.Clear();
-            int i = 0;
+            int i = 0, hidden = 0;
             foreach (var cf in Game.Data.aquarium)
             {
+                // a fish of a species that did not load (GameDatabase.LoadErrors; Sanitize keeps it in the save): not drawn,
+                // so no swimmer, feeder or cleaner ever sees a null species
+                if (cf.Species == null)
+                {
+                    hidden++;
+                    continue;
+                }
                 var tf = new GameObject("Tank_" + cf.speciesId).AddComponent<TankFish>();
                 tf.Init(cf, data, i++);
                 AquaCare.Log($"tank fish {cf.speciesId} {AquaCare.GrownCm(cf):0.0}cm ({AquaTank.ClassNames[AquaTank.ClassOf(cf)]}): drawn {tf.DrawnPx:0} px long (sprite {tf.SpritePx} px x{tf.Scale:0.00})");
                 fish.Add(tf);
             }
+            if (hidden > 0) Debug.LogWarning($"[DATA] aquarium: {hidden} fish of unloaded species not shown (kept in the save)");
             RefreshUI();
         }
 

@@ -10,8 +10,9 @@ namespace FishingKing
 {
     /// <summary>
     /// -fkauto species (Docs/data_reference.md 2.7): the species data check, no scene or pointer needed. The validator on
-    /// the shipped data (Resources; with -fkrepo &lt;repo root&gt; also the Blender scripts) must find no error, the game must
-    /// have loaded it cleanly (GameDatabase.LoadErrors), and every broken fixture (SpeciesFixtures) must be caught. Writes
+    /// the shipped data (Resources; with -fkrepo &lt;repo root&gt; also the Blender scripts, skipped without it) must find no
+    /// error, the game must have loaded the same data cleanly (GameDatabase.LoadErrors, the same counts), and every broken
+    /// fixture (SpeciesFixtures) must be caught. No species or stage count is fixed here: adding a fish needs no edit. Writes
     /// species_dump.txt (every species and stage value, SpeciesDump) and spawn_baseline.txt (FishSpawner.Pick's shares per
     /// stage, period and gear, and the stock's bite mass per bait) to -fkshots. [SPECIES] lines, at the end
     /// "species test done: N failed".
@@ -37,11 +38,14 @@ namespace FishingKing
             foreach (var f in found) Log($"[SPECIES] {(f.error ? "ERROR" : "WARN")} {f}");
             Log("[SPECIES] validate: " + SpeciesCheck.Summary(found, res) +
                 (ctx.fkFishPy != null ? ", with the Blender scripts" : ", without the Blender scripts (no -fkrepo)"));
+            // (no fixed counts: a new species file and its roster line must pass without touching this test)
             SpCheck($"the validator passes the shipped data: {SpeciesCheck.Errors(found)} errors, {res.fish.Count} species, {res.stages.Count} stages",
-                SpeciesCheck.Errors(found) == 0 && res.fish.Count == 36 && res.stages.Count == 7);
-            SpCheck("the Blender checks ran (-fkrepo)", ctx.fkFishPy != null);
-            SpCheck($"GameDatabase loaded cleanly: {GameDatabase.LoadErrors.Count} load errors, {GameDatabase.Fish.Count} species, {GameDatabase.Stages.Count} stages",
-                GameDatabase.LoadErrors.Count == 0 && GameDatabase.Fish.Count == 36 && GameDatabase.Stages.Count == 7);
+                SpeciesCheck.Errors(found) == 0 && res.fish.Count > 0 && res.stages.Count > 0);
+            // (-fkrepo is optional: without it the Blender checks are skipped; given, its scripts must be found)
+            if (string.IsNullOrEmpty(Arg("-fkrepo"))) Log("[SPECIES] CHECK SKIP the Blender checks: no -fkrepo");
+            else SpCheck("the Blender checks ran (-fkrepo " + Arg("-fkrepo") + ")", ctx.fkFishPy != null);
+            SpCheck($"GameDatabase loaded cleanly: {GameDatabase.LoadErrors.Count} load errors, {GameDatabase.Fish.Count} species, {GameDatabase.Stages.Count} stages (the validator read {res.fish.Count}, {res.stages.Count})",
+                GameDatabase.LoadErrors.Count == 0 && GameDatabase.Fish.Count == res.fish.Count && GameDatabase.Stages.Count == res.stages.Count);
             // ---- the validator catches broken data
             speciesFails += SpeciesFixtures.Run(ctx, Log);
             yield return null;
