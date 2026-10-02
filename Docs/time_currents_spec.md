@@ -407,8 +407,10 @@ canvas (x, y) -> world ((x - 320) / 16, (200 - y) / 16), sorting order 41 (over 
 
 ### 6.1 Rules
 
-- `a(species, period)` from a new static table `TimeActivity.A(string speciesId, Period p)` (`Assets/Scripts/Data/
-  TimeActivity.cs`, the table below; unknown ids -> 1). During a cross-fade `a = lerp(a[From], a[To], F)`.
+- `a(species, period)` from `TimeActivity.A(string speciesId, Period p)` (`Assets/Scripts/Data/TimeActivity.cs`; unknown
+  ids -> 1). The values below now live in each species file's `"activity": { "dawn", "day", "evening", "night" }`
+  (`Assets/Resources/Data/Fish/<id>.json`, read into `FishSpecies.activity`; Docs/data_reference.md 2.4). During a
+  cross-fade `a = lerp(a[From], a[To], F)`.
 - **Stocking**: `FishSpawner.Pick` multiplies each weight by `a` (0 = never stocked in that period).
 - **Appetite**: the approach roll multiplies by `sqrt(a)` (9.5). A lure's strike roll too (9.5).
 - **Leaving**: when `PeriodBegan` fires, every *wandering* fish whose new `a` is 0 calls `Flee()` at a random moment in
@@ -705,6 +707,7 @@ the tetrapods' face is at the edge of the stocked water, about half the fish wit
 - Wandering fish drift with `0.25 kd(depth) Water(Pos)` (they hold station against most of it).
 - **Stream holders** pick their wander target inside a random slack pocket (uniformly in its ellipse) with probability
   쏘가리 0.8, 열목어 0.5, 무지개송어 0.5, 산천어 0.4, 피라미 0.1 — so a float led into a pocket meets them (m_spot 1.3).
+  The probability is the species file's `"pocketHold"` (`FishSpecies.pocketHold`, default 0).
 
 ### 9.7 Fights in the current
 

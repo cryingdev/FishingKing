@@ -152,7 +152,7 @@ numpy에서 sRGB로 바꿉니다. 그래서 16진 팔레트 색이 정확히 왕
 | `fk_common.py` | 공용 헬퍼: 장면 초기화, 툰 재질, 직교 카메라(`ortho_camera`, `fit_camera`), `pixelize`, `write_json` | — | (임포트) |
 | `fk_persp.py` | 공용 원근 카메라 (2.1) | — | (임포트) |
 | `fk_scene.py` | 스테이지·지도용 재질/프리미티브 헬퍼, 구름 스프라이트 | `Sprites/Stages/cloud_*.png` | `fk_stages.py -- clouds`로 |
-| `fk_fish.py` | 36종 옆모습 2프레임 + 위에서 본 그림자 2프레임 (`<id>_0/_1/_t0/_t1.png`) | `Sprites/Fish/` | O |
+| `fk_fish.py` | 36종 옆모습 2프레임 + 위에서 본 그림자 2프레임 (`<id>_0/_1/_t0/_t1.png`). 모델 `fish("<id>", ...)`마다 어종 파일 `Resources/Data/Fish/<id>.json`이 있어야 하고, 반대로 어종 파일마다 이 모델이 있어야 함 (검사기 E11·경고, [data_reference.md](data_reference.md) 2.7절) | `Sprites/Fish/` | O |
 | `fk_items.py` | 낚싯대·릴·줄·미끼 아이콘, 월드 루어, UI 아이콘, 9-slice 프레임, 찌, 누운 찌(그룹 `floatlie`: `World/float_stick_lie.png` 32×7·`float_stick_tilt.png` 24×24, `float_stick`과 같은 형상·팔레트·외곽선·8 ppu, 확인용 `_tmp/floatlie/sheet.png`(×12)·`strip.png`(호수 물색 위 1배·0.36배); `world`는 다시 안 돌림), 장애물·수족관 먹이 FX 등 (그룹 인자는 독스트링) | `Sprites/Items/`, `Sprites/World/`, `Sprites/UI/`, `Data/ui_borders.json` | O (인자 없이) |
 | `fk_character.py` | 1세대 낚시꾼 7포즈 + `character.json` (크롭 `CROP_W, CROP_H, FEET_PX = 96, 112, 10`) | `Sprites/Character/`, `Data/` | O |
 | `fk_stages.py` | 1세대 스테이지 7곳의 `<id>_back.png` / `_front.png` + **`stage_<id>.json` 레이아웃** | `Sprites/Stages/`, `Data/` | O (`lake stream sea swamp ice ocean cave clouds`) |
@@ -194,7 +194,7 @@ numpy에서 sRGB로 바꿉니다. 그래서 16진 팔레트 색이 정확히 왕
 
 | 스크립트 | 만드는 것 | 설치 |
 |---|---|---|
-| `hyb_fish.py` | 36종 `fish/<id>_0/_1/_t0/_t1.png` (`fk_fish` 지오메트리를 읽기 전용으로 쓰고, 이 프로세스 안에서만 재질을 교체) | `build_hybrid.ps1 -Install` → `Sprites/Fish/` |
+| `hyb_fish.py` | 36종 `fish/<id>_0/_1/_t0/_t1.png` (`fk_fish` 지오메트리를 읽기 전용으로 쓰고, 이 프로세스 안에서만 재질을 교체; 인자 없이 `FF.F`의 모든 모델, `<id>`를 주면 그 어종만). 어종 파일마다 네 장이 다 있어야 함 (검사기 E7) | `build_hybrid.ps1 -Install` → `Sprites/Fish/` |
 | `hyb_character.py` | 낚시꾼 7포즈 `character/angler_<pose>.png` + `character.json` (`fk_persp.setup_camera(0.0)`으로 렌더, 96×112 크롭, 발은 아래에서 10 px) | `-Install` → `Sprites/Character/`, `Data/character.json` |
 | `hyb_actors3d.py` | 3D 낚시꾼 `angler.fbx` + `angler_palette.json`, 릴 `reel_<id>.fbx` + `reel_palette.json`, `actors3d_data.json` → `_tmp/actors3d/` | 설치 단계가 스크립트에 없음. `Assets/Resources/Models/`에 파일이 있으나 복사하는 코드는 찾지 못함 (코드에서 확인하지 못함) |
 | `hyb_actors3d_check.py` | FBX 재임포트 검사, `check_angler.png` / `check_reels.png` / `check_report.json` | — |

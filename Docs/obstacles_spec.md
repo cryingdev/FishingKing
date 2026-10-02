@@ -572,7 +572,12 @@ rolls only).
 ### 7.1 Species
 
 New `FishSpecies` fields `coverSeek` (0..1), `coverReach` (m), `coverDig` (how hard it holds), `coverFor` (string[]),
-set in `GameDatabase.BuildFish` by one table (like the jump styles). Everyone else 0.
+set by each species file's `"cover": { "seek", "reach", "dig", "types" }` (`Assets/Resources/Data/Fish/<id>.json`;
+`"types": []` = never seeks cover). Everyone else 0. Since the move to the species files a cover type must be offered by a
+kind "cover" zone of the species' stage (or a kind "rim" for `rim`): the validator rejects any other. That dropped four
+tags no zone offered, which `CoverMatch` never matched: `rock` from rockfish and black_porgy (the sea's covers are
+`tet` only) and `weed` from snakehead and arapaima (the swamp's weed zones are snag weeds, not covers). The table below
+is the original design; the data is Docs/data_reference.md 2.3.
 
 | id | name | seek | reach | dig | cover types |
 |---|---|---|---|---|---|

@@ -1,7 +1,7 @@
 # 전체 구조
 
 - **이 문서가 다루는 것**: 부트스트랩과 씬 흐름, 저해상도 픽셀 뷰·줌·입력, 낚시 상태 머신(`FishingController.S`), 렌더링 순서(sortingOrder)와 원근 투영(`Persp`), 부분 3D 액터 레이어, 발판 가림(front occlusion), 스크립트 실행 순서
-- **관련 코드**: `Assets/Scripts/Core/` (`Game.cs`, `SceneFlow.cs`, `SaveData.cs`, `PixelView.cs`, `ViewZoom.cs`, `PointerInput.cs`), `Assets/Scripts/Scenes/`, `Assets/Scripts/Fishing/` (`FishingController*.cs`, `Persp.cs`, `StageView.cs`, `Angler.cs`, `Angler3D.cs`, `Reel3D.cs`, `ActorLayer.cs`, `ActorArt.cs`, `FrontOcclusion.cs`, `Tackle.cs`), `Assets/Shaders/`, `Assets/Editor/FishingKingSetup.cs`, `Tools/Blender/fk_persp.py`, `Tools/Blender/variants/hybrid/hyb_core.py`, `Tools/Blender/variants/hybrid/hyb_frontdepth.py`
+- **관련 코드**: `Assets/Scripts/Core/` (`Game.cs`, `SceneFlow.cs`, `SaveData.cs`, `PixelView.cs`, `ViewZoom.cs`, `PointerInput.cs`), `Assets/Scripts/Data/` (`GameDatabase.cs`, `SpeciesData.cs`, `SpeciesCheck.cs`, `LegendEncounters.cs`), `Assets/Scripts/Scenes/`, `Assets/Scripts/Fishing/` (`FishingController*.cs`, `Persp.cs`, `StageView.cs`, `Angler.cs`, `Angler3D.cs`, `Reel3D.cs`, `ActorLayer.cs`, `ActorArt.cs`, `FrontOcclusion.cs`, `Tackle.cs`), `Assets/Shaders/`, `Assets/Editor/FishingKingSetup.cs`, `Assets/Editor/SpeciesValidator.cs`, `Tools/Blender/fk_persp.py`, `Tools/Blender/variants/hybrid/hyb_core.py`, `Tools/Blender/variants/hybrid/hyb_frontdepth.py`
 - **관련 문서**: [README](../README.md) · [조작 상세](controls.md) · [테스트 스위치](testing.md) · [낚시 게임플레이](fishing_gameplay.md) · [수족관](aquarium.md) · [아트 파이프라인](art_pipeline.md) · [데이터 레퍼런스](data_reference.md) · [루어·전설어 조우 사양](lures_legend_spec.md) · [장애물 사양](obstacles_spec.md) · [시간대·물살 사양](time_currents_spec.md) · [변경 기록](../CHANGELOG.md)
 
 이 문서는 "무엇이 어디서 만들어지고 어떤 순서로 그려지고 도는가"만 다룹니다. 게임플레이 수치(캐스팅 세기, 입질, 파이트, 장애물 확률 등)는 [fishing_gameplay.md](fishing_gameplay.md), 세이브·데이터 필드 목록은 [data_reference.md](data_reference.md), Blender 쪽 렌더 세부는 [art_pipeline.md](art_pipeline.md)에 있습니다.
@@ -81,6 +81,26 @@ Bathymetry.For(L, Bathymetry.SeedOverride ?? Game.I.WorldSeed)`**(호수의 생�
 
 `FishingController.Init`이 만드는 것(`Assets/Scripts/Fishing/FishingController.cs`): `Angler.Create`, `Tackle.Create`, 지형이 있으면
 `FishHabitat`(`Spawner.Init` 전: 첫 물고기부터 서식지로 배치), `FishSpawner`, 조준 점·부채꼴 점, `CastArrow`, `SideArrow`, 목표 링·입질 마크, `FishingHUD.Create`, `InitObstacles()`(`ObstacleOverlay`), `LegendWatch.For(this)`, `InitZoom()`, `InitMusic()`(스테이지 곡, [music.md](music.md)), 그리고 `SetState(S.Ready)`. 얼음 스테이지에서 얼음 구멍에 못 쓰는 루어가 장착돼 있으면 스타터 미끼로 바꿉니다(`LureInfo.IceOk`).
+
+### 1.6 정적 데이터 (`GameDatabase`)와 어종 데이터 파일
+
+`Assets/Scripts/Data/GameDatabase.cs`의 정적 생성자가 처음 쓰일 때(보통 `Game.Boot` → `SaveSystem.Load` → `Sanitize`, 메인
+스레드) 한 번 만듭니다:
+
+1. `SpeciesData.Build` — `Resources/Data/stages.json`(스테이지 목록과 스테이지마다 나오는 어종·가중치)과 `Resources/Data/Fish/*.json`
+   (어종마다 한 파일)을 읽어 예전 C# 표와 같은 `FishSpecies` / `StageDef`를 같은 순서로 만듭니다. 작은 JSON 리더(`DataJson`)로
+   읽어 키가 없는 것과 기본값을 구분하고 숫자는 쓴 그대로 파싱합니다. 전설어는 `"encounter"`가 `LegendEncounters.Make(id)`의 새
+   조우 행을 받고, 유인 미끼(`keyLures`)는 어종의 `baits`에서 채웁니다.
+2. `BuildItems()`(낚싯대·릴·줄·미끼·루어·수조), `BuildSets()`(조우 배경)
+3. `Install` — 어종·스테이지 목록과 id 사전. 테스트가 다른 목록으로 바꿔 끼울 때도 이것을 씁니다.
+4. `LoadErrors` — 읽지 못한 것(망가진 파일의 어종은 빠짐)을 `[DATA]` 오류 로그로 한 번씩. 생성자는 예외를 던지지 않습니다(정적
+   생성자의 예외는 그 세션 내내 `TypeInitializationException`이 됨).
+
+`LoadErrors`가 있으면 `SaveSystem.Sanitize`는 모르는 어종의 수족관 물고기를 지우지 않고 둡니다(`[DATA] aquarium kept: N fish of
+unloaded species`). 데이터 검사기 `SpeciesCheck`(런타임 어셈블리, public)는 같은 `Build`에 교차 검사를 더합니다: 에디터 메뉴
+`FishingKing > Validate Species Data`와 batch `SpeciesValidator.Batch`(`Assets/Editor/SpeciesValidator.cs`, 프로젝트 파일을 직접
+읽음), `FishingKingSetup.BuildWindows`의 첫 단계(오류면 빌드 안 함), 플레이어 `-fkauto species`(Resources를 읽음). 규칙과 어종
+추가 순서는 [data_reference.md](data_reference.md) 2.7절.
 
 ---
 

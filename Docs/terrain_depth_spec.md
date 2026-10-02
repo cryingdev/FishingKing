@@ -283,8 +283,10 @@ Not migrated (exporter only): `lake.py`'s `_depth_at` (comment added) and the ot
 ### 7.1 Data
 
 `FishSpecies.habitat` (`HabitatDef { a, b, kindW[9], matW[4], edge, col Mid|Bottom, beta, shift[4], periodKind[4, 9],
-runDeep }`), parsed from `"key:value,…"` by `GameDatabase.Habitats()` (after the cover table): `depth:a-b`, kind and
-material keys, `edge`, `col`, `beta`, `@period:shift` (− shallower), `@period.kind:mult`, `runDeep`; an unknown key warns.
+runDeep }`), parsed from `"key:value,…"`, the species file's `"habitat"` (`Assets/Resources/Data/Fish/<id>.json`, read
+by `SpeciesData`; formerly `GameDatabase.Habitats()`): `depth:a-b`, kind and material keys, `edge`, `col`, `beta`,
+`@period:shift` (− shallower), `@period.kind:mult`, `runDeep`; an unknown key is a load error. Every non-legend species
+on a stage with a generated bed must have one, with `depth` and `col` (the validator, Docs/data_reference.md 2.7).
 `EncounterDef.lurkWeedEdge` (the golden carp). The strings as tuned (§17.3):
 
 ```

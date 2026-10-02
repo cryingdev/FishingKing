@@ -12,6 +12,21 @@
 
 ## 이후 변경
 
+### 어종 데이터 파일 (1단계: 정리만, 동작은 그대로)
+- 변경: 한 어종의 정의가 9곳(`GameDatabase.F`, 점프 목록, 커버 표, `Habitats`, `Diets`, 조우 연결, `BuildStages`, `TimeActivity` 표,
+  `FishAgent.HoldChance`)에 흩어져 있던 것을 **어종마다 파일 하나** `Assets/Resources/Data/Fish/<id>.json`(이름 붙은 키: 크기·가격·파이트·
+  점프 스타일·수심·미끼·시간대 활동도·커버·수족관 먹이·호수 서식지·계곡 웅덩이·전설어 연결)으로 모음. 스테이지와 거기 나오는 어종·가중치는
+  `Assets/Resources/Data/stages.json`. 로더 `SpeciesData`가 예전과 같은 객체를 같은 순서로 만들고, 전설어 조우 행 6개는 그대로
+  `LegendEncounters.cs`로 옮김(유인 미끼는 어종의 `baits`에서 — 6종 모두 원래 같았음).
+- 추가: 검사기 `SpeciesCheck` — 에디터 메뉴 `FishingKing > Validate Species Data`, batch `SpeciesValidator.Batch`, 빌드 전 검사(오류면
+  빌드 안 함), `-fkauto species`. 필수 값·모르는 키·범위·미끼/루어 id·스테이지에 있는 커버 종류·그림 4장·노출·서식지·전설어·Blender
+  모델을 봄. 어종 추가 = 파일 하나 + 그림 4장 + `stages.json` 한 줄([data_reference.md](Docs/data_reference.md) 2.7절).
+- 변경: 한 번도 맞지 않던 커버 종류 4개를 뺌(우럭·감성돔 `rock`, 가물치·피라루쿠 `weed`: 그 스테이지에 그런 커버 구역이 없음). 게임
+  동작은 같음.
+- 검증: 예전 C# 표(그대로 옮긴 사본)와 새 데이터의 모든 값이 비트 단위로 같고(위 4개 빼고), 같은 시드에서 `FishSpawner.Pick`이
+  7 스테이지 × 시각 8 × 장비 2 × 5000번 모두 같은 어종을 뽑음. 사본은 검증 뒤 지움.
+- 테스트: `-fkauto species [-fkrepo <저장소>]` (검사기, 망가뜨린 데이터 48가지, `species_dump.txt`·`spawn_baseline.txt`).
+
 ### 호수 바닥 지형 (1단계: 데이터 · 생태 · 누운 찌)
 - 추가: 호수의 수심이 **세이브의 세계 시드로 실행 중에 만드는 지형 데이터**가 됨(물속 그림은 없음, 그림은 그대로). 예전 거리 프로필을 바탕으로 얕은 턱, 연잎·갈대 밑 수초 평지, 수초 둔덕, 잔교 앞 깊은 골, 옛 물골, 깊은 웅덩이 1~2, 수중 둔덕 1~3. 0.5 m 격자(x −48..48, z 0..64), 칸마다 수심·바닥 종류·재질(진흙·모래·자갈·수초)·구역 이름(`Bathymetry`, `BathyGen`, `TerrainRecipes`). 그림과 맞추는 핀(연잎 1–2 m, 갈대 ≤ 1.2, 보트 1.2–2.5, 수초밭 2.4–3.0, 가라앉은 통나무 6.225, 잔교 앞은 예전 수심), 0.35–9 m, 경사 1.5 m/m, 검증 8회 + 대체 레시피.
 - 변경: 수심은 모두 `StageLayout.DepthAt(x, z)`(24곳). 다른 스테이지와 `-fkbathy off`의 호수는 예전과 비트 단위로 같음, 물때 보정은 그대로.

@@ -1,18 +1,26 @@
 # 데이터 표 (스테이지 · 어종 · 장비 · 수족관 · 세이브)
 
-- **이 문서가 다루는 것**: 코드에 들어 있는 정적 게임 데이터 전체(스테이지 7, 어종 36, 낚싯대·릴·줄 각 6, 미끼 8·루어 10, 수조 5, 사료 4, 장식 17, 청소 도구 3, 장식 슬롯 10)와 각 열의 단위·의미, `SaveData`의 모든 필드와 버전·마이그레이션 동작
-- **관련 코드**: `Assets/Scripts/Data/GameDatabase.cs`, `Assets/Scripts/Data/Models.cs`, `Assets/Scripts/Data/TimeActivity.cs`, `Assets/Scripts/Core/SaveData.cs`, `Assets/Scripts/Core/Game.cs`, `Assets/Scripts/Core/AquaCare.cs`, `Assets/Scripts/Core/AquaTank.cs` (보조: `Assets/Resources/Data/stage_*.json`, `Assets/Resources/Data/aquarium_tank_*.json`, `Assets/Scripts/Fishing/CurrentField.cs`, `Assets/Scripts/Fishing/FishSpawner.cs`, `Assets/Scripts/Core/GameClock.cs`, `Assets/Scripts/Core/ViewZoom.cs`)
+- **이 문서가 다루는 것**: 정적 게임 데이터 전체(어종·스테이지는 데이터 파일, 나머지는 코드; 스테이지 7, 어종 36, 낚싯대·릴·줄 각 6, 미끼 8·루어 10, 수조 5, 사료 4, 장식 17, 청소 도구 3, 장식 슬롯 10)와 각 열의 단위·의미, `SaveData`의 모든 필드와 버전·마이그레이션 동작
+- **관련 코드**: `Assets/Resources/Data/Fish/<id>.json`, `Assets/Resources/Data/stages.json`, `Assets/Scripts/Data/SpeciesData.cs`, `Assets/Scripts/Data/SpeciesCheck.cs`, `Assets/Scripts/Data/LegendEncounters.cs`, `Assets/Scripts/Data/GameDatabase.cs`, `Assets/Scripts/Data/Models.cs`, `Assets/Scripts/Data/TimeActivity.cs`, `Assets/Scripts/Core/SaveData.cs`, `Assets/Scripts/Core/Game.cs`, `Assets/Scripts/Core/AquaCare.cs`, `Assets/Scripts/Core/AquaTank.cs` (보조: `Assets/Resources/Data/stage_*.json`, `Assets/Resources/Data/aquarium_tank_*.json`, `Assets/Scripts/Fishing/CurrentField.cs`, `Assets/Scripts/Fishing/FishSpawner.cs`, `Assets/Scripts/Core/GameClock.cs`, `Assets/Scripts/Core/ViewZoom.cs`)
 - **관련 문서**: [README](../README.md) · [구조](architecture.md) · [낚시 규칙과 상수](fishing_gameplay.md) · [수족관 규칙과 공식](aquarium.md) · [아트 파이프라인](art_pipeline.md) · [테스트 스위치](testing.md) · [루어·전설어 사양](lures_legend_spec.md) · [전설어 확장](legends_rollout.md) · [시간대·물살](time_currents_spec.md) · [장애물](obstacles_spec.md) · [변경 기록](../CHANGELOG.md)
 
 이 문서는 **값의 목록**입니다. 값이 게임에서 어떻게 쓰이는지(파이트 공식, 입질 확률, 수족관 수입 계산 등)는
-[fishing_gameplay.md](fishing_gameplay.md)와 [aquarium.md](aquarium.md)를 보세요. 모든 값은 코드에서 그대로 옮겼고,
-"(계산)"이라고 적은 열만 코드의 공식으로 계산한 값입니다.
+[fishing_gameplay.md](fishing_gameplay.md)와 [aquarium.md](aquarium.md)를 보세요. 모든 값은 데이터 파일과 코드에서 그대로
+옮겼고, "(계산)"이라고 적은 열만 코드의 공식으로 계산한 값입니다. **어종을 더하는 방법은 2.7절**입니다.
 
 ## 0. 공통 규칙
 
-- 데이터는 모두 `GameDatabase`의 정적 생성자에서 한 번 만들어집니다: `BuildFish()` → `BuildItems()` → `BuildStages()`
-  순서이고, 이어서 id 사전(`fishById`, `itemById`, `stageById`)이 채워집니다. 조회는 `GameDatabase.GetFish`, `GetItem<T>`,
-  `GetStage`입니다.
+- **어종과 스테이지는 데이터 파일입니다.** 어종마다 파일 하나 `Assets/Resources/Data/Fish/<id>.json`(2절), 스테이지 목록과
+  스테이지마다 나오는 어종·가중치는 `Assets/Resources/Data/stages.json`(1절)입니다. 장비·미끼·수조(`BuildItems`)와 조우
+  배경(`BuildSets`), 전설어의 조우 행(`LegendEncounters.cs`, 2.5절)은 코드에 남아 있습니다.
+- 데이터는 모두 `GameDatabase`의 정적 생성자에서 한 번 만들어집니다: `SpeciesData.Build`가 `stages.json`과 `Data/Fish`의
+  파일을 읽고 → `BuildItems()` → `BuildSets()` → `Install`(어종·스테이지 목록과 id 사전 `fishById`, `stageById`) → `itemById`
+  순서입니다. 조회는 `GameDatabase.GetFish`, `GetItem<T>`, `GetStage`입니다. 읽지 못한 것은 `GameDatabase.LoadErrors`에 남고
+  `[DATA]` 오류 로그로 한 번씩 찍힙니다(파일이 망가진 어종은 빠지고, 그때 `SaveSystem.Sanitize`는 그 어종의 수족관 물고기를
+  지우지 않고 둡니다: `[DATA] aquarium kept: N fish of unloaded species`). 에디터에서 JSON을 고치면 다음 Play부터 반영됩니다
+  (도메인 리로드가 켜져 있음).
+- 데이터 파일 형식: UTF-8(BOM 없음), JSON(주석 없음 — 설명은 `note` 키). 숫자는 쓴 그대로 읽습니다(`1.6`은 예전 C# `1.6f`와
+  비트 단위로 같은 float). `JsonUtility`로 다시 저장하지 마세요(숫자 표기가 바뀜).
 - 게임 공간 단위는 미터입니다(`StageLayout` 주석: "Game space is metres"). 모델 주석의 "units"도 미터와 같습니다
   (`ReelDef.lineCap` 주석: "units / m").
 - 힘은 kgf, 시간은 초(s), 감기 속도는 초당 핸들 회전수(rev/s)입니다.
@@ -35,7 +43,11 @@
 
 ## 1. 스테이지
 
-### 1.1 기본 데이터 (`GameDatabase.BuildStages`, 필드는 `Models.cs` `StageDef`)
+### 1.1 기본 데이터 (`Assets/Resources/Data/stages.json`, 필드는 `Models.cs` `StageDef`)
+
+`stages.json`은 `{"stages": [...]}`이고 배열 순서가 지도·도감의 스테이지 순서입니다. 스테이지마다 키는 `id`, `name`,
+`subtitle`, 아래 표의 필드 이름 그대로의 키, 그리고 `fish`(1.2절)입니다. 모두 필수이고, 모르는 키는 검사기 오류(2.7절)입니다.
+스테이지 그림·레이아웃 `stage_<id>.json`은 Blender가 통째로 다시 쓰는 파일이라 여기에 어종을 적지 않습니다.
 
 | 열 | 필드 | 의미 |
 |---|---|---|
@@ -58,7 +70,11 @@
 
 `lake`는 새 세이브에서 이미 해금되어 있고(`SaveData.unlockedStages` 기본값), `SaveSystem.Sanitize`도 항상 넣어 둡니다.
 
-### 1.2 출현 어종과 가중치 (`StageDef.spawns`)
+### 1.2 출현 어종과 가중치 (`stages.json`의 `fish` → `StageDef.spawns`)
+
+스테이지의 `fish`가 **그 스테이지에 나오는 어종 목록**입니다: `[{"id": "crucian_carp", "weight": 40}, ...]`. 순서가
+`StageDef.spawns`의 순서이고(`FishSpawner.Pick`의 뽑기·도감·지도 칸 순서), 스테이지를 차례로 훑어 처음 나오는 순서가
+`GameDatabase.Fish`의 순서입니다. 지금은 모든 항목에 `weight`가 필수입니다(전설어의 값도 그대로 두지만 `Pick`은 읽지 않음).
 
 가중치는 상대값입니다. `FishSpawner.Pick`은 가중치에 시간대 활동도(`TimeActivity.A`, 2.4절)를 곱하고, 희귀 이상은
 낚싯대 `luck`, 영웅 이상은 미끼 `rareBoost`를 한 번 더(전설은 한 번 더) 곱합니다. **조우(`encounter`)가 있는 전설 6종은
@@ -75,7 +91,7 @@
 | `cave` | `cave_tetra` 40 · `crystal_koi` 12 · `anglerfish` 10 · `coelacanth` 2 (조우) |
 
 합계 5 + 5 + 6 + 5 + 5 + 6 + 4 = **36종** (README의 "어종 36종"과 같음). 한 어종은 한 스테이지에만 나옵니다
-(`GameDatabase.StageOfFish`는 처음 찾은 스테이지를 돌려줌).
+(`GameDatabase.StageOfFish`는 처음 찾은 스테이지를 돌려줌; 검사기가 두 스테이지에 적힌 어종을 오류로 봅니다).
 
 ### 1.3 스테이지 특성
 
@@ -114,9 +130,27 @@
 - **전설어 조우 배경**(`EncounterDef.backdrop` → `GameDatabase.GetSet`): 호수 `lake`, 늪 `swamp`, 얼음 `ice`, 먼바다 `ocean`
   (청새치·백상아리 공유), 동굴 `cave`. 계곡과 방파제에는 전설어가 없습니다.
 
-## 2. 어종 (`GameDatabase.BuildFish`, 필드는 `Models.cs` `FishSpecies`)
+## 2. 어종 (`Assets/Resources/Data/Fish/<id>.json`, 필드는 `Models.cs` `FishSpecies`)
 
-### 2.1 열 설명
+### 2.1 열 설명과 파일 키
+
+어종 파일 하나가 그 어종의 모든 것입니다. 파일 이름 = `id`(소문자·숫자·`_`, 세이브 키와 서식지 시드에 쓰이므로 바꾸지 않음).
+키는 아래 표의 필드 이름과 같고, 묶음 키 넷만 다릅니다:
+
+| 파일 키 | 필수 | 들어가는 필드 |
+|---|---|---|
+| `id`, `name`, `desc`, `rarity` | 필수 | `rarity`는 `"common"` · `"uncommon"` · `"rare"` · `"epic"` · `"legendary"` |
+| `minCm`, `maxCm`, `weightK`, `basePrice`(정수), `power`, `stamina`, `speed`, `aggression`, `jump`, `depthMin`, `depthMax` | 필수 | 같은 이름의 필드 |
+| `jumpStyle` | `jump` > 0이면 필수 | `"hopper"` · `"shaker"` · `"tailWalker"` (안 적으면 `Hopper`) |
+| `baits` | 필수 | 문자열 `"worm:1,minnow:0.8,@twitch:0.8"` → `baitPrefs` / `actionPrefs` (문자열 순서대로) |
+| `activity` | 필수 | `{ "dawn", "day", "evening", "night" }` 넷 다 → `activity[4]` (`TimeActivity`, 2.4절) |
+| `cover` | 필수 | `{ "types": [] }` = 커버를 안 찾음. 종류가 있으면 `seek`, `reach`, `dig`도 필수 → `coverSeek` / `coverReach` / `coverDig` / `coverFor` |
+| `diet` | 필수 | `{ "foods": ["pellet" \| "shrimp" \| "sardine", …1~2개], "style": "grab" \| "bottom" \| "surge" }` → `diet` / `feedStyle` |
+| `habitat` | 생성 지형 스테이지(호수)의 일반 어종은 필수 | 문자열 → `HabitatDef` (2.6절); 없으면 null |
+| `pocketHold` | 선택 (기본 0) | 계곡 물살 뒤 웅덩이에 머무는 확률 0..1 ([time_currents_spec.md](time_currents_spec.md) 9.6) |
+| `encounter` | 전설어만 | `id`와 같은 값: `LegendEncounters`의 조우 행 (2.5절) |
+| `note` | 선택 | 설명 (`cover`, `diet` 안에도 둘 수 있음). 게임은 읽지 않음 |
+| `art` | 선택 (예약) | 나중에 Blender 모델 값을 옮길 자리. 게임과 검사기 모두 무시 |
 
 | 열 | 필드 | 단위·의미 (출처: `FishSpecies` 주석과 메서드) |
 |---|---|---|
@@ -131,13 +165,15 @@
 | 속도 | `speed` | 달릴 때 헤엄 속도 (m/s) |
 | 공격성 | `aggression` | 0..1, 달리려는 경향 |
 | 점프 | `jump` | 0..1, 수면 가까이 달릴 때 점프할 확률 |
-| 점프 스타일 | `jumpStyle` | `Hopper` 짧게 도약 · `Shaker` 공중에서 머리 털기 · `TailWalker` 꼬리로 수면 걷기 (`JumpStyle` 주석). 지정 안 된 종은 기본값 `Hopper` |
+| 점프 스타일 | `jumpStyle` | `Hopper` 짧게 도약 · `Shaker` 공중에서 머리 털기 · `TailWalker` 꼬리로 수면 걷기 (`JumpStyle` 주석). 점프하지 않는 종(`jump` 0)은 적지 않고 기본값 `Hopper` |
 | 수심 | `depthMin`, `depthMax` | 선호 수심, 수면 아래 m |
-| 커버 | `coverSeek` / `coverReach` / `coverDig` · `coverFor` | 달릴 때 커버로 향하는 빈도 (0 = 안 감) / 커버를 찾는 거리 m (0 = 얼음 구멍 가장자리) / 파고드는 세기 / 쓰는 커버 종류. 표에 없는 종은 `coverSeek` 0 ([obstacles_spec.md](obstacles_spec.md) 7절) |
+| 커버 | `coverSeek` / `coverReach` / `coverDig` · `coverFor` | 달릴 때 커버로 향하는 빈도 (0 = 안 감) / 커버를 찾는 거리 m (0 = 얼음 구멍 가장자리) / 파고드는 세기 / 쓰는 커버 종류. `types`가 빈 종은 `coverSeek` 0, `coverFor` null ([obstacles_spec.md](obstacles_spec.md) 7절). 종류는 그 스테이지의 커버 구역(`obstacles_<id>.json`의 `kind` "cover"의 `coverFor`, 얼음은 `rim`)에 있는 것만 씀 |
 | 조우 | `encounter` | 전설어 물속 조우 데이터 (null = 일반 출현·입질) |
-| 선호 | `baitPrefs`, `actionPrefs` | 문자열 `"worm:1,@twitch:0.8"`: `bait_` 접두사를 뺀 미끼 id와 선호도(0..1), `@` 뒤는 루어 액션 선호도 (`GameDatabase.F`) |
+| 선호 | `baitPrefs`, `actionPrefs` | 문자열 `"worm:1,@twitch:0.8"`: `bait_` 접두사를 뺀 미끼 id와 선호도(0..1), `@` 뒤는 루어 액션 선호도 (`SpeciesData.ParsePrefs`, 예전 `GameDatabase.F`의 반복문 그대로) |
 | 먹이 | `diet` | 수족관에서 먹는 먹이 (`Diet` 플래그: 사료 · 생새우 · 정어리), 기본값 `Pellet` |
 | 받아먹기 | `feedStyle` | 떨어뜨린 새우·정어리를 먹는 방식: `Grab` 물 중간에서 · `Bottom` 자갈 위에서 · `Surge` 수면으로 솟구쳐 한입에 |
+| 활동도 | `activity` | 새벽 · 낮 · 저녁 · 밤의 활동도 (`Period` 순서, 2.4절) |
+| 웅덩이 머물기 | `pocketHold` | 계곡에서 떠돌 목표가 바위 뒤 웅덩이 안에 잡힐 확률 (0 = 안 머묾; 쏘가리 0.8, 열목어·무지개송어 0.5, 산천어 0.4, 피라미 0.1) |
 
 미끼 선호의 실제 매력도는 `FishSpecies.Appeal(b)`입니다: 자연 미끼는 `Pref(id)`, 루어는
 `max(Pref(id), 0.7 × actionPrefs[b.action])`.
@@ -185,7 +221,9 @@
 
 ### 2.3 파이트 · 점프 · 수심 · 커버
 
-커버 열은 `coverSeek / coverReach / coverDig · coverFor` 순서입니다(`GameDatabase.BuildFish`의 커버 표).
+커버 열은 각 어종 파일 `cover`의 `seek / reach / dig · types` 순서입니다. 우럭·감성돔의 `rock`과 가물치·피라루쿠의 `weed`는
+데이터 파일로 옮길 때 뺐습니다: 방파제에는 rock 커버가, 늪에는 weed 커버 구역이 없어 한 번도 맞은 적이 없는 종류였습니다
+(커버 짝짓기 `Obstacles.CoverMatch`는 그 스테이지의 커버 구역만 봄 — 게임 동작은 그대로).
 점프 스타일: `Shaker`는 `largemouth_bass`, `rainbow_trout`, `cherry_salmon`, `lenok`, `snakehead`, `arowana`,
 `northern_pike`, `arctic_char`, `arapaima`, `TailWalker`는 `blue_marlin`, `mahi_mahi`, 나머지는 `Hopper`입니다.
 
@@ -203,23 +241,23 @@
 | `lenok` | 4.5 | 16 | 3.8 | 0.6 | 0.3 | Shaker | 2–5 | 0.25 / 8 / 1.0 · rock | — |
 | `horse_mackerel` | 1.8 | 7 | 3.5 | 0.6 | 0 | Hopper | 1–5 | — | — |
 | `mackerel` | 2.4 | 8 | 4.0 | 0.7 | 0 | Hopper | 1–4 | — | — |
-| `rockfish` | 3.0 | 9 | 2.2 | 0.4 | 0 | Hopper | 4–7 | 0.75 / 6 / 1.5 · tet, rock | — |
+| `rockfish` | 3.0 | 9 | 2.2 | 0.4 | 0 | Hopper | 4–7 | 0.75 / 6 / 1.5 · tet | — |
 | `flounder` | 3.8 | 12 | 2.4 | 0.45 | 0 | Hopper | 5.5–7.5 | — | — |
-| `black_porgy` | 4.5 | 14 | 3.0 | 0.55 | 0 | Hopper | 3–7 | 0.55 / 8 / 1.2 · tet, rock | — |
+| `black_porgy` | 4.5 | 14 | 3.0 | 0.55 | 0 | Hopper | 3–7 | 0.55 / 8 / 1.2 · tet | — |
 | `red_seabream` | 8.0 | 20 | 3.6 | 0.6 | 0 | Hopper | 4–7 | 0.20 / 10 / 1.0 · tet | — |
 | `piranha` | 2.2 | 6 | 3.8 | 0.8 | 0.05 | Hopper | 1–5 | — | — |
 | `catfish` | 5.0 | 13 | 2.4 | 0.4 | 0 | Hopper | 3.5–6 | 0.45 / 8 / 1.1 · root, log | — |
-| `snakehead` | 7.0 | 15 | 3.2 | 0.7 | 0.2 | Shaker | 1–5 | 0.65 / 10 / 1.4 · pad, reed, root, log, weed | — |
+| `snakehead` | 7.0 | 15 | 3.2 | 0.7 | 0.2 | Shaker | 1–5 | 0.65 / 10 / 1.4 · pad, reed, root, log | — |
 | `arowana` | 7.5 | 16 | 4.0 | 0.6 | 0.6 | Shaker | 0.5–3 | 0.20 / 8 / 0.8 · root | — |
-| `arapaima` | 24 | 35 | 3.2 | 0.6 | 0.3 | Shaker | 2–5.5 | 0.60 / 14 / 1.6 · root, log, weed | 조우 |
+| `arapaima` | 24 | 35 | 3.2 | 0.6 | 0.3 | Shaker | 2–5.5 | 0.60 / 14 / 1.6 · root, log | 조우 |
 | `smelt` | 0.6 | 3 | 3.0 | 0.5 | 0 | Hopper | 1–6 | — | — |
 | `burbot` | 4.0 | 12 | 2.2 | 0.4 | 0 | Hopper | 5–7.5 | 0.30 / 6 / 1.0 · rock | — |
 | `northern_pike` | 8.0 | 14 | 4.2 | 0.75 | 0.1 | Shaker | 1–5 | 0.55 / 0 / 1.2 · rim | — |
 | `arctic_char` | 7.0 | 16 | 3.8 | 0.6 | 0.1 | Shaker | 2–6 | 0.20 / 0 / 1.0 · rim | — |
 | `sturgeon` | 30 | 40 | 2.6 | 0.5 | 0.05 | Hopper | 5.5–7.5 | 0.40 / 0 / 1.5 · rim | 조우 |
-| `yellowtail` | 9.0 | 16 | 4.5 | 0.7 | 0 | Hopper | 1–6 | 0.40 / 12 / 1.1 · hull | — |
-| `mahi_mahi` | 12 | 18 | 5.0 | 0.7 | 0.6 | TailWalker | 0.5–3 | — | — |
-| `bluefin_tuna` | 28 | 30 | 5.5 | 0.8 | 0.05 | Hopper | 3–8 | 0.35 / 14 / 1.3 · hull | — |
+| `yellowtail` | 9.0 | 16 | 4.5 | 0.7 | 0 | Hopper | 1–6 | 0.40 / 12 / 1.1 · hull, rock | — |
+| `mahi_mahi` | 12 | 18 | 5.0 | 0.7 | 0.6 | TailWalker | 0.5–3 | 0.45 / 12 / 1.0 · weed | — |
+| `bluefin_tuna` | 28 | 30 | 5.5 | 0.8 | 0.05 | Hopper | 3–8 | 0.35 / 14 / 1.3 · hull, weed | — |
 | `ocean_sunfish` | 16 | 25 | 1.6 | 0.2 | 0 | Hopper | 2–7 | — | — |
 | `blue_marlin` | 45 | 45 | 6.0 | 0.8 | 0.7 | TailWalker | 1–6 | — | 조우 |
 | `great_white` | 80 | 60 | 5.0 | 0.85 | 0.15 | Hopper | 3–8 | 0.45 / 16 / 1.6 · hull | 조우 |
@@ -230,15 +268,16 @@
 
 ### 2.4 선호 미끼 · 활동 시간대 · 수족관 먹이
 
-- **선호 문자열**은 `GameDatabase.F`에 넘기는 원문 그대로입니다(`bait_` 접두사 생략, `@` = 루어 액션:
+- **선호 문자열**은 어종 파일의 `baits` 원문 그대로입니다(`bait_` 접두사 생략, `@` = 루어 액션:
   `steady` 감기 · `twitch` 저킹 · `topwater` 수면 · `bottom` 바닥 · `vertical` 수직).
-- **활동도**는 `TimeActivity` 표의 새벽 / 낮 / 저녁 / 밤 값입니다. 출현 가중치에 곱하고, 입질에는 `sqrt(a)`로 쓰며,
-  전설어는 조우 게이지 채우는 속도에 곱합니다(`TimeActivity` 클래스 주석). 표에 없는 id는 모든 시간대 1입니다.
+- **활동도**는 어종 파일 `activity`의 새벽 / 낮 / 저녁 / 밤 값입니다(`TimeActivity.A`가 `FishSpecies.activity`를 읽음). 출현
+  가중치에 곱하고, 입질에는 `sqrt(a)`로 쓰며, 전설어는 조우 게이지 채우는 속도에 곱합니다(`TimeActivity` 클래스 주석). 모르는
+  id는 모든 시간대 1입니다.
   시간대 경계는 `GameClock.PeriodAt`: 새벽 05:00–08:00, 낮 08:00–17:00, 저녁 17:00–20:00, 밤 20:00–05:00
   (게임 분 300 / 480 / 1020 / 1200).
 - **도감 표기 (계산)**은 `TimeActivity.Describe`의 규칙을 적용한 결과입니다: 밤에만 나오면 "밤에만", a ≥ 1.3인 시간대가
   있으면 그 시간대, 모두 0.8~1.2면 "하루 종일", 아니면 가장 높은 시간대.
-- **먹이·받아먹기**는 `GameDatabase.Diets` 표입니다. 36종 모두 들어 있습니다(빠진 종은 경고 로그를 남기고 사료로 봅니다).
+- **먹이·받아먹기**는 어종 파일의 `diet`(`foods`, `style`)입니다. 필수라 빠진 종은 검사기 오류이고 게임에 들어가지 않습니다.
 
 | id | 이름 | 선호 문자열 | 활동도 (새벽 / 낮 / 저녁 / 밤) | 도감 표기 (계산) | 먹이 | 받아먹기 |
 |---|---|---|---|---|---|---|
@@ -284,14 +323,17 @@
 
 ### 2.5 전설어 조우 요약 (`EncounterDef`)
 
-조우가 있는 종은 6종이고 모두 `GameDatabase.BuildFish` 끝에서 붙습니다(`Coelacanth()`, `GoldenCarp()`, `Arapaima()`,
-`Sturgeon()`, `BlueMarlin()`, `GreatWhite()`). 기분(mood)별 수치, 연출(`Choreo`), 문구 전체는 코드와
+조우가 있는 종은 6종입니다. 어종 파일의 `"encounter": "<id>"`가 `Assets/Scripts/Data/LegendEncounters.cs`의 팩토리
+(`GoldenCarp()`, `Arapaima()`, `Sturgeon()`, `BlueMarlin()`, `GreatWhite()`, `Coelacanth()`)를 가리키고, 로더가 새 행을 만들어
+**`keyLures`를 그 어종의 `baits`에서 같은 순서로 채웁니다**(전설어의 선호 = 유인 미끼; 팩토리는 `keyLures`를 비워 둠). 그래서
+전설어의 `baits`에는 `@액션`을 쓰지 않고, `keyRules`의 미끼는 `baits`에 있어야 합니다(검사기 E10). 조우 행의 수치는
+`EncounterView`의 연출 분기와 묶인 손맛 값이라 코드에 남겼습니다. 기분(mood)별 수치, 연출(`Choreo`), 문구 전체는 코드와
 [legends_rollout.md](legends_rollout.md) 3절을 보세요. 아래는 조건과 장비에 관련된 값만 옮겼습니다.
 
 | 필드 | 뜻 | `coelacanth` | `golden_carp` | `arapaima` | `sturgeon` | `blue_marlin` | `great_white` |
 |---|---|---|---|---|---|---|---|
 | `backdrop` | 조우 배경 세트 | cave | lake | swamp | ice | ocean | ocean |
-| `keyLures` | 유인 미끼와 가중치 | egi 1.0 · softworm 0.6 · jig 0.4 | golden 1.0 · corn 0.5 · softworm 0.4 | frog 1.0 · popper 0.8 | softworm 1.0 · jig 0.5 | kona 1.0 · jig 0.5 | kona 1.0 · jig 0.6 |
+| `keyLures` | 유인 미끼와 가중치 (= 어종 파일의 `baits`) | egi 1.0 · softworm 0.6 · jig 0.4 | golden 1.0 · corn 0.5 · softworm 0.4 | frog 1.0 · popper 0.8 | softworm 1.0 · jig 0.5 | kona 1.0 · jig 0.5 | kona 1.0 · jig 0.6 |
 | `meterQ` | 게이지를 채우는 품질 | `Lure` | `Still` (softworm만 `Lure`: `keyRules`) | `Lure` | `Lure` | `Lure` | `Crawl` (jig는 `Lure`, `depthMin` 6: `keyRules`) |
 | `depthMin` / `depthMax` | 루어 수심 조건 (m, `depthMax` 0 = 끔) | 5.0 / 0 | 4.0 / 0 | 0 / 0.4 | 3.5 / 0 | 0 / 3.0 | 0 / 0 |
 | `bottomBand` | 바닥에서 이 거리 안 (m, 99 = 끔) | 1.5 | 0.8 | 99 | 0.8 | 99 | 99 |
@@ -309,19 +351,21 @@
 | `camScale` | 카메라 거리 배율 | 1 | 1 | 1.15 | 1.1 | 1.2 | 1.4 |
 | `teaseView` | 유인 장면 시점 | Side | Side | **Top** (`swamp_top`) | Side | Side | Side |
 
-공통값(`GameDatabase.Row`, 실러캔스는 같은 값을 직접 지정): `gaugeStart` 20, `pityStep` 10, `pityMax` 30, `decay` 3,
+공통값(`LegendEncounters.Row`, 실러캔스는 같은 값을 직접 지정): `gaugeStart` 20, `pityStep` 10, `pityMax` 30, `decay` 3,
 `timeoutStrike` 60, `tell` 0.35, `perfectT` 0.25, `buffer` 0.15. `Row`를 쓰는 5종은 `moodHold` 2.5 (실러캔스는 기본값 0).
 `EncounterDef` 기본값: `curiousAt` 40, `excitedAt` 75, `hysteresis` 5, `turnAwayBelow` 15, `earlyGauge` 65.
 조우 판정에는 낚싯대 `luck`이 곱해집니다(`LegendWatch`: `Mathf.Min(0.95f, chance × Rod.luck)`).
 
-### 2.6 호수 바닥 위 서식지 (`GameDatabase.Habitats`, `HabitatDef`)
+### 2.6 호수 바닥 위 서식지 (어종 파일의 `habitat`, `HabitatDef`)
 
 호수의 생성 지형([terrain_depth_spec.md](terrain_depth_spec.md) 7절)에서 물고기가 어디로 헤엄치고 어디서 나타나는지 정합니다.
 활동량(`TimeActivity`)은 그대로 몇 마리가 나와 있는지를, 서식지는 그 물고기들이 어디에 있는지만 정합니다. 문자열
 `"key:value,…"`: `depth:a-b` 선호 물 깊이(칸의 수심), 바닥 종류 키(`open shelf flat shoal dropoff hump hole channel basin`)와
 재질 키(`mud sand gravel weed`)는 배율, `edge` 브레이크라인 근처 가산, `col:mid|bottom` 헤엄 층(중층 / 바닥 2 m 안),
 `beta` 서식지가 위치를 끄는 세기(0 = 예전처럼 고르게), `@<시간대>:<m>` 그 시간대의 깊이 이동(− 얕게), `@<시간대>.<종류>:<배율>`,
-`runDeep` 40 cm 이상이면 걸린 뒤 질주의 30%를 더 깊은 쪽으로. 모르는 키는 경고 로그.
+`runDeep` 40 cm 이상이면 걸린 뒤 질주의 30%를 더 깊은 쪽으로. 모르는 키는 로드 오류(`[DATA]`)이고 검사기 E9입니다.
+생성 지형이 있는 스테이지(지금은 `lake`, `TerrainRecipes.For`)의 일반 어종은 `habitat`이 필수이고 `depth`와 `col`이 들어 있어야
+합니다. 다른 스테이지 어종에 적으면 경고(읽히지 않음)입니다.
 
 | 어종 | 선호 깊이 (m) | 층 | beta | 시간대 이동 (새벽 / 낮 / 저녁 / 밤) | 좋아하는 바닥 |
 |---|---|---|---|---|---|
@@ -331,10 +375,86 @@
 | `largemouth_bass` 배스 | 1.0–4.5 | 중층 | 0.8 | −0.4 / +1.5 / −0.4 / −0.3 | 브레이크라인 1.8(낮 ×1.5), 수중 둔덕 1.6(낮 ×1.8), 둔덕 1.5(낮 ×1.3), 자갈 1.3; 새벽 평지 ×1.8·얕은 턱 ×1.6; `runDeep` |
 | `golden_carp` 황금잉어 | – | – | – | – | `runDeep`만 (걸린 뒤 질주) |
 
-정확한 문자열은 `GameDatabase.Habitats()`. 서식지는 거리(z) 한 줄마다 예전 몫을 지킨 채 그 줄 안에서만 물고기를 옮깁니다
+정확한 문자열은 각 어종 파일의 `habitat`. 서식지는 거리(z) 한 줄마다 예전 몫을 지킨 채 그 줄 안에서만 물고기를 옮깁니다
 (`HabitatModel.RowKeep`). 값은 입질 예산(재고 전체의 분당 입질이 미끼·채비·시간대·낚싯대마다 예전의 0.8–1.25배, 물고기가 실제로
 시간을 보내는 곳을 흉내 낸 추정기로 50 시드 × 3 낚싯대, terrain_depth_spec 8절)과 시간대별 위치 이동 검사(14절 D7)에 맞춰 조정한
 것입니다. 배스의 새벽·저녁 이동을 −0.4 m로 줄인 것은 긴 낚싯대의 새벽 수면 루어가 예산의 가장 빠듯한 경우이기 때문입니다.
+
+### 2.7 어종 추가하기 (검사기 `SpeciesCheck`)
+
+어종 하나를 더하는 일은 **어종 파일 하나 + 그림 4장 + 스테이지 목록 한 줄**입니다. 도감 순서, 출현, 시간대, 입질 미끼,
+수족관 먹이, 커버, 호수 바닥 위 서식지는 모두 그 파일에서 정해지고, 다른 코드는 고치지 않습니다.
+
+1. **어종 파일** `Assets/Resources/Data/Fish/<id>.json`을 만듭니다(아래 틀, 키는 2.1절). 이 폴더에는 어종 파일 말고 아무것도
+   두지 마세요: Resources가 폴더 안의 텍스트를 모두 어종 파일로 읽습니다(README 하나도 오류).
+2. **그림**: `Tools/Blender/fk_fish.py`에 `fish("<id>", ...)` 모델을 더하고 `Tools/Blender/variants/hybrid/hyb_fish.py`로
+   렌더해 `Assets/Resources/Sprites/Fish/<id>_0.png`, `<id>_1.png`(옆), `<id>_t0.png`, `<id>_t1.png`(위)를 만듭니다
+   ([art_pipeline.md](art_pipeline.md)).
+3. **노출**: `Assets/Resources/Data/stages.json`의 한 스테이지 `fish`에 `{ "id": "<id>", "weight": N }`을 더합니다. 이 목록이
+   "그 스테이지에서 게임에 나오는 어종"이고, 넣은 자리가 도감·지도·출현 순서입니다. 가중치는 같은 희귀도의 다른 종을
+   참고합니다(일반 28–45, 고급 14–26, 희귀 7–14, 영웅 3–10).
+4. **검사**: 에디터 메뉴 **FishingKing/Validate Species Data**(대화 상자 + Console 목록). 빌드
+   (`FishingKingSetup.BuildWindows`)도 먼저 검사하고, 오류가 있으면 아무것도 빌드하지 않습니다(batch면 종료 코드 1).
+5. **전설어**라면 더: `LegendEncounters.cs`에 팩토리(키 = id, `keyLures`는 비워 둠 — 어종의 `baits`가 유인 미끼)와
+   어종 파일의 `"encounter": "<id>"`, 리그 `Tools/Blender/variants/hybrid/legends/<id>.py`(`CM` = `minCm`, `maxCm`) →
+   `Assets/Resources/Models/legend_<id>.fbx`·`legend_<id>_palette.json`, 조우 배경은 있는 세트(`lake` · `swamp` · `ice` ·
+   `ocean` · `cave`) 중 하나. 음악 `legend_<id>`는 선택입니다(없으면 공통 조우 음악, 경고).
+
+일반 어종의 틀(값은 붕어):
+
+```json
+{
+  "id": "new_fish",
+  "name": "새 물고기",
+  "desc": "도감 설명 한두 문장.",
+  "rarity": "common",
+  "minCm": 12,
+  "maxCm": 35,
+  "weightK": 1.6,
+  "basePrice": 35,
+  "power": 1.6,
+  "stamina": 6,
+  "speed": 2.0,
+  "aggression": 0.3,
+  "jump": 0,
+  "depthMin": 2,
+  "depthMax": 7,
+  "baits": "paste:1,corn:0.8,worm:0.7,golden:0.3",
+  "activity": { "dawn": 1.3, "day": 0.8, "evening": 1.3, "night": 0.9 },
+  "cover": { "types": [] },
+  "diet": { "foods": ["pellet"], "style": "grab", "note": "왜 이 먹이인지" }
+}
+```
+
+점프하는 종(`jump` > 0)은 `"jumpStyle"`, 커버를 찾는 종은 `"cover": { "seek": 0.45, "reach": 8, "dig": 1.1, "types": ["rock"] }`
+(종류는 그 스테이지의 커버 구역에 있는 것), 호수 어종은 `"habitat"`(2.6절), 계곡의 웅덩이 어종은 `"pocketHold"`를 더합니다.
+
+**검사 규칙** (오류는 메뉴·batch·빌드·`-fkauto species`를 실패시키고, 경고는 로그만):
+
+| 규칙 | 오류가 되는 경우 |
+|---|---|
+| E1 파일 | `stages.json`이나 어종 파일이 없거나 JSON이 아님, BOM, 파일 이름 ≠ `id`, `id` 형식(`^[a-z][a-z0-9_]*$`), 같은 id 두 번 |
+| E2 모르는 키 | 어느 객체에서든 정해진 키가 아닌 것(오타 `coverSeak` 등), 같은 키 두 번 (`art` 안은 안 봄) |
+| E3 필수 값 | 필수 숫자·문자열이 없거나 형식이 틀림, `activity` 네 시간대 중 하나라도 없음, `diet`의 `foods`/`style`, `cover` 키, 점프하는 종의 `jumpStyle`, 모르는 enum 값(숫자도 안 됨) |
+| E4 범위 | 0 < `minCm` < `maxCm`, `weightK`·`power`·`stamina`·`speed`·`basePrice` > 0, `aggression`·`jump` 0..1, 0 ≤ `depthMin` ≤ `depthMax`, 활동도 ≥ 0이고 하나는 > 0, 커버가 있으면 `seek` (0, 1]·`reach` ≥ 0·`dig` > 0, `pocketHold` 0..1, 먹이 1–2가지, `surge`는 사료를 안 먹음 |
+| E5 미끼 | `key:숫자` 형식, 상점의 미끼·루어 id(`bait_<key>`), `@` 뒤가 루어 액션(`steady` `twitch` `topwater` `bottom` `vertical`), 같은 키 두 번, 가중치 > 0인 미끼가 하나는 있음 |
+| E6 커버 | 커버 종류마다 그 어종의 스테이지 커버 구역(`obstacles_<stage>.json`의 `kind` "cover" `coverFor`, `rim`은 `kind` "rim")에 있어야 함; 커버를 찾는 어종의 스테이지에는 장애물 파일이 있어야 함 |
+| E7 그림 | `Sprites/Fish/<id>_0`, `_1`, `_t0`, `_t1` 네 장 |
+| E8 노출·스테이지 | 어느 스테이지에도 없는 어종, 두 스테이지에 있는 어종, 목록의 모르는 어종·같은 어종 두 번, 가중치 없음·≤ 0, 스테이지 값의 범위(난이도 1–5, 요구 레벨 ≥ 1, 해금 가격 ≥ 0, 배율 > 0, 개체 수 ≥ 1), `stage_<id>.json` 없음, 일반 어종이 없는 스테이지, `lake` 없음 |
+| E9 서식지 | 생성 지형 스테이지의 일반 어종에 `habitat`이 없거나 `depth`/`col`이 없음, 서식지 문자열의 모르는 키 |
+| E10 전설어 | `encounter` ≠ `id`이거나 `LegendEncounters`에 없음, 팩토리가 `keyLures`를 채움, `keyRules`의 미끼가 `baits`에 없음, `baits`에 `@액션`, 모델·팔레트 없음, 모르는 조우 배경 |
+| E11 Blender | `fk_fish.py`에 `fish("<id>"` 줄이 없음, `hyb_fish.py`가 모든 모델을 렌더하지 않음(`FF.F.keys()`), 전설어 리그 `legends/<id>.py` 없음 (에디터는 항상, 플레이어는 `-fkrepo <저장소>`일 때) |
+| E12 로드 | 실행 중인 게임의 `GameDatabase.LoadErrors` (플레이어만) |
+| 경고 | 읽히지 않는 `habitat`, 전설어 음악 `legend_<id>` 없음, 리그의 `CM`이 크기와 다름, 어종 파일이 없는 `fk_fish.py` 모델, `reach` 0인데 `rim`이 아닌 커버, 얼음 구멍에서 쓸 미끼를 하나도 안 좋아하는 얼음 어종, 어종이 없는 `LegendEncounters` 팩토리 |
+
+실행:
+
+- 에디터 batch: `Unity.exe -batchmode -nographics -projectPath <프로젝트> -executeMethod FishingKing.EditorTools.SpeciesValidator.Batch -logFile <로그> [-fkspeciesfixtures]`
+  — 오류가 있으면 종료 코드 1. `-fkspeciesfixtures`면 일부러 망가뜨린 데이터 48가지(`SpeciesFixtures`)를 모두 잡는지도 확인합니다.
+- 플레이어: `FishingKing.exe -fkfresh -fkrich -fksave <이름> -fkauto species -fkrepo <저장소> -fkshots <폴더>` — 검사기·로드 오류·
+  망가뜨린 데이터 48가지, 그리고 `species_dump.txt`(모든 어종·스테이지 값, float는 비트 패턴까지)와 `spawn_baseline.txt`
+  (스테이지 × 시각 × 장비마다 `FishSpawner.Pick`의 몫, 스테이지 × 시간대 × 미끼마다 재고 전체의 입질 질량 Σ 가중치·a·√a·매력도)를
+  `-fkshots`에 씁니다. 데이터를 바꾼 뒤 두 파일을 비교하면 무엇이 달라졌는지 보입니다. [testing.md](testing.md)
 
 ## 3. 낚시 장비 (`GameDatabase.BuildItems`)
 
@@ -753,28 +873,28 @@
 - **[lures_legend_spec.md](lures_legend_spec.md) 1.6** — 필드 목록에 덮침 창 필드(`restStrike`, `fallStrike`, `landStrike`,
   `burstStrike`, `pauseStrike`)가 없지만 코드 `BaitDef`에는 있고, 루어 행에도 값이 들어 있습니다(3.5절).
 - **[lures_legend_spec.md](lures_legend_spec.md) 1.7** — `blue_marlin` 선호: 사양서 `kona:0.8,jig:0.6,squid:0.6,golden:1`,
-  코드 `kona:1,jig:0.5` (`GameDatabase.BuildFish`). 코드 값은 [legends_rollout.md](legends_rollout.md) 1.6과 같습니다.
+  코드 `kona:1,jig:0.5` (`Data/Fish/blue_marlin.json`). 코드 값은 [legends_rollout.md](legends_rollout.md) 1.6과 같습니다.
 - **[lures_legend_spec.md](lures_legend_spec.md) 2.1** — `Verb` enum: 사양서 `{ Wind, FlickPause, Hold }`, 코드는 `RunPause`가 더 있음
   (`Models.cs`). "`encounter`가 null인 나머지 전설 5종"이라는 설명과 달리 코드에서는 전설 6종 모두 `encounter`가 있습니다.
 - **[lures_legend_spec.md](lures_legend_spec.md) 2.1** — 실러캔스 루어 빛 반경: 사양서 야광 1.6 m / 일반 1.0 m, 코드 `lightGlow = 3.0f`,
-  `lightPlain = 2.0f` (`GameDatabase.Coelacanth`, 주석에 이유가 적혀 있음).
-- **[legends_rollout.md](legends_rollout.md) 3.2** — 피라루쿠 `noseDist`: 사양서 1.0 m, 코드 `0.8f` (`GameDatabase.Arapaima`).
+  `lightPlain = 2.0f` (`LegendEncounters.Coelacanth`, 주석에 이유가 적혀 있음).
+- **[legends_rollout.md](legends_rollout.md) 3.2** — 피라루쿠 `noseDist`: 사양서 1.0 m, 코드 `0.8f` (`LegendEncounters.Arapaima`).
   위에서 본 시점(`TopViewDef` 기본값): 사양서 그림자 불투명도 0.75→0.2 (1.8 m), 흐림 0.6→3.2 px, 경계 타원 1.9×0.62 m·1.1 m 아래,
   호기심 1.25×0.42 m·0.6 m 아래, 흥분 −35°, 코 들이밀기 0.25 m (−50°) / 코드 `shadowAlpha` (0.85, 0.25), `shadowDeep` 2.0,
   `shadowSoft` (0.6, 3.0), `waryPath` (2.6, 0.45, 1.3), `curiousPath` (1.5, 0.35, 0.6), `hover` (0.45, −18), `noseIn` (0.22, −30)
   (`Models.cs` `TopViewDef`).
 - **[legends_rollout.md](legends_rollout.md) 3.4** — 청새치 기분 `경계` 감기 범위: 사양서 1.6–2.6 rev/s, 코드 `lo = 1.6f, hi = 9f`.
   `호기심` 달리기 범위: 사양서 1.8–3.0 rev/s, 코드 `lo = 1.8f, hi = 9f`. 눈 시작점: 사양서 (2.5, −4.5, 9.0), 코드
-  `eyes0 = (2.5, -3.6, 9.0)` (`GameDatabase.BlueMarlin`).
+  `eyes0 = (2.5, -3.6, 9.0)` (`LegendEncounters.BlueMarlin`).
 - **[legends_rollout.md](legends_rollout.md) 3.5** — 백상아리 눈 이동: 사양서 (1.5, −4.0, 8.0) → (1.0, −2.8, 6.5), 코드
-  `eyes0 = (1.6, -2.9, 9.5)`, `eyes1 = (1.4, -2.1, 5.6)` (`GameDatabase.GreatWhite`).
-- **[legends_rollout.md](legends_rollout.md) 2** — "공통" 목록에 없는 `moodHold` 2.5가 `GameDatabase.Row`로 5종에 들어가 있습니다
+  `eyes0 = (1.6, -2.9, 9.5)`, `eyes1 = (1.4, -2.1, 5.6)` (`LegendEncounters.GreatWhite`).
+- **[legends_rollout.md](legends_rollout.md) 2** — "공통" 목록에 없는 `moodHold` 2.5가 `LegendEncounters.Row`로 5종에 들어가 있습니다
   (실러캔스는 0).
-- **[time_currents_spec.md](time_currents_spec.md) 6.2** — 활동도 표 36행은 코드 `TimeActivity`와 모두 같습니다(다른 점 없음).
+- **[time_currents_spec.md](time_currents_spec.md) 6.2** — 활동도 표 36행은 어종 파일의 `activity`와 모두 같습니다(다른 점 없음).
 - **[time_currents_spec.md](time_currents_spec.md) 13** — 세이브 필드 6개는 코드와 같습니다. 다만 13절은 시계 필드만 다루고,
   `SaveData`에는 그 뒤로 수족관(`aquaVer`, `feed`, `feedTornOnce`, `tank`, `capVer`, `aquaCarry`), 줌(`zoomMode`),
   힌트(`sweepHint`, `sideHint`) 필드가 더 생겼습니다(5.1절).
-- **[obstacles_spec.md](obstacles_spec.md) 7.1 / 7.5** — 커버 표 23행과 줄 `tough` 6개는 코드와 같습니다. 사양서의 얼음 종
+- **[obstacles_spec.md](obstacles_spec.md) 7.1 / 7.5** — 줄 `tough` 6개는 코드와 같습니다. 커버는 어종 파일의 `cover` 24종이고, 사양서와 달리 우럭·감성돔에 `rock`, 가물치·피라루쿠에 `weed`가 없습니다(그 스테이지에 그 커버 구역이 없어 한 번도 맞지 않던 종류라 데이터 파일로 옮길 때 뺌; 2.3절). 방어 `hull, rock`, 만새기 `weed`, 참다랑어 `hull, weed`도 데이터 그대로입니다. 사양서의 얼음 종
   `reach` "-"는 코드에서 `0f` (주석: "0 = the ice hole's rim")입니다.
 - **[README.md](../README.md)** — "스테이지 7곳", "어종 36종", "루어 10종 · 액션 5가지", "전설어 조우 6종", "5단계 수조"는 코드와
   같습니다.

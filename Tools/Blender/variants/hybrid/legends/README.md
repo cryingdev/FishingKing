@@ -1,7 +1,7 @@
 # legends/ — one module per legend fish (3D encounter model)
 
 `hyb_legend3d.py` (builder), `hyb_legend_preview.py` (review mock) and `hyb_legend_kit.py` (geometry helpers) are
-generic and shared. A legend is **one file, `legends/<fish_id>.py`** (fish id as in `GameDatabase`). Work only in your
+generic and shared. A legend is **one file, `legends/<fish_id>.py`** (fish id as in its species file `Assets/Resources/Data/Fish/<fish_id>.json`). Work only in your
 own module; if you need a helper, keep it in your module (do not edit the kit, the builder or another module).
 Design data for each legend (bones, palette, eyes, poses, texts): `Docs/legends_rollout.md`.
 
@@ -9,7 +9,13 @@ Design data for each legend (bones, palette, eyes, poses, texts): `Docs/legends_
 
 1. Copy `_template.py` to `<fish_id>.py` (the template builds; it is the smallest working example).
    `coelacanth.py` is the full reference (lobed fins, spots, teeth, skull hinge, 6-beat preview).
-2. Fill in the module (API below), then build and check:
+2. Fill in the module (API below), then build and check (below).
+3. In the game: the species file `Assets/Resources/Data/Fish/<fish_id>.json` with `"encounter": "<fish_id>"` (its
+   `"baits"` are the key lures), a factory `<FishId>()` registered in `Assets/Scripts/Data/LegendEncounters.cs` (leave
+   `keyLures` empty), the id in a stage's `"fish"` in `Assets/Resources/Data/stages.json`, then the species validator
+   (FishingKing > Validate Species Data; Docs/data_reference.md 2.7). `CM` must equal the species' `minCm`, `maxCm`.
+
+Build and check:
 
 ```
 cd Tools/Blender
@@ -38,7 +44,7 @@ Scratch renders go to `_tmp/actors3d/_work_legend_<id>/` (per legend, so paralle
 |---|---|---|
 | `ID`, `MODEL`, `ARMATURE` | yes | fish id; `legend_<fish_id>`; the FBX root node (CamelCase species name) |
 | `PREFIX` | yes | material prefix, lower-case: `coel`, `gcarp`, `arap`, `stur`, `marl`, `gw` |
-| `CM` | yes | in-game length range (cm), from GameDatabase; runtime scale = cm / 100 |
+| `CM` | yes | in-game length range (cm): the species file's `minCm`, `maxCm` (the validator warns on a mismatch); runtime scale = cm / 100 |
 | `STAGE`, `BACKDROP`, `PRESET` | yes | surface stage id; `encounter_sets/<BACKDROP>.py`; hyb_core preset |
 | `OUTLINE` | no | the one ink colour of every material (default `#0b1322`) |
 | `RAMPS` | yes | `{"<prefix>_<slot>": [dark, mid, light]}` (hex) — see palette rules |

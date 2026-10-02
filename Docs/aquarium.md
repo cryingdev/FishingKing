@@ -125,7 +125,7 @@
 
 ### 2.6 종별 먹이 표
 
-`GameDatabase.Diets()`의 표 그대로입니다(`P` 사료, `S` 생새우, `D` 정어리). 표에 없는 종은 경고 로그와 함께 사료로 간주합니다(`AquaCare.DietOf`).
+각 어종 파일(`Assets/Resources/Data/Fish/<id>.json`)의 `diet` 그대로입니다: `foods`(`pellet` 사료, `shrimp` 생새우, `sardine` 정어리; 1~2가지)와 `style`(`grab` · `bottom` · `surge`). 필수 키라 빠지면 검사기 오류입니다([data_reference.md](data_reference.md) 2.7절).
 
 | 스테이지 | 어종 (id) | 희귀도 | 먹이 | 먹는 방식 |
 |---|---|---|---|---|

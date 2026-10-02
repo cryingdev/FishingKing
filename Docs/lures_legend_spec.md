@@ -240,7 +240,7 @@ Lure rows, with only the non-default fields listed:
 
 The softworm also accepts a slow drag as work: a Wind run at 0.1–0.5 rev/s, `runMax` 2.
 
-**Fish preferences.** The string format is kept, with `@action` tokens added: `"minnow:1,crank:1,@twitch:0.8"`. `GameDatabase.F()` sends tokens starting with `@` into `FishSpecies.actionPrefs` (a `Dictionary<LureAction, float>`); every other token keeps the `bait_` prefix. New method:
+**Fish preferences.** The string format is kept, with `@action` tokens added: `"minnow:1,crank:1,@twitch:0.8"`. The loader (`SpeciesData.ParsePrefs`, reading each species file's `"baits"`; formerly `GameDatabase.F()`) sends tokens starting with `@` into `FishSpecies.actionPrefs` (a `Dictionary<LureAction, float>`); every other token keeps the `bait_` prefix. New method:
 
 ```csharp
 public float Appeal(BaitDef b) => b.action == LureAction.None ? Pref(b.id)
@@ -346,7 +346,7 @@ public class EncounterDef {
 }
 ```
 
-The coelacanth row, set in `GameDatabase.BuildFish`:
+The coelacanth row (now `LegendEncounters.Coelacanth()`, attached through `"encounter": "coelacanth"` in its species file; the key lures come from its `"baits"`):
 
 | Field | Value |
 |---|---|

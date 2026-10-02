@@ -42,16 +42,18 @@ Unity 6 (6000.3.22f1) 픽셀아트 모바일 낚시 게임입니다. 낚시꾼 �
   5단계 수조와 크기별 칸 수. 관람 수입은 희귀도 × 가치에 비례합니다.
 - **상점·도감·레벨업**, 자동 저장, 코드로 합성한 효과음·스테이지별 환경음(새벽·밤 층), MIDI로 작곡해 렌더한 배경음(시간대·파이트·조우에 따라 스템을 섞음), 설정 → 음량(전체·배경음악·효과음·환경음), 설정 → 조작(왼손잡이, 낚싯대를 몸 가운데로)
 
-밸런스 수치는 대부분 `Assets/Scripts/Data/GameDatabase.cs`에 있습니다.
+어종과 스테이지는 데이터 파일입니다: 어종마다 `Assets/Resources/Data/Fish/<id>.json` 하나, 스테이지와 거기 나오는 어종은
+`Assets/Resources/Data/stages.json`. **어종을 더하려면** 파일 하나 + 그림 4장 + 스테이지 목록 한 줄이면 되고, 검사기가 빠진 것을
+알려 줍니다([data_reference.md](Docs/data_reference.md) 2.7절). 장비·미끼·수조 수치는 `Assets/Scripts/Data/GameDatabase.cs`에 있습니다.
 
 ## 프로젝트 구조
 
 ```
 Assets/
-  Resources/            Blender가 렌더한 스프라이트·모델(FBX)·팔레트·레이아웃/장애물/깊이 데이터, 폰트, 배경음 스템(OGG)·music.json
+  Resources/            Blender가 렌더한 스프라이트·모델(FBX)·팔레트·레이아웃/장애물/깊이 데이터, 어종 파일(Data/Fish)·stages.json, 폰트, 배경음 스템(OGG)·music.json
   Shaders/              툰·림 라이트·시간대 디졸브·그림자·발판 가림 셰이더
   Scripts/Core/         Game(상태·경제), SaveData, PixelView(저해상도 픽셀 뷰)·ViewZoom, 입력, 게임 시계, 수족관 모델
-  Scripts/Data/         Models, GameDatabase
+  Scripts/Data/         Models, GameDatabase, 어종 데이터 로더(SpeciesData)·검사기(SpeciesCheck), 전설어 조우 행(LegendEncounters)
   Scripts/Fishing/      원근 투영(Persp), 스테이지, 낚시꾼·릴 3D, 채비, 물고기 AI, 파이트, 물살, 장애물, 가림, 줌, HUD
   Scripts/Fishing/Legend/ 전설어 조우
   Scripts/Scenes/       타이틀·지도·낚시·수족관(먹이·청소·장식)

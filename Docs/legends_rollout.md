@@ -174,7 +174,7 @@ Also:
 
 ### 1.6 Data
 
-**`GameDatabase` preference strings:**
+**Preference strings** (each species file's `"baits"`, `Assets/Resources/Data/Fish/<id>.json`):
 
 | Fish | Preferences |
 |---|---|
@@ -184,7 +184,8 @@ Also:
 | blue_marlin | `kona:1,jig:0.5` |
 | great_white | `kona:1,jig:0.6` |
 
-These strings are also the key weights and the shop fan list. `bait_golden.desc` is set as in decision 2. The five
+These strings are also the key weights (the loader copies a legend's baits into its row's `keyLures`, in order: the
+factories leave `keyLures` empty) and the shop fan list. `bait_golden.desc` is set as in decision 2. The five
 `EncounterDef` rows are in 3.x, and the four set rows in 4.x.
 
 ---
@@ -216,7 +217,8 @@ Common to all rows unless stated:
 
 ## 3. Legend rows
 
-The mood tables use the spec's notation. "Loss" captions are the spec's generic ones unless given.
+The rows live in `Assets/Scripts/Data/LegendEncounters.cs` (one factory per legend, named by the species file's
+`"encounter"`). The mood tables use the spec's notation. "Loss" captions are the spec's generic ones unless given.
 
 ### 3.1 황금잉어 golden_carp — lake, bait-eater
 
