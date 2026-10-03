@@ -456,6 +456,7 @@
    호수 어종의 `habitat`은 백분위 띠로 적습니다(2.6절).
 4. **검사**: 에디터 메뉴 **FishingKing/Validate Species Data**(대화 상자 + Console 목록). 빌드
    (`FishingKingSetup.BuildWindows`)도 먼저 검사하고, 오류가 있으면 아무것도 빌드하지 않습니다(batch면 종료 코드 1).
+   게임 안 확인까지는 아래 **확인 절차**의 명령 하나(`Tools/Test/new_species.ps1`).
 5. **전설어**라면 더: `LegendEncounters.cs`에 팩토리(키 = id, `keyLures`는 비워 둠 — 어종의 `baits`가 유인 미끼)와
    어종 파일의 `"encounter": "<id>"`, 리그 `Tools/Blender/variants/hybrid/legends/<id>.py`(`CM` = `minCm`, `maxCm`) →
    `Assets/Resources/Models/legend_<id>.fbx`·`legend_<id>_palette.json`, 조우 배경은 있는 세트(`lake` · `swamp` · `ice` ·
@@ -516,6 +517,51 @@
   망가뜨린 데이터 56가지, 그리고 `species_dump.txt`(모든 어종·스테이지 값, float는 비트 패턴까지)와 `spawn_baseline.txt`
   (스테이지 × 시각 × 장비마다 `FishSpawner.Pick`의 몫, 스테이지 × 시간대 × 미끼마다 재고 전체의 입질 질량 Σ 가중치·a·√a·매력도)를
   `-fkshots`에 씁니다. 데이터를 바꾼 뒤 두 파일을 비교하면 무엇이 달라졌는지 보입니다. [testing.md](testing.md)
+
+#### 확인 절차 (명령 하나)
+
+코드는 그대로 두고 어종만 더했다면(위 1–5) 이것 하나만 돌립니다. 빌드 포함 약 4분(빌드 ~1분, 확인 ~3분; 뱀장어로 잰 3:15):
+
+```
+powershell -ExecutionPolicy Bypass -File Tools\Test\new_species.ps1 -Id <id> [-NoBuild] [-Out <폴더>]
+```
+
+1. **검사기** — 빌드의 첫 단계(오류면 빌드하지 않고 멈춤). `-NoBuild`면 에디터 batch `SpeciesValidator.Batch`만 돌리고 있는 빌드를 씁니다.
+2. **빌드** 한 번 (`-NoBuild`면 건너뜀).
+3. **`-fkauto newspecies -fkspecies <id>`** 한 프로세스(포인터 제스처 없이 테스트 훅만, 시작 화면에서 그 스테이지로 스스로 감):
+   - N1 로드됐고 스테이지 목록에 있음.
+   - N2 (생성 지형 스테이지 = 호수) `-fkauto depth`의 경제 게이트를 그 어종을 넣은 채로: 50 시드 × 대나무·카본·용의 추정기
+     (실제 낚시·라이브 소크 없음) — F가 클램프에 안 걸리고, 스테이지의 분당 입질·수입이 예전 호수의 0.8–1.25; 그 어종의 가장
+     좋은 채비에서 상위 10% 캐스팅 ≥ 부채꼴 평균 × 1.5(대나무·카본); **자리** — 손으로 쓴 게이트(2.6절 2단계 5종)가 있으면
+     그것, 없으면 서식지에서 가장 강한 선호(가장 활발한 시간대의 바닥 종류 또는 재질, 가중치 ≥ 1.3)의 목표 몫 ≥ 고른 목표
+     × 1.3(시드 1, 용 낚싯대 물); 끌어낸 출현 가중치 보고(시드 1의 A·W·스톡 중 몫, 50 시드의 A 범위, 0.6 / 1.4에 걸린 횟수 —
+     게이트 아님, 걸리면 `CLAMP HIT`). 입질·수입이 밴드 가장자리에서 **0.03 안**이면 `NOTE` 줄: 라이브 소크(`-fkauto economy`)가
+     필요하다는 뜻이지만 자동으로 돌리지 않습니다 — 사용자에게 물어봅니다.
+   - N3 결과 카드 `card_<id>`와 도감 상세 `collection_detail_<id>` 캡처.
+   - N4 크기 등급이 들어가는 수조가 있으면: 그 수조 중 가장 작은 것에 배고픈 한 마리, 먹이를 훅으로 위에서 떨어뜨려 먹는지
+     (`aqua_<id>`, `aqua_<id>_eat`; 같은 검사를 따로: `-fkaqua species -fkspecies <id>`). 없으면 SKIP.
+   - 전설어는 N1 뒤 멈춤(조우는 아래 회귀 스위트).
+4. **요약 표**(단계·결과·실패 수·시간·로그)와 `[NEWSP]` 보고 줄(밴드 거리, 가중치, NOTE, SKIP). 실패가 있으면 종료 코드 1.
+   로그·캡처: `Logs/new_species/<id>_<시각>/`.
+
+**회귀 테스트는 어종 추가가 코드도 바꿀 때만** 돌리고, **돌리기 전에 사용자에게 무엇을·왜·얼마나 돌릴지 묻습니다**:
+`-Regress <목록> -DryRun`으로 계획(스위트, 병렬 / 직렬 묶음, 제한 시간, 예상 시간)을 보여 주고, 동의를 받은 뒤 같은 명령에
+`-Yes`를 붙입니다. `-Yes`가 없으면 계획만 출력하고 아무것도 띄우지 않습니다(종료 코드 2). 목록은 `이름` 또는 `이름=값`:
+
+| 바뀐 것 | `-Regress` | 짧은 기본값 (약) |
+|---|---|---|
+| 새 미끼·루어 | `lure=<루어 id>` (자연 미끼면 `fish`) | 루어 하나 (2분; `lure=all`은 다섯 개 4분) |
+| 행동: 점프 방식·파이트 | `fish`, `breaks` | 그 어종만 2마리 실제 캐스팅·파이트 (3분), 줄 끊김 (2분) |
+| 수족관 먹는 방식 | `aqua` | `-fkaqua live` (2분) |
+| 전설어 (조우 + 3D 모델) | `encounter`, `legendspot` | 그 전설어 완벽 플레이 한 번 (3분), 물보라 자리 (2분) |
+| 스테이지 UI 수용량 초과 (지도 창 12종 넘음) | `tour` | 화면 순회, 도감 상세 = 그 어종 (2분) |
+| 새 스테이지·지형 | `depth`, `obstacles=<stage>`, `cards=<stage>`, `tour` | 호수 지형 전체 (10분), 그 스테이지 (5분, 2분) |
+| 검사기 자체 | `species` | 망가뜨린 데이터 56가지 (1분) |
+
+포인터 제스처(캐스팅·드래그·탭)를 쓰는 스위트(`tour` `fish` `lure` `encounter` `legendspot` `obstacles` `breaks` `aqua`)는
+한 줄로 하나씩, 포인터가 없는 것(`newspecies` `species` `cards` `depth`)은 그 옆에서 동시에 돕니다. 동시에 최대 논리 CPU의
+절반(`-MaxParallel`), 스위트마다 제한 시간이 넘으면 그 프로세스를 끝내고 TIMEOUT. 예: `-Id my_legend -Regress
+"encounter,legendspot" -DryRun` → 묻고 → `... -Yes`.
 
 ## 3. 낚시 장비 (`GameDatabase.BuildItems`)
 

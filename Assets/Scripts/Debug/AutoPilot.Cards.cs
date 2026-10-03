@@ -33,43 +33,54 @@ namespace FishingKing
             int fails = 0, n = 0;
             foreach (var id in ids)
             {
-                var sp = GameDatabase.GetFish(id);
-                if (sp == null)
-                {
-                    Log($"[CARDS] CHECK FAIL {id}: no such species");
-                    fails++;
-                    continue;
-                }
-                yield return ToReady(ctl);
-                EquipTest("bait_worm", ctl);
-                ctl.FloatDepthChanged(2f);
-                yield return null;
-                var at = new Vector3(ctl.Angler.X, 0f, 14f);
-                ctl.DebugPlaceRig(at);
-                yield return new WaitForSeconds(0.9f);
-                float cm = Mathf.Round(Mathf.Lerp(sp.minCm, sp.maxCm, 0.6f));
-                if (!ctl.DebugHook(sp, cm, 4100 + n++, new Vector3(at.x, -1.5f, at.z)))
-                {
-                    Log($"[CARDS] CHECK FAIL {id}: not hooked ({ctl.State}, tackle {ctl.Tackle.State})");
-                    fails++;
-                    continue;
-                }
-                yield return new WaitForSeconds(0.8f);
-                bool landed = ctl.DebugLand();
-                for (float w = 0f; w < 10f && !HasButton("판매"); w += Time.deltaTime) yield return null;
-                bool card = HasButton("판매");
-                yield return new WaitForSeconds(0.5f);
-                yield return Shot("card_" + id);
-                Log($"[CARDS] CHECK {(landed && card ? "PASS" : "FAIL")} {id} {sp.name} {cm:0} cm: landed {landed}, catch card {card}, recorded {Game.I.Record(id)?.caught ?? 0}");
-                if (!(landed && card)) fails++;
-                Click("판매");
-                yield return new WaitForSeconds(0.8f);
+                bool ok = false;
+                yield return CardOne(ctl, id, n++, r => ok = r);
+                if (!ok) fails++;
             }
             FishingController.NoBites = false;
             PointerInput.SimDown = false;
             PointerInput.SimActive = false;
             Log($"[CARDS] cards done: {fails} failed");
             Application.Quit();
+        }
+
+        /// <summary>
+        /// One species' catch card (natural bites off: <see cref="FishingController.NoBites"/>): hooked on a float laid 14 m
+        /// out, landed, card_&lt;id&gt; shot, sold. <paramref name="done"/>: landed and its card came up ([CARDS] CHECK line).
+        /// </summary>
+        IEnumerator CardOne(FishingController ctl, string id, int n, System.Action<bool> done)
+        {
+            var sp = GameDatabase.GetFish(id);
+            if (sp == null)
+            {
+                Log($"[CARDS] CHECK FAIL {id}: no such species");
+                done(false);
+                yield break;
+            }
+            yield return ToReady(ctl);
+            EquipTest("bait_worm", ctl);
+            ctl.FloatDepthChanged(2f);
+            yield return null;
+            var at = new Vector3(ctl.Angler.X, 0f, 14f);
+            ctl.DebugPlaceRig(at);
+            yield return new WaitForSeconds(0.9f);
+            float cm = Mathf.Round(Mathf.Lerp(sp.minCm, sp.maxCm, 0.6f));
+            if (!ctl.DebugHook(sp, cm, 4100 + n, new Vector3(at.x, -1.5f, at.z)))
+            {
+                Log($"[CARDS] CHECK FAIL {id}: not hooked ({ctl.State}, tackle {ctl.Tackle.State})");
+                done(false);
+                yield break;
+            }
+            yield return new WaitForSeconds(0.8f);
+            bool landed = ctl.DebugLand();
+            for (float w = 0f; w < 10f && !HasButton("판매"); w += Time.deltaTime) yield return null;
+            bool card = HasButton("판매");
+            yield return new WaitForSeconds(0.5f);
+            yield return Shot("card_" + id);
+            Log($"[CARDS] CHECK {(landed && card ? "PASS" : "FAIL")} {id} {sp.name} {cm:0} cm: landed {landed}, catch card {card}, recorded {Game.I.Record(id)?.caught ?? 0}");
+            done(landed && card);
+            Click("판매");
+            yield return new WaitForSeconds(0.8f);
         }
     }
 }

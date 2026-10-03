@@ -38,6 +38,8 @@ namespace FishingKing
     ///                   the limits (kept, marked), the maps resampled to a bigger tank, every level rendered stocked,
     ///                   the shop's 수조 확장 rows and an upgrade bought in the scene, the info window's size class,
     ///                   feeding / live food / cleaning / decorating on the smallest and the largest tank.
+    /// -fkaqua species   -fkspecies &lt;id&gt;: one species in the smallest tank that takes it, its food dropped over it
+    ///                   without the pointer, it eats (AquaPilot.Species.cs; also run by -fkauto newspecies).
     /// </code>
     /// The feed / live / clean scenarios run in the 중형 수조 (tank level 1: the legacy art's coordinates); fish over its
     /// limits are put in the way an older save has them.
@@ -66,7 +68,7 @@ namespace FishingKing
             ap.shots = Arg("-fkshots") ?? Path.Combine(Application.persistentDataPath, "shots_aqua");
             Directory.CreateDirectory(ap.shots);
             ap.StartCoroutine(sc == "migrate" ? ap.Migrate() : sc == "live" ? ap.LiveTest() : sc == "clean" ? ap.CleanTest()
-                : sc == "decor" ? ap.DecorTest() : sc == "tanks" ? ap.TanksTest() : ap.FeedTest());
+                : sc == "decor" ? ap.DecorTest() : sc == "tanks" ? ap.TanksTest() : sc == "species" ? ap.SpeciesTest() : ap.FeedTest());
         }
 
         static void Log(string m) => Debug.Log("[AQUA] " + m);
