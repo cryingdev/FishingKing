@@ -199,10 +199,12 @@ namespace FishingKing
             var grade = ctl.LastStrike;
             float stam = fighting ? ctl.Fight.Stamina : -1f, ten = fighting ? ctl.Fight.Tension / ctl.Fight.LineLimit : -1f;
             float cut = FishingController.StrikeStamina[(int)grade];
+            string word = hud.StrikeShown;
             yield return NamedShot("hooks_strike");
-            HCheck("strike_swipe", f != null && fighting && grade >= FishingController.StrikeGrade.Good && stam <= 1f - cut + 0.02f && ten > 0.1f && ten <= FishingController.StrikeTensionMax + 0.01f,
-                string.Format(CIc, "swiped up {0:0.00} s into the bite, strength {1:0.00} (ideal {2:0.00}): {3}, stamina {4:0.00} (cut {5:0.00}), tension {6:0.00} of what the line holds",
-                    ctl.LastStrikeAt, ctl.LastStrikeStrength, small.setStrength, grade, stam, cut, ten));
+            HCheck("strike_swipe", f != null && fighting && grade >= FishingController.StrikeGrade.Good && stam <= 1f - cut + 0.02f && ten > 0.1f && ten <= FishingController.StrikeTensionMax + 0.01f
+                && word == "strike_" + grade.ToString().ToLowerInvariant(),
+                string.Format(CIc, "swiped up {0:0.00} s into the bite, strength {1:0.00} (ideal {2:0.00}): {3} (over the fish: '{7}'), stamina {4:0.00} (cut {5:0.00}), tension {6:0.00} of what the line holds",
+                    ctl.LastStrikeAt, ctl.LastStrikeStrength, small.setStrength, grade, stam, cut, ten, word));
             if (ctl.State == FishingController.S.Fighting) ctl.DebugRelease();
             yield return new WaitForSeconds(1.5f);
 
@@ -234,6 +236,18 @@ namespace FishingKing
             HCheck("strike_hold", perf < bad,
                 string.Format(CIc, "carp 85 cm on the small hook shaken off: PERFECT {0} / BAD {1} of {2} (hold {3:0.00} / {4:0.00})",
                     perf, bad, N, small.HoldK(85f) * FishingController.StrikeHold[(int)P], small.HoldK(85f) * FishingController.StrikeHold[(int)FishingController.StrikeGrade.Bad]));
+
+            // 10. 설정 → 조작 → 조작 안내 문구: the row is there; hidden, a flash keeps its event and drops the how-to
+            SettingsUI.OpenControls();
+            yield return new WaitForSeconds(0.3f);
+            bool row = FindObjectsByType<Text>(FindObjectsSortMode.None).Any(t => t.text == "조작 안내 문구");
+            CloseDialogs();
+            yield return null;
+            bool on = FishingHUD.G("걸었다!", "원을 그려 릴을 감아요!") == "걸었다! 원을 그려 릴을 감아요!";
+            g.SetGuideText(false);
+            bool off = FishingHUD.G("걸었다!", "원을 그려 릴을 감아요!") == "걸었다!" && !Game.Data.guideText;
+            g.SetGuideText(true);
+            HCheck("guides", row && on && off && Game.Data.guideText, $"the 조작 window's row {row}; shown '걸었다! 원을 그려 릴을 감아요!' {on}, hidden '걸었다!' {off}; back on {Game.Data.guideText}");
 
             Log($"hooks test done: {hookFails} failed");
             Application.Quit();
