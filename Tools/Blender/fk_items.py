@@ -11,6 +11,8 @@ Run:  blender -b --python Tools/Blender/fk_items.py [-- group ...]   groups: rod
        and strip.png, float_stick.png left as it is; worldreels = the small reel under the angler's rod, 2 handle frames per reel;
        barehook = the floats as item icons for the line-break loss toast (Items/float_stick.png, float_ball.png 32 px),
        review sheets in _tmp/barehook;
+       strike = the 챔질 grade words shown arched over the hooked fish (UI/strike_perfect / great / good / bad.png) +
+       _tmp/strike/sheet.png;
        hooks = the natural-bait rigs' hooks: Items/<id>.png 32 px (one scale for all four) + World/<id>_w.png (the bare
        hook under the float at the bait sprites' scale, 11-15 px), review sheets in _tmp/hooks;
        reelarrow = only the reel-gesture help arrows, which frames rebuilds too;
@@ -1034,6 +1036,102 @@ def hook_art():
         x += w + 4
     C.save_pixels(strip, os.path.join(HOOKS_OUT, "strip.png"))
     return icons + world
+
+
+# ============================================================================ THE 챔질 GRADES
+# Group "strike": the hook set's grade words (FishingController.Strike) shown over the hooked fish: PERFECT! GREAT!
+# GOOD BAD as thick 3D letters (Arial Black, extruded and bevelled) bent into an arch (each vertex mapped onto a circle
+# of radius STRIKE_R: the letters fan out along it), the face two-toned (light top half, deeper bottom half) and the
+# extrusion's sides a dark band under them (the word tipped forward a little so its underside shows), rendered and
+# pixelized with the outline: UI/strike_perfect.png, strike_great.png, strike_good.png, strike_bad.png (one scale for
+# all, the height of the letters STRIKE_PX). Review: _tmp/strike/sheet.png (x4, on the lake's water).
+STRIKE_OUT = os.path.join(C.TMP, "strike")
+STRIKE_FONT = r"C:\Windows\Fonts\ariblk.ttf"
+STRIKE_R = 3.2          # the arch's radius (the letters' baseline; letters are about 0.72 tall)
+STRIKE_PX = 24.0        # pixels per unit: a capital about 17 px tall
+STRIKE_TILT = 16.0      # degrees the word is tipped forward (its underside shows as the band)
+# id: text, top / bottom face colours, the side band
+STRIKES = {
+    "perfect": ("PERFECT!", "#fff27a", "#ffb21c", "#9a4a10"),
+    "great": ("GREAT!", "#bff0ff", "#4ab8f0", "#1c4a8a"),
+    "good": ("GOOD", "#e2ffb0", "#7ccf3a", "#2e6a1c"),
+    "bad": ("BAD", "#e4e4ea", "#9a9aa8", "#44444e"),
+}
+
+
+def build_strike_word(text, top, bottom, side):
+    """The word as a mesh: extruded text converted, arched, its faces given the top / bottom / side materials."""
+    font = bpy.data.fonts.load(STRIKE_FONT, check_existing=True)
+    cu = bpy.data.curves.new("Word", "FONT")
+    cu.body = text
+    cu.font = font
+    cu.align_x = "CENTER"
+    cu.align_y = "BOTTOM"
+    cu.size = 1.0
+    cu.space_character = 1.04
+    cu.extrude = 0.12
+    cu.bevel_depth = 0.025
+    cu.bevel_resolution = 1
+    ob = bpy.data.objects.new("Word", cu)
+    bpy.context.scene.collection.objects.link(ob)
+    # (the text lies in x-y with its extrusion on z: stood up to face the camera, which looks along +y)
+    ob.rotation_euler = (math.radians(90), 0, 0)
+    bpy.context.view_layer.update()
+    deps = bpy.context.evaluated_depsgraph_get()
+    me = bpy.data.meshes.new_from_object(ob.evaluated_get(deps), depsgraph=deps)
+    M_world = ob.matrix_world.copy()
+    bpy.data.objects.remove(ob, do_unlink=True)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bmesh.ops.transform(bm, matrix=M_world, verts=bm.verts)
+    # the arch: x along the circle, z out from it
+    for v in bm.verts:
+        a = v.co.x / STRIKE_R
+        r = STRIKE_R + v.co.z
+        v.co.x = r * math.sin(a)
+        v.co.z = r * math.cos(a) - STRIKE_R
+    bm.normal_update()
+    zs = [v.co.z for v in bm.verts]
+    zmid = 0.5 * (min(zs) + max(zs))
+    mats = [M("WordTop", top, shine=0.6), M("WordBottom", bottom, shine=0.4), M("WordSide", side, flat=True)]
+    for f in bm.faces:
+        # the faces turned to the camera (-y) are the letters' front; the rest is the extrusion and bevel
+        front = f.normal.y < -0.7
+        if not front:
+            f.material_index = 2
+        else:
+            # (two tones split along the arch: above / below the line half way up the letters, bent with them)
+            c = f.calc_center_median()
+            rr = math.hypot(c.x, c.z + STRIKE_R) - STRIKE_R
+            f.material_index = 0 if rr >= 0.36 else 1
+    bm.to_mesh(me)
+    bm.free()
+    word = bpy.data.objects.new("Word", me)
+    bpy.context.scene.collection.objects.link(word)
+    for m in mats:
+        word.data.materials.append(m)
+    # tipped forward so the band of the extrusion shows under the letters
+    word.rotation_euler = (math.radians(STRIKE_TILT), 0, 0)
+    bpy.context.view_layer.update()
+    return [word]
+
+
+def render_strikes():
+    made = []
+    for sid, (text, top, bottom, side) in STRIKES.items():
+        C.clear_objects()
+        objs = build_strike_word(text, top, bottom, side)
+        x0, x1, z0, z1 = C.world_bounds(objs)
+        w = int(math.ceil((x1 - x0) * STRIKE_PX)) + 4
+        h = int(math.ceil((z1 - z0) * STRIKE_PX)) + 4
+        C.ortho_camera((x0 + x1) / 2, (z0 + z1) / 2, w, h, STRIKE_PX)
+        path = os.path.join(UI, f"strike_{sid}.png")
+        C.render_sprite(path)
+        made.append(path)
+        print(f"strike -> {path} ({w}x{h})")
+    # review: x4 on the lake's water
+    C.contact_sheet(made, os.path.join(STRIKE_OUT, "sheet.png"), scale=4, cols=2, bg=(0x45 / 255, 0x6a / 255, 0x8a / 255))
+    return made
 
 # ============================================================================ TANKS
 def build_tank(level):
@@ -4849,6 +4947,10 @@ def main():
     if "floatlie" in groups:
         # the stick float lying flat / half way down (the lake's lying float; float_stick.png itself is not re-rendered)
         made += render_float_lie()
+    if "strike" in groups:
+        # the 챔질 grade words over the hooked fish (UI/strike_*.png)
+        for p in render_strikes():
+            print("strike ->", p)
     if "hooks" in groups:
         # the hooks of the natural-bait rigs: item icons + the bare hook under the float, one per hook
         for p in hook_art():
