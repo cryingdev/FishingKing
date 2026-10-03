@@ -413,10 +413,10 @@ pays out to where the rig lands, the current's drift takes more off the reel, a 
 rig whose stretch reaches 0.05 m is caught on the prop (`CatchOnProp`, a snag of kind `prop`, flash `<name>에 걸렸다!`):
 the snag strip as for 밑걸림, its tension the stretch (`retrieve / 0.9` m of stretch = tension 1, so winding builds it
 0.9 per rev as before; every snag's tension is the line's stretch now: giving line or leaving the reel lets it off at the
-old rates). The auto 회수 stops there. It comes free when the swept rod (sweep asked >= 0.5) turns the pull enough to
-slide it along the face (0.3 s; the strip's arrow shows the side that would; a rig wedged in a notch has none, the strip
-says `끼었어요! 톡 하거나 끊어요`), with a 톡 (popped 0.3 m off the faces) or
-the stream's nudge; a break or 끊기 parts the line at the prop, above the float: the whole rig is lost (float, hook, bait
+old rates). The auto 회수 stops there. It is worked free by the physics of 6.10: the line's pull (swept, pitched, its
+tension, the 톡's short pull) against the faces it touches, Coulomb friction and the bitten-in hook point; the swept
+rod turning the pull along the face still slides it off (the strip's arrow shows the move that would; a notch has none);
+a break or 끊기 parts the line at the prop, above the float: the whole rig is lost (float, hook, bait
 or lure). Prop catches are not counted in `SnagCount` (`PropCatches`).
 
 ---
@@ -581,6 +581,56 @@ A crank wound through a hard zone whose snag roll failed bumps off it at most ev
 
 No sweep there: 톡 and slack free, the gravel / rock-pile helpers catch the bottom lures under the hole (per-touch
 rolls only).
+
+### 6.10 Working a prop catch free: the physics of the caught rig
+
+A rig caught on a prop (`kind == "prop"`, 4.9) is worked free by physics, not by scores or dice
+(`SnagPhysics.cs`, pure functions; `FishingController.SnagFree.cs` steps it every frame): the rig is a point resting
+against the faces it touches, the line pulls it, and it slides wherever that pull beats what holds it. The same moves
+always give the same result. The old sweep to the free side (4.9) falls out of it unchanged.
+
+- **The faces** (`Tackle.PropFaces`, `SnagPhysics.Face`): one per prop touched, its waterline normal `n` (plan, out of
+  the prop), its **lean** (m out over the rig per m up: each tier's reach along `n` on the line through the rig, fitted
+  by least squares against the tier's height; + leans over the rig, - leans away), friction `mu` (`ObstacleMat.Friction`:
+  concrete 0.25) and its top. In 3D its normal is `N = normalize(n.x, -lean, n.y)`; a face leaning more than
+  `OverSlope` 0.05 **overhangs** the rig.
+- **The force** (`SnagPhysics.Force`): the line's tension `T` (the snag tension `r`, 0 while there is slack) along the
+  line towards the rod: in plan `Tackle.PullDir` (towards him, bent by the sweep as before: lateral `0.6 x sin(sweep)`),
+  rising `PitchRise` 0.5 m per m in plan at the full **pitch** (lifted +, lowered -; flat at rest); plus the rig's
+  weight `Weight` 0.02 down, carried by the line from `HoldT` 0.05 (`x (1 - T / 0.05)`), plus the water's drag
+  `CurrentDrag` 0.03 x the current at the rig's depth (moving water only).
+- **The slide** (`SnagPhysics.Slide`, Coulomb): the force's parts into the faces are the normal force `Nf`; what is left
+  along them is the drive. It slides when `drive > mu x Nf x (`StaticK` 1.1 at rest) + PinK 0.25 x grab x embed`, at
+  `min(MaxSlide 0.6 m/s, (drive - resist) / Damp 0.02)`. Two faces closing in on the pull (a notch) leave nothing: it
+  holds whichever way. In plan it keeps to the faces (`Tackle.SlideOnProps`), up / down it follows the 3D slide.
+- **The hook point** (`SnagPhysics.Bite`, `SnagInfo.embed` 0..1): pressed past `BiteN` 0.3 it bites in at
+  `BiteRate` 2.5 x grab per unit per s; under `EaseN` 0.08 (a slack line) it backs out at `EaseRate` 0.6 per s.
+  grab = the material's snag factor x the prop's (concrete 1.4). This is why pulling tight makes it worse and slack
+  helps: the friction itself scales with the pull, the bitten-in point does not.
+- **Free** when it has slid off the edge that held it: `SlideOut` 0.15 m along the faces in plan, `UpClear` 0.15 m up
+  where no face overhangs, or `UnderLip` 0.12 m down where every face overhangs (it slips out under the lip); down a
+  face that does not overhang it settles at most `SinkRoom` 0.4 m deep (further to lift it back out). No faces touched
+  any more is free too. Freed, it pops 0.03 m off the faces (a 톡: 0.3 m); `LastFreeWay`: `tok`, `slack`, `lift`,
+  `lower`, `sweep` or `slide`.
+- **What the player does**: winding builds `r` (the stretch, 4.9) and breaks the line at 1 as before. Giving line
+  (`풀기`: counter-circles / B) pays out slack past the chord (`PropLine`: up to `SlackCap` 3 m; moving water takes it
+  up at 0.15 m/s): the tension is 0, the point backs out, and the rig's weight (and the stream) carry it down the
+  faces, out under an overhang by itself. Taking the slack back up (wind gently) and moving the rod then slides it:
+  the **sweep** (A / D, the rod's lean) turns the pull sideways, the **pitch** (`FishingController.Pitch`, a vertical
+  `SideSlide` longer than `SideSlide.PitchMinTime` 0.35 s: a slow slide down the screen lifts the rod, up lowers it;
+  W / ↑, S / ↓; only while caught on a prop, never on the ice) tilts it up or down. The drawn rod follows (`PitchTau`
+  0.12 s; lifted `Angler.RodLift01` = 0.35 x pitch, lowered `Angler.RodDip01`, the tip down up to 30°).
+- **The 톡** (`PropTok`): a pull of `TokPull` 0.6 x the flick's strength along the line snapped up (`TokRise` +0.6 rise)
+  for `TokTime` 0.12 s; more than `TokTake` 0.5 m of slack swallows it. The other snags keep their 톡 roll.
+- **The guide** (`PropGuideNow`, every frame): of the four rod moves at the full way (swept left / right, pitched up /
+  down) under the tension now (at least 0.12), the one whose pull would slide the rig the most past what holds it,
+  towards a way out (along the faces; up where no face overhangs; down where all do) is the arrow
+  (`SnagArrowDir`, shown while the line is taut); the best side move is `SnagInfo.freeSide` (the strip, the old arrow).
+  None with the point out: **wedged** (`SnagWedged`): a 톡 or 끊기. The stamina row shows the slack (`팽팽` / `느슨`, a
+  sky bar of slack / `SlackMax` 2 m).
+- Logs (`-fkobstlog`): `prop catch <id>: guide side, pitch (wedged), exits up / down; <face> n lean mu`,
+  `prop slide plan dy (F N drive resist embed)`, `prop off the faces / top edge / lip`, `prop tok s`,
+  `prop tok swallowed`, `free <how>`. The check is `-fkauto snagfree` (12).
 
 ---
 
@@ -817,7 +867,10 @@ the reef and the weed mat show in the open water in front of it).
 | a snag | `밑걸림!` / `수초에 걸렸다!` / `갈대에 걸렸다!` | flash, `UIKit.Bad`, 1.2 s |
 | snag mode, idle | `감지 말고 톡! 또는 좌우로 밀어요` | strip phase label, `UIKit.Sky` |
 | snag, the arrow shown | `◀ 반대쪽으로 밀어 봐요` / `반대쪽으로 밀어 봐요 ▶` (the free side) | strip phase label, `UIKit.Gold` |
-| snag tension >= 0.6 | `팽팽해요! 감지 마세요!` | strip phase label, `UIKit.Bad`, blinking |
+| snag tension >= 0.6 | `팽팽해요! 감지 마세요!` (a prop catch: `팽팽해요! 감지 말고 줄을 풀어요`) | strip phase label, `UIKit.Bad`, blinking |
+| a prop catch, taut, no move slides it (6.10) | `줄을 풀어 느슨하게 → 반대로 흔들어 빼요` (the point bitten in) / `끼었어요! 톡 하거나 끊어요` (wedged) | strip phase label, `UIKit.Sky` |
+| a prop catch, slack | `느슨해졌어요… 바늘이 빠지길 기다려요` / `살짝 감아 줄을 세워요` (the point out) | strip phase label, `UIKit.Sky` |
+| a prop catch, taut: the guide's move | `▼ 아래로 당겨 낚싯대를 들어요` / `▲ 위로 밀어 낚싯대를 내려요` / `◀ 왼쪽으로 흔들어 빼요` / `오른쪽으로 흔들어 빼요 ▶` | strip phase label, `UIKit.Gold` |
 | freed | `빠졌다!` | flash, `UIKit.Gold`, 0.9 s |
 | a crank deflection | `딱!` | `LureFeedback`, `UIKit.Sky`, 0.6 s |
 | broken by forcing | `밑걸림으로 줄이 끊어졌다!` | flash, `UIKit.Bad`, 2 s |
@@ -830,7 +883,9 @@ New strings are checked with `Tools/font_coverage.py` (README).
 
 - **Snag mode** (`S.Snagged`): the fight panel shows with the fish name slot reading `밑걸림` (`UIKit.Bad`; `수초` /
   `갈대` / `연잎`), the distance slot the rig's distance, the tension bar = `r` (same colours, the danger zone), the
-  stamina bar and the side strip hidden, the phase label per 10.1. The `회수` button's label reads `끊기`.
+  stamina bar and the side strip hidden, the phase label per 10.1. The `회수` button's label reads `끊기`. A prop
+  catch shows its slack in the stamina row instead (6.10): `팽팽` (`UIKit.Bad`, empty bar) while tight, `느슨`
+  (`UIKit.Sky`) with the bar = slack / 2 m.
 - **The abrasion meter** (fights): label `쓸림` (15 -> snapped size, `UIKit.Cream`) at (470, 28) 40 x 10 and a bar at
   (510, 30) 156 x 6 (canvas units, bottom-left anchored, under the distance label, above the stamina bar; U4 may nudge
   them a few units so no label overlaps); hidden until the first rub, then kept for the fight; fill `#e8d8a0` ->
@@ -873,6 +928,7 @@ None. No new `SaveData` fields; every hint above shows whenever it applies (they
 | `-fkobstlog` | logs every event: `[OBST] contact md25.0 side v 14.2 -> 6.1`, `perch`, `pad frog md..`, `snag md13.5.skirt spoon d 0.6 rate 0.33`, `free tok p 0.52`, `free sweep`, `break`, `cover run mandarin_fish -> md44.0.cover`, `rub md44.0 A 0.42`, `pullout`, `bank shot` |
 | `-fksnag <x>` | `Obstacles.SnagMult` (0 = never, 99 = at once) |
 | `-fkauto obstacles` | the capture scenario (14) |
+| `-fkauto snagfree [-fksfsecs <s>] [-fksfcatches <n>] [-fksfseed <n>]` | 6.10's check on the sea (keys only, pointer-free): random tries round the tetrapods as the stall hunt's, each prop catch worked the sweep way (A / D to the free side, 2.5 s), the slack way (B to 0.6 m of slack, wait for the point to back out, Space until taut, then the keys the arrow shows, 4 s) or the tight way (Space 0.8 s, then the sweep added, still winding) in turn, the rest cut; then three catches at the dead zone (-7.07, 10.70), left alone 3 s, then the slack way for the record; `[SNAGFREE]` per way caught / freed (by how) / cut / broke and a `digest` of the outcomes (the same seed must give the same digest); CHECKs: sweep >= 60 %, slack >= 85 % and >= the sweep, tight frees less and breaks more, the dead zone holds when left alone; shots `snag_guide`, `snag_slack`, `snag_move`, `snag_freed` |
 
 ---
 
