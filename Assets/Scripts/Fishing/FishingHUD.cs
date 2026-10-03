@@ -942,7 +942,7 @@ namespace FishingKing
         /// <summary>The grade word's life (s), its pop (s, to <see cref="StrikePop"/> x and back), its fade (s), its rise (UI units over its life).</summary>
         public const float StrikeLife = 1.3f, StrikePopT = 0.1f, StrikeSettleT = 0.22f, StrikePop = 1.25f, StrikeFade = 0.35f, StrikeRise = 26f;
         /// <summary>How far above the fish's mouth on screen it sits (UI units), and the sprite's scale (its pixels x this).</summary>
-        public const float StrikeLift = 70f, StrikeScale = 2f;
+        public const float StrikeLift = 60f, StrikeScale = 1.6f;
         Image strikeImg;
         CanvasGroup strikeGroup;
         float strikeT = -1f;
