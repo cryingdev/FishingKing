@@ -156,7 +156,7 @@ namespace FishingKing
             }
             float T = sn.r + (tok ? SnagPhysics.TokPull * tokS : 0f);
             tokT -= dt;
-            float grab = tk.PropGrab();
+            float grab = PropGrabNow();
             var F = PropForce(T, SweepSin, pitchS, tok);
             var s = SnagPhysics.Slide(propFaces, F, sn.embed, grab, !sn.moving);
             sn.embed = SnagPhysics.Bite(sn.embed, s.normal, dt, grab);
@@ -187,6 +187,9 @@ namespace FishingKing
             PropGuideNow(sn, grab, up, down);
             return false;
         }
+
+        /// <summary>The hook point's grab on the faces touched: the props' (Tackle.PropGrab) x the hook's (a natural bait: HookDef.grabK).</summary>
+        float PropGrabNow() => Tackle.PropGrab() * (RigHook != null ? RigHook.grabK : 1f);
 
         /// <summary>How it came free (the logs and the test): the 톡, the rod pitched, swept, a slack line, or the pull as it was.</summary>
         string PropFreeWay(bool tok) =>

@@ -1468,6 +1468,9 @@ namespace FishingKing
         }
 
         // ------------------------------------------------------------------ fish interest
+        /// <summary>The hook on the rig: the equipped hook under a natural bait; none on a lure (it carries its own).</summary>
+        public HookDef RigHook => Tackle.Bait != null && !Tackle.Bait.isLure ? Game.I.Hook : null;
+
         public bool CanFishEngage(FishAgent f)
         {
             if (State != S.Waiting && State != S.Biting) return false;
@@ -1509,7 +1512,9 @@ namespace FishingKing
             // the time of day, the tide and the spot (Docs/time_currents_spec.md 9.5)
             float m = BiteMult(f);
             if (m <= 0f) return false;
-            float p = Mathf.Min(0.95f, appeal * Game.I.Line.stealth * Stage.Def.biteMult * activity * 0.45f * m);
+            // (a natural bait: a fish too small for the hook comes less: HookDef.BiteK)
+            float fit = RigHook != null ? RigHook.BiteK(f.Cm) : 1f;
+            float p = Mathf.Min(0.95f, appeal * Game.I.Line.stealth * Stage.Def.biteMult * activity * 0.45f * m * fit);
             ApproachRolls++;
             bool yes = Random.value < p;
             if (yes && bait.isLure) LureFollows++;
@@ -1591,6 +1596,8 @@ namespace FishingKing
             // a bowed line in the current is slow to set the hook (Docs/time_currents_spec.md 9.2)
             float bowLate = 0.12f * Mathf.Max(0f, Mathf.Abs(Tackle.Bow) - 1f);
             if (bowLate > 0f) biteWindow = Mathf.Max(Mathf.Min(biteWindow, 0.45f), biteWindow - bowLate);
+            // the hook (a natural bait): the weedless guard makes the set a little harder
+            if (RigHook != null) biteWindow = Mathf.Max(0.35f, biteWindow + RigHook.setBonus);
             Tackle.BiteDown();
             Sfx.Play(Sfx.Bite, 0.9f);
             var p2 = P.To2D(Tackle.Surface);
@@ -1713,7 +1720,7 @@ namespace FishingKing
             float land = Vector3.Distance(tip, landing) + 0.3f;
             if (seed < 0) seed = Random.Range(0, 99999);
             Fight = new FightModel(Hooked.Sp, Hooked.Cm, Game.I.Rod, Game.I.Reel, Game.I.Line, Stage.Def.powerMult,
-                Vector3.Distance(tip, Hooked.Pos), land, seed);
+                Vector3.Distance(tip, Hooked.Pos), land, seed, RigHook != null ? RigHook.HoldK(Hooked.Cm) : 1f);
             // the line out goes on in the fight (from the rod tip to the fish from here); the reel gives no more than the
             // spool holds
             Fight.SpoolCap = Mathf.Min(Game.I.Reel.lineCap, Game.I.LineLeftNow);

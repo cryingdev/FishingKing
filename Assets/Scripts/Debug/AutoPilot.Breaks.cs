@@ -310,7 +310,8 @@ namespace FishingKing
             int plays0 = snap.Plays, breaks0 = ctl.Breaks;
             bool parted = ctl.DebugPartLine("tension");
             var tk = ctl.Tackle;
-            bool kept = ctl.State == FishingController.S.Retrieving && tk.State == Tackle.Mode.Water && tk.BareHook && ctl.SpentRetrieve;
+            // (the hook goes with the parted line: the float is wound in with nothing under it, HookDef)
+            bool kept = ctl.State == FishingController.S.Retrieving && tk.State == Tackle.Mode.Water && tk.BareHook && tk.HookGone && ctl.SpentRetrieve;
             var r = ctl.LastLoss;
             var w2 = new RigWatch();
             yield return WatchHome(ctl, bait, w2, 30f, "breaks_barehook", 1.1f);
@@ -320,8 +321,8 @@ namespace FishingKing
                 $"fish {(f != null ? f.Sp.id : "none")} bit {biting}, hooked by the tap {hooked}, {bait.id} {n0} -> {nHook} at the hook set");
             bool onlyLine = OnlyLineLost(r);
             BCheck("float_tension_kept", parted && kept && r != null && r.off == FishingController.Off.AtHook && !r.floatLost && onlyLine && ctl.Breaks == breaks0 + 1,
-                $"parted at the hook: float kept and wound in spent with the bare hook {kept}, off {(r != null ? r.off.ToString() : "-")}, nothing lost but the line (the toast lists only it) {onlyLine}: '{(r != null ? string.Join(" | ", r.items) : "-")}'");
-            BCheck("float_tension_home", w2.home && w2.floatFrames > 0 && w2.bareFrames > 0 && w2.baitFrames == 0 && w2.z0 > w2.zEnd + 5f,
+                $"parted at the hook: float kept and wound in spent with no hook {kept}, off {(r != null ? r.off.ToString() : "-")}, nothing lost but the line (the toast lists only it) {onlyLine}: '{(r != null ? string.Join(" | ", r.items) : "-")}'");
+            BCheck("float_tension_home", w2.home && w2.floatFrames > 0 && w2.bareFrames == 0 && w2.baitFrames == 0 && w2.z0 > w2.zEnd + 5f,
                 w2.Brief);
             BCheck("float_tension_bait", n1 == n0 - 1, $"{bait.id} {n0} -> {n1} for the bite (-1 at the hook set, nothing more at the break)");
             BCheck("float_tension_snap", snap.Plays == plays0 + 1 && snap.LastKind == LineSnap.Kind.Recoil && snap.LastFrames >= 8,
@@ -456,13 +457,14 @@ namespace FishingKing
             yield return BrWind(ctl, 6f, 2f);
             var tk = ctl.Tackle;
             var r = ctl.LastLoss;
-            bool kept = ctl.State == FishingController.S.Retrieving && tk.State == Tackle.Mode.Water && tk.BareHook && ctl.SpentRetrieve;
+            // (the hook goes with the parted line: the float is wound in with nothing under it, HookDef)
+            bool kept = ctl.State == FishingController.S.Retrieving && tk.State == Tackle.Mode.Water && tk.BareHook && tk.HookGone && ctl.SpentRetrieve;
             var w = new RigWatch();
             yield return WatchHome(ctl, bait, w);
             ToastParts(r, out bool shown, out int icons, out _, out _);   // (shown after the whip, for 3.2 s)
             int n1 = Game.I.BaitCount(bait.id);
-            BCheck("snag_float", snagged && ctl.SnagBreaks == b0 + 1 && r != null && r.cause == "snag" && kept && w.home && w.floatFrames > 0 && w.bareFrames > 0 && w.baitFrames == 0,
-                $"snagged {snagged}, forced until it parted {ctl.SnagBreaks - b0}: float kept, wound in spent with the bare hook {kept}; {w.Brief}");
+            BCheck("snag_float", snagged && ctl.SnagBreaks == b0 + 1 && r != null && r.cause == "snag" && kept && w.home && w.floatFrames > 0 && w.bareFrames == 0 && w.baitFrames == 0,
+                $"snagged {snagged}, forced until it parted {ctl.SnagBreaks - b0}: float kept, wound in spent with no hook {kept}; {w.Brief}");
             BCheck("snag_float_bait", n1 == n0 - 1 && r != null && r.baitN == 1 && shown && icons >= 1 && r.items.Any(s => s == bait.name),
                 $"{bait.id} {n0} -> {n1} (the unused bait once), toast '{(r != null ? string.Join(" | ", r.items) : "-")}' ({icons} icon(s))");
             BCheck("snag_float_snap", snap.Plays == plays0 + 1 && snap.LastKind == LineSnap.Kind.Recoil && snap.LastFrames >= 8,

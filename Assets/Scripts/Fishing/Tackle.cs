@@ -431,7 +431,7 @@ namespace FishingKing
         public void SetBait(BaitDef b)
         {
             Bait = b;
-            baitSr.sprite = BareHook ? Art.Get(BareHookSprite) : Art.WorldBait(b.id);
+            baitSr.sprite = HookGone ? null : BareHook ? Art.Get(BareHookSprite) : Art.WorldBait(b.id);
             floatSr.sprite = Art.Get(FloatSprite);
         }
 
@@ -451,7 +451,18 @@ namespace FishingKing
         public void TakeBait()
         {
             BaitGone = true;
-            if (UsesFloat) baitSr.sprite = Art.Get(BareHookSprite);
+            if (UsesFloat && !HookGone) baitSr.sprite = Art.Get(BareHookSprite);
+        }
+
+        /// <summary>The hook itself is gone (a float rig whose line parted at the hook): nothing is drawn under the float until the next cast.</summary>
+        public bool HookGone { get; private set; }
+
+        /// <summary>The line parted at the hook: the hook goes with the bait (the float is wound in with nothing under it).</summary>
+        public void LoseHookOff()
+        {
+            BaitGone = true;
+            HookGone = true;
+            baitSr.sprite = null;
         }
 
         /// <summary>A new cast re-baits the hook.</summary>
@@ -459,6 +470,7 @@ namespace FishingKing
         {
             if (!BaitGone) return;
             BaitGone = false;
+            HookGone = false;   // (a new hook tied on)
             if (Bait != null) baitSr.sprite = Art.WorldBait(Bait.id);
         }
 

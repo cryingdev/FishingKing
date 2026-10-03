@@ -269,6 +269,23 @@ namespace FishingKing
         /// <summary>The point's bite into a prop's face when caught (x the material's grab: SnagPhysics).</summary>
         public float grabK = 1f;
         public override ItemKind Kind => ItemKind.Hook;
+
+        /// <summary>A fish this far under the hook's fit (share of its low end) is ... at most this unlikely to come for it.</summary>
+        public const float SmallSlope = 1.5f, SmallFloor = 0.25f;
+        /// <summary>A fish this far over the hook's fit (share of its high end) is held ... at least this well.</summary>
+        public const float BigSlope = 0.8f, BigFloor = 0.4f;
+
+        /// <summary>
+        /// How readily a fish of <paramref name="cm"/> comes for a bait on this hook (x the approach chance): 1 down to the
+        /// fit's low end, then less the smaller it is (a mouth too small for the hook), to <see cref="SmallFloor"/>.
+        /// </summary>
+        public float BiteK(float cm) => fitCm.x <= 0f || cm >= fitCm.x ? 1f : Mathf.Max(SmallFloor, 1f - SmallSlope * (fitCm.x - cm) / fitCm.x);
+
+        /// <summary>
+        /// How well it holds a fish of <paramref name="cm"/> (x the slack it survives, ÷ the throws on jumps): <see cref="hold"/>
+        /// up to the fit's high end, then less the bigger the fish (it tears out or bends), to <see cref="BigFloor"/> x hold.
+        /// </summary>
+        public float HoldK(float cm) => hold * (cm <= fitCm.y ? 1f : Mathf.Max(BigFloor, 1f - BigSlope * (cm - fitCm.y) / fitCm.y));
     }
 
     public class TankDef : ItemDef

@@ -211,6 +211,8 @@ namespace FishingKing
         readonly ReelDef reel;
         readonly LineDef line;
         readonly float sizeT, landDist;
+        /// <summary>How well the hook holds this fish (HookDef.HoldK; 1 = a lure / as the game always had): x the slack it survives, ÷ the jumps' throws.</summary>
+        readonly float hookHold;
         /// <summary>The line out (m) at which the fish is landed.</summary>
         public float LandDist => landDist;
         float phaseTime, slack, breakTimer, elapsed;
@@ -219,17 +221,18 @@ namespace FishingKing
         float plainTension;
         readonly System.Random rnd;
 
-        float SlackLimit => 2.4f + rod.hookBonus * 2f;
+        float SlackLimit => (2.4f + rod.hookBonus * 2f) * hookHold;
         float BreakGrace => 0.3f + rod.flex * 0.6f;
 
         public FightModel(FishSpecies sp, float sizeCm, RodDef rod, ReelDef reel, LineDef line, float stagePower,
-            float startLine, float landDist, int seed)
+            float startLine, float landDist, int seed, float hookHold = 1f)
         {
             this.sp = sp;
             this.rod = rod;
             this.reel = reel;
             this.line = line;
             this.landDist = landDist;
+            this.hookHold = Mathf.Max(0.1f, hookHold);
             sizeT = sp.SizeT(sizeCm);
             Power = sp.power * (0.55f + 0.45f * sizeT) * stagePower;
             Line = startLine;
@@ -491,13 +494,13 @@ namespace FishingKing
             {
                 if (Jump == JumpKind.Hop)
                 {
-                    if (Tension > LineLimit * 0.7f && rnd.NextDouble() < dt * 1.2f) Result = Outcome.Escaped;
+                    if (Tension > LineLimit * 0.7f && rnd.NextDouble() < dt * 1.2f / hookHold) Result = Outcome.Escaped;
                 }
                 else if (nextShake < ShakeAt.Length && JumpT >= ShakeAt[nextShake])
                 {
                     // one roll per shake, on its peak
                     nextShake++;
-                    float p = Jump == JumpKind.Shake ? 0.45f : 0.3f;
+                    float p = Mathf.Min(0.9f, (Jump == JumpKind.Shake ? 0.45f : 0.3f) / hookHold);
                     if (Tension > LineLimit * 0.6f && rnd.NextDouble() < p) Result = Outcome.Escaped;
                 }
             }

@@ -30,6 +30,8 @@ namespace FishingKing
             /// <summary>A natural bait lost unused (a snag) and how many (0: none).</summary>
             public BaitDef bait;
             public int baitN;
+            /// <summary>The hook lost with a natural bait's parted line (null: none, or the free small hook).</summary>
+            public HookDef hook;
             /// <summary>The float went with the line (it parted above it).</summary>
             public bool floatLost;
             /// <summary>The lure is a legend's key / costs <see cref="ExpensiveLure"/> or more: highlighted in the toast.</summary>
@@ -92,6 +94,9 @@ namespace FishingKing
             var bait = Tackle.Bait;
             // the eaten bait was paid for at the hook set: a parted line only takes a lure (and the float above it)
             if (bait.isLure && Game.I.LoseLure(bait)) r.lure = bait;
+            // (a natural bait's hook goes with the line wherever it parted: HookDef)
+            bool hookLost = !bait.isLure;
+            if (hookLost) r.hook = Game.I.LoseHook();
             r.floatLost = Tackle.FloatFight == Tackle.FightFloat.Line && above;
             Hooked.Flee();
             Hooked = null;
@@ -100,6 +105,8 @@ namespace FishingKing
             r.floatAt = Tackle.FloatAt;
             r.mouth = mouth;
             FishOff(r.off, mouth, r.breakAt);
+            // (a float rig kept on the line comes home with nothing under the float: the hook went with the fish)
+            if (hookLost && Tackle.State == Tackle.Mode.Water) Tackle.LoseHookOff();
             LoseLine(r, lineOut);
             ShowLoss(r);
         }
@@ -195,6 +202,8 @@ namespace FishingKing
                     r.baitN = 1;
                 }
             }
+            // (a natural bait's hook goes with the line: HookDef)
+            if (!bait.isLure) r.hook = Game.I.LoseHook();
             return r;
         }
 
@@ -241,6 +250,7 @@ namespace FishingKing
                 items.Add(new Toast.Item { icon = Art.Item(r.bait.id), text = r.bait.name, highlight = key || r.bait.price >= ExpensiveLure,
                     badge = key ? Art.UI("icon_eye") : null });
             }
+            if (r.hook != null) items.Add(new Toast.Item { icon = Art.Item(r.hook.id), text = r.hook.name });
             if (r.floatLost) items.Add(new Toast.Item { icon = Art.Item(Tackle.FloatItemId), text = "찌" });
             if (r.lineLost > 0.05f) items.Add(new Toast.Item { icon = Art.Item(Game.I.Line.id), text = $"줄 {r.lineLost:0.#}m" });
             foreach (var it in items) r.items.Add(it.text);

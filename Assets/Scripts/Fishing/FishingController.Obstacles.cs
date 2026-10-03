@@ -152,7 +152,7 @@ namespace FishingKing
             // (the free way from the physics: the rod move that would slide it out; none: wedged)
             tk.PropFaces(propFaces);
             SnagPhysics.Exits(propFaces, out bool up, out bool down, out _);
-            PropGuideNow(sn, tk.PropGrab(), up, down);
+            PropGuideNow(sn, PropGrabNow(), up, down);
             var sb = new System.Text.StringBuilder();
             foreach (var f in propFaces) sb.Append(string.Format(CIo, " {0} n ({1:0.00}, {2:0.00}) lean {3:+0.00;-0.00} mu {4:0.00}", f.id, f.n.x, f.n.y, f.slope, f.mu));
             Obstacles.Say(string.Format(CIo, "prop catch {0}: guide side {1:+0;-0;0} pitch {2:+0;-0;0}{3}, exits up {4} down {5};{6}", o.id, propGuide.x, propGuide.y,
@@ -507,6 +507,13 @@ namespace FishingKing
             if (L.IsIce ? tk.Depth <= 0.55f : tk.Surface.z <= L.zNear + 0.8f) return;
             var b = tk.Bait;
             SnagBase(b, out float hardB, out float weedB, out float touchB);
+            // (a natural bait: the weedless hook's guard snags less: HookDef.snagK)
+            if (RigHook != null)
+            {
+                hardB *= RigHook.snagK;
+                weedB *= RigHook.snagK;
+                touchB *= RigHook.snagK;
+            }
             bool film = !tk.UsesFloat && tk.Depth <= 0.12f;
             var hz = hardB > 0f || touchB > 0f ? obs.ZoneAt(h, true, false, film) : null;
             if (tk.BottomTouch && hz != null && touchB > 0f)
@@ -830,6 +837,7 @@ namespace FishingKing
                 // (caught on a pad: the float lies off its edge)
                 if (sn != null && sn.kind == "pad") Tackle.Surface = PadEdge(sn.zone, Tackle.Surface);
                 Tackle.LetGoSnag();
+                if (!Tackle.Bait.isLure) Tackle.LoseHookOff();   // (wound in with nothing under the float: the hook stayed in the snag)
                 snap.Recoil(hook);
                 Angler.LineTarget = Tackle.LineEnd;
                 Angler.Slack01 = 0.45f;
