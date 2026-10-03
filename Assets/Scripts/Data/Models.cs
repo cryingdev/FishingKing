@@ -5,7 +5,7 @@ namespace FishingKing
 {
     public enum Rarity { Common, Uncommon, Rare, Epic, Legendary }
 
-    public enum ItemKind { Rod, Reel, Line, Bait, Tank }
+    public enum ItemKind { Rod, Reel, Line, Bait, Tank, Hook }
 
     public static class RarityInfo
     {
@@ -247,6 +247,28 @@ namespace FishingKing
         public bool IsSteady => action != LureAction.None && work == Work.Wind && rest.y <= 0f;
 
         public override ItemKind Kind => ItemKind.Bait;
+    }
+
+    /// <summary>
+    /// A hook for the natural-bait (float) rigs (lures carry their own): a consumable sold in packs, one lost whenever the
+    /// line parts at the hook or above it. The free small hook is the default and never runs out. Its effects (bites,
+    /// the hook set, holding a fish, snags) are applied by the fishing code (Docs/data_reference.md, hooks).
+    /// </summary>
+    public class HookDef : ItemDef
+    {
+        public bool infinite;                // the free starter hook
+        public int packSize = 10;
+        /// <summary>The fish lengths (cm) the hook suits: inside it the bites and the hold are as given, outside they fall off.</summary>
+        public Vector2 fitCm = new Vector2(0f, 999f);
+        /// <summary>Seconds added to (or taken off) the hook-set window.</summary>
+        public float setBonus;
+        /// <summary>How well it holds a fish of its size against slack and head shakes (1 = as the game always had).</summary>
+        public float hold = 1f;
+        /// <summary>The snag chance on bottom structure and weed (x).</summary>
+        public float snagK = 1f;
+        /// <summary>The point's bite into a prop's face when caught (x the material's grab: SnagPhysics).</summary>
+        public float grabK = 1f;
+        public override ItemKind Kind => ItemKind.Hook;
     }
 
     public class TankDef : ItemDef

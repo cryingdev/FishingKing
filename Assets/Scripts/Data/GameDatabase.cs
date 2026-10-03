@@ -17,6 +17,7 @@ namespace FishingKing
         public static readonly List<ReelDef> Reels = new List<ReelDef>();
         public static readonly List<LineDef> Lines = new List<LineDef>();
         public static readonly List<BaitDef> Baits = new List<BaitDef>();
+        public static readonly List<HookDef> Hooks = new List<HookDef>();
         public static readonly List<TankDef> Tanks = new List<TankDef>();
         public static readonly List<StageDef> Stages = new List<StageDef>();
 
@@ -28,6 +29,7 @@ namespace FishingKing
         public const string StarterReel = "reel_basic";
         public const string StarterLine = "line_nylon2";
         public const string StarterBait = "bait_paste";
+        public const string StarterHook = "hook_small";
 
         /// <summary>
         /// What went wrong reading the species and stage data (empty when it loaded cleanly; each is logged once as an
@@ -47,6 +49,7 @@ namespace FishingKing
             foreach (var i in Reels) itemById[i.id] = i;
             foreach (var i in Lines) itemById[i.id] = i;
             foreach (var i in Baits) itemById[i.id] = i;
+            foreach (var i in Hooks) itemById[i.id] = i;
             foreach (var i in Tanks) itemById[i.id] = i;
             var errors = new List<string>();
             foreach (var f in r.findings)
@@ -250,6 +253,12 @@ namespace FishingKing
                 fallStrike = new Vector2(0.5f, 99f), landStrike = 1.0f,
                 hint = "톡 당겨 올린 뒤 손을 떼고 가라앉히기 — 입질은 떨어질 때!",
                 desc = "어둠 속에서 푸르게 빛나는 새우 모양 루어. 천천히 가라앉을 때 입질이 온다." });
+
+            // hooks for the natural-bait rigs (Docs/data_reference.md, hooks): the small one free, the rest in packs of 10
+            Hooks.Add(new HookDef { id = "hook_small", name = "소형 바늘", price = 0, infinite = true, fitCm = new Vector2(0f, 35f), desc = "무한 제공되는 기본 바늘. 작은 고기가 잘 물지만 큰 고기는 잘 털린다." });
+            Hooks.Add(new HookDef { id = "hook_medium", name = "중형 바늘", price = 200, fitCm = new Vector2(20f, 70f), desc = "붕어·배스·고등어 크기에 알맞은 바늘." });
+            Hooks.Add(new HookDef { id = "hook_large", name = "대형 바늘", price = 500, fitCm = new Vector2(50f, 999f), hold = 1.2f, desc = "큰 고기를 단단히 잡는 굵은 바늘. 작은 고기는 잘 안 문다." });
+            Hooks.Add(new HookDef { id = "hook_weedless", name = "위드리스 바늘", price = 800, fitCm = new Vector2(20f, 70f), setBonus = -0.15f, hold = 0.9f, snagK = 0.4f, grabK = 0.4f, desc = "바늘 끝을 철사로 막아 밑걸림이 적다. 대신 챔질이 조금 어렵다." });
 
             // capacity in 칸 (소형 <40cm 1, 중형 40-100cm 2, 대형 100-200cm 4, 초대형 200cm+ 8) and the biggest size class
             Tanks.Add(new TankDef { id = "tank_0", name = "작은 어항", level = 0, capacity = 6, maxClass = 0, price = 0, desc = "책상 위 작은 어항. 40cm 미만 소형 물고기만 살 수 있다." });

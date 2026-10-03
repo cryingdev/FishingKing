@@ -294,6 +294,7 @@ namespace FishingKing
         public ReelDef Reel => GameDatabase.GetItem<ReelDef>(data.reel);
         public LineDef Line => GameDatabase.GetItem<LineDef>(data.line);
         public BaitDef Bait => GameDatabase.GetItem<BaitDef>(data.bait);
+        public HookDef Hook => GameDatabase.GetItem<HookDef>(data.hook) ?? GameDatabase.GetItem<HookDef>(GameDatabase.StarterHook);
         public TankDef Tank => GameDatabase.TankForLevel(data.tankLevel);
 
         public int BaitCount(string id)
@@ -316,6 +317,7 @@ namespace FishingKing
                 case ItemKind.Reel: return data.reel == item.id;
                 case ItemKind.Line: return data.line == item.id;
                 case ItemKind.Bait: return data.bait == item.id;
+                case ItemKind.Hook: return data.hook == item.id;
                 case ItemKind.Tank: return ((TankDef)item).level == data.tankLevel;
             }
             return false;
@@ -331,6 +333,13 @@ namespace FishingKing
                 data.tankLevel = tank.level;
                 if (!Owns(tank.id)) data.ownedItems.Add(tank.id);
                 Notify();
+                return BuyResult.Ok;
+            }
+            if (item is HookDef hook)
+            {
+                if (hook.infinite) return BuyResult.AlreadyOwned;
+                if (!Spend(hook.price)) return BuyResult.NotEnoughCoins;
+                AddHook(hook.id, hook.packSize);
                 return BuyResult.Ok;
             }
             if (item is BaitDef bait && !bait.isLure)
@@ -365,8 +374,46 @@ namespace FishingKing
                 case ItemKind.Reel: data.reel = item.id; break;
                 case ItemKind.Line: data.line = item.id; break;
                 case ItemKind.Bait: if (HasBait(item.id)) data.bait = item.id; break;
+                case ItemKind.Hook: if (HasHook(item.id)) data.hook = item.id; break;
             }
             Notify();
+        }
+
+        // ------------------------------------------------------------------ hooks (the natural-bait rigs)
+        /// <summary>Hooks of this kind on hand (the free small hook: never runs out).</summary>
+        public int HookCount(string id)
+        {
+            var h = GameDatabase.GetItem<HookDef>(id);
+            if (h == null) return 0;
+            if (h.infinite) return int.MaxValue;
+            var e = data.hooks.FirstOrDefault(x => x.id == id);
+            return e?.count ?? 0;
+        }
+
+        public bool HasHook(string id) => HookCount(id) > 0;
+
+        public void AddHook(string id, int n)
+        {
+            var e = data.hooks.FirstOrDefault(x => x.id == id);
+            if (e == null) data.hooks.Add(e = new BaitCount { id = id, count = 0 });
+            e.count += n;
+            if (!Owns(id)) data.ownedItems.Add(id);
+            Notify();
+        }
+
+        /// <summary>
+        /// The hook on a natural-bait rig gone with a parted line: one fewer; the last one gone, the free small hook goes on.
+        /// The hook lost (null: the free one, nothing lost).
+        /// </summary>
+        public HookDef LoseHook()
+        {
+            var h = Hook;
+            if (h == null || h.infinite) return null;
+            var e = data.hooks.FirstOrDefault(x => x.id == h.id);
+            if (e != null) e.count = Mathf.Max(0, e.count - 1);
+            if (e == null || e.count <= 0) data.hook = GameDatabase.StarterHook;
+            Notify();
+            return h;
         }
 
         // ------------------------------------------------------------------ the line on the spool

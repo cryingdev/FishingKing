@@ -75,6 +75,9 @@ namespace FishingKing
         public string reel = GameDatabase.StarterReel;
         public string line = GameDatabase.StarterLine;
         public string bait = GameDatabase.StarterBait;
+        // hooks for the natural-bait rigs (a save from before them: none bought, the free small hook on)
+        public List<BaitCount> hooks = new List<BaitCount>();
+        public string hook = GameDatabase.StarterHook;
         public int tankLevel;
         public List<CaughtFish> aquarium = new List<CaughtFish>();
         public long aquariumCollectedAt;
@@ -125,7 +128,7 @@ namespace FishingKing
         {
             var d = new SaveData();
             d.worldSeed = SaveSystem.NewSeed();
-            d.ownedItems.AddRange(new[] { GameDatabase.StarterRod, GameDatabase.StarterReel, GameDatabase.StarterLine, GameDatabase.StarterBait, "tank_0" });
+            d.ownedItems.AddRange(new[] { GameDatabase.StarterRod, GameDatabase.StarterReel, GameDatabase.StarterLine, GameDatabase.StarterBait, GameDatabase.StarterHook, "tank_0" });
             d.baits.Add(new BaitCount { id = "bait_worm", count = 10 });
             d.aquariumCollectedAt = SaveSystem.Now;
             return d;
@@ -205,19 +208,21 @@ namespace FishingKing
         {
             d.ownedItems ??= new List<string>();
             d.baits ??= new List<BaitCount>();
+            d.hooks ??= new List<BaitCount>();
             d.lineSpools ??= new List<LineSpool>();
             d.aquarium ??= new List<CaughtFish>();
             d.records ??= new List<SpeciesRecord>();
             d.legends ??= new List<LegendRecord>();
             d.unlockedStages ??= new List<string>();
             // (not the starter line: one thrown away when too little was left stays so until it is bought again, free)
-            foreach (var id in new[] { GameDatabase.StarterRod, GameDatabase.StarterReel, GameDatabase.StarterBait, "tank_0" })
+            foreach (var id in new[] { GameDatabase.StarterRod, GameDatabase.StarterReel, GameDatabase.StarterBait, GameDatabase.StarterHook, "tank_0" })
                 if (!d.ownedItems.Contains(id)) d.ownedItems.Add(id);
             if (!d.unlockedStages.Contains("lake")) d.unlockedStages.Add("lake");
             if (GameDatabase.GetItem<RodDef>(d.rod) == null) d.rod = GameDatabase.StarterRod;
             if (GameDatabase.GetItem<ReelDef>(d.reel) == null) d.reel = GameDatabase.StarterReel;
             if (GameDatabase.GetItem<LineDef>(d.line) == null) d.line = GameDatabase.StarterLine;
             if (GameDatabase.GetItem<BaitDef>(d.bait) == null) d.bait = GameDatabase.StarterBait;
+            if (GameDatabase.GetItem<HookDef>(d.hook) == null) d.hook = GameDatabase.StarterHook;
             if (GameDatabase.LoadErrors.Count == 0) d.aquarium.RemoveAll(f => f == null || GameDatabase.GetFish(f.speciesId) == null);
             else
             {
