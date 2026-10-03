@@ -5,12 +5,12 @@ using UnityEngine.UI;
 
 namespace FishingKing
 {
-    /// <summary>Tackle shop: rods, reels, lines, baits and aquarium upgrades.</summary>
+    /// <summary>Tackle shop: rods, reels, lines, hooks, baits and aquarium upgrades.</summary>
     public static class ShopUI
     {
         static readonly (ItemKind kind, string label)[] Tabs =
         {
-            (ItemKind.Rod, "낚싯대"), (ItemKind.Reel, "릴"), (ItemKind.Line, "낚싯줄"), (ItemKind.Bait, "미끼"), (ItemKind.Tank, "수조"),
+            (ItemKind.Rod, "낚싯대"), (ItemKind.Reel, "릴"), (ItemKind.Line, "낚싯줄"), (ItemKind.Hook, "바늘"), (ItemKind.Bait, "미끼"), (ItemKind.Tank, "수조"),
         };
 
         public static void Open(Transform parent, ItemKind start = ItemKind.Rod)
@@ -107,6 +107,7 @@ namespace FishingKing
                 else
                 {
                     if (kind == ItemKind.Tank) TankHeader(content);
+                    if (kind == ItemKind.Hook) TextHeader(content, "HookNote", "미끼 채비에 쓰는 바늘 · 루어엔 안 써요 · 줄이 끊기면 1개 잃어요");
                     foreach (var item in Items(kind))
                         if (!(item is BaitDef bd && bd.isLure)) Row(content, item, () => show(kind));
                 }
@@ -114,8 +115,8 @@ namespace FishingKing
             for (int i = 0; i < Tabs.Length; i++)
             {
                 var k = Tabs[i].kind;
-                var b = UIKit.Button(win, Tabs[i].label, "grey", () => show(k), new Vector2(150, 50), 20);
-                b.GetComponent<RectTransform>().At(new Vector2(0, 1), new Vector2(26 + i * 158, -48), new Vector2(150, 50));
+                var b = UIKit.Button(win, Tabs[i].label, "grey", () => show(k), new Vector2(128, 50), 20);
+                b.GetComponent<RectTransform>().At(new Vector2(0, 1), new Vector2(26 + i * 134, -48), new Vector2(128, 50));
                 tabBtns.Add(b);
             }
             show(start);
@@ -367,6 +368,7 @@ namespace FishingKing
                 case ItemKind.Reel: return GameDatabase.Reels;
                 case ItemKind.Line: return GameDatabase.Lines;
                 case ItemKind.Bait: return GameDatabase.Baits;
+                case ItemKind.Hook: return GameDatabase.Hooks;
                 default: return GameDatabase.Tanks;
             }
         }
@@ -389,6 +391,14 @@ namespace FishingKing
                     string kind = b.infinite ? "무한" : b.isLure ? "루어(재사용, 줄 끊기면 분실)" : $"{b.packSize}개 묶음";
                     return $"{kind} · {who}";
                 }
+                case HookDef h:
+                {
+                    var parts = new List<string> { h.infinite ? "무한" : $"{h.packSize}개 묶음", "맞는 크기 " + HookFit(h) };
+                    if (h.hold > 1f) parts.Add("<color=#2e7d3a>잘 안 털림</color>");
+                    if (h.snagK < 1f) parts.Add("<color=#2e7d3a>밑걸림 적음</color>");
+                    if (h.setBonus < 0f) parts.Add("<color=#b0402e>챔질 어려움</color>");
+                    return string.Join(" · ", parts);
+                }
                 case TankDef t:
                     return $"수조 {AquaTank.LimitText(t)}";
             }
@@ -404,6 +414,17 @@ namespace FishingKing
             if (tough >= 0.95f) return "쓸림 보통";
             return "<color=#b0402e>쓸림 약함</color>";
         }
+
+        /// <summary>Sold in packs and used up (natural baits, hooks): bought again and again, counted, put on with 사용.</summary>
+        static bool IsPack(ItemDef it) => it is HookDef || (it is BaitDef b && !b.isLure);
+        /// <summary>The free pack item that never runs out (the paste, the small hook).</summary>
+        static bool IsFree(ItemDef it) => it is HookDef h ? h.infinite : it is BaitDef b && b.infinite;
+        static int PackCount(ItemDef it) => it is HookDef ? Game.I.HookCount(it.id) : Game.I.BaitCount(it.id);
+        static int PackSize(ItemDef it) => it is HookDef h ? h.packSize : it is BaitDef b ? b.packSize : 1;
+
+        /// <summary>A hook's fit as text: the fish lengths it suits (HookDef.fitCm).</summary>
+        public static string HookFit(HookDef h) =>
+            h.fitCm.x <= 0f ? $"{h.fitCm.y:0}cm 이하" : h.fitCm.y >= 999f ? $"{h.fitCm.x:0}cm 이상" : $"{h.fitCm.x:0}~{h.fitCm.y:0}cm";
 
         static void Row(RectTransform content, ItemDef it, System.Action refresh)
         {
@@ -445,16 +466,16 @@ namespace FishingKing
             string style;
             bool interact = true;
             Sprite icon = null;
-            bool owned = it is TankDef tk ? tk.level <= Game.Data.tankLevel : (it is BaitDef bd && !bd.isLure) ? false : g.Owns(it.id);
+            bool owned = it is TankDef tk ? tk.level <= Game.Data.tankLevel : IsPack(it) ? false : g.Owns(it.id);
             if (it is TankDef tank)
             {
                 if (tank.level <= Game.Data.tankLevel) { label = "보유 중"; style = "grey"; interact = false; }
                 else if (tank.level > Game.Data.tankLevel + 1) { label = "이전 단계 필요"; style = "grey"; interact = false; }
                 else { label = UIKit.Num(it.price); style = "yellow"; icon = Art.UI("coin"); }
             }
-            else if (it is BaitDef b && !b.isLure)
+            else if (IsPack(it))
             {
-                if (b.infinite) { label = g.IsEquipped(it) ? "사용 중" : "사용"; style = g.IsEquipped(it) ? "grey" : "green"; interact = !g.IsEquipped(it); }
+                if (IsFree(it)) { label = g.IsEquipped(it) ? "사용 중" : "사용"; style = g.IsEquipped(it) ? "grey" : "green"; interact = !g.IsEquipped(it); }
                 else { label = UIKit.Num(it.price); style = "yellow"; icon = Art.UI("coin"); }
             }
             else if (owned)
@@ -470,10 +491,10 @@ namespace FishingKing
                 style = "yellow";
                 icon = Art.UI("coin");
             }
-            bool consumable = it is BaitDef cbt && !cbt.isLure;
+            bool consumable = IsPack(it);
             var btn = UIKit.Button(row.transform, label, style, () =>
             {
-                bool freeBait = it is BaitDef fb && fb.infinite;
+                bool freeBait = IsFree(it);
                 if (freeBait || (owned && !consumable && !(it is TankDef)))
                 {
                     g.Equip(it);
@@ -485,8 +506,9 @@ namespace FishingKing
                 {
                     case BuyResult.Ok:
                         Sfx.Play(Sfx.Coin);
-                        Toast.Show(it is BaitDef bb && !bb.isLure ? $"{it.name} {bb.packSize}개 구매! (보유 {g.BaitCount(it.id)})" : $"{it.name} 구매!", UIKit.Gold);
-                        if (it is BaitDef nb && !nb.isLure && g.Bait.infinite) g.Equip(it);
+                        Toast.Show(IsPack(it) ? $"{it.name} {PackSize(it)}개 구매! (보유 {PackCount(it)})" : $"{it.name} 구매!", UIKit.Gold);
+                        // (the first pack bought goes on in place of the free one)
+                        if (IsPack(it) && (it is HookDef ? g.Hook.infinite : g.Bait.infinite)) g.Equip(it);
                         break;
                     case BuyResult.NotEnoughCoins:
                         Sfx.Play(Sfx.Error);
@@ -495,14 +517,14 @@ namespace FishingKing
                 }
                 refresh();
             }, new Vector2(170, 60), 21, icon);
-            btn.GetComponent<RectTransform>().At(new Vector2(1, 0.5f), new Vector2(-14, it is BaitDef bx && !bx.isLure && !bx.infinite ? 8 : 0), new Vector2(170, 60), new Vector2(1, 0.5f));
+            btn.GetComponent<RectTransform>().At(new Vector2(1, 0.5f), new Vector2(-14, IsPack(it) && !IsFree(it) ? 8 : 0), new Vector2(170, 60), new Vector2(1, 0.5f));
             btn.interactable = interact;
-            if (it is BaitDef cb && !cb.isLure && !cb.infinite)
+            if (IsPack(it) && !IsFree(it))
             {
-                var cnt = UIKit.Label(row.transform, $"보유 {g.BaitCount(it.id)}개" + (g.IsEquipped(it) ? " · 사용 중" : ""), 14,
+                var cnt = UIKit.Label(row.transform, $"보유 {PackCount(it)}개" + (g.IsEquipped(it) ? " · 사용 중" : ""), 14,
                     new Color32(0x3a, 0x5a, 0x8a, 0xff), TextAnchor.LowerRight, false);
                 cnt.rectTransform.At(new Vector2(1, 0), new Vector2(-16, 6), new Vector2(200, 20), new Vector2(1, 0));
-                if (g.BaitCount(it.id) > 0 && !g.IsEquipped(it))
+                if (PackCount(it) > 0 && !g.IsEquipped(it))
                 {
                     var use = UIKit.Button(row.transform, "사용", "green", () => { g.Equip(it); refresh(); }, new Vector2(76, 44), 20);
                     use.GetComponent<RectTransform>().At(new Vector2(1, 0.5f), new Vector2(-194, 8), new Vector2(76, 44), new Vector2(1, 0.5f));

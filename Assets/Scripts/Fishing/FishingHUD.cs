@@ -33,7 +33,7 @@ namespace FishingKing
         // The feet stay within ~240 units of the centre (1 m at the feet is ~92 units at every aspect) and the canvas is
         // at least 960 wide, so the pair (from 160 units in from the right edge) never covers him or the props at his feet
         const float WalkBtn = 64, WalkGap = 12, WalkInset = 20, WalkBottom = 26;
-        Text hint, flash, tensionLabel, fishName, distance, phaseLabel, baitCount, depthText, aimText, depthLabel;
+        Text hint, flash, tensionLabel, fishName, distance, phaseLabel, baitCount, hookTag, depthText, aimText, depthLabel;
         /// <summary>The fight strip's phase label (the snag strip's guide; for the tests).</summary>
         public string PhaseText => phaseLabel != null ? phaseLabel.text : "";
         Button depthMinus, depthPlus;
@@ -110,6 +110,10 @@ namespace FishingKing
             baitIcon.rectTransform.anchoredPosition = new Vector2(0, 4);
             baitCount = UIKit.Label(baitBtn.transform, "", 16, UIKit.Cream, TextAnchor.LowerRight);
             baitCount.rectTransform.Fill(4, 6, 4, 8);
+            // the hook under a natural bait (소형 / 중형 8 ...): top left of the bait button
+            hookTag = UIKit.Label(baitBtn.transform, "", 13, UIKit.Sky, TextAnchor.UpperLeft, false, "HookTag");
+            hookTag.horizontalOverflow = HorizontalWrapMode.Overflow;
+            hookTag.rectTransform.Fill(5, 4, 3, 50);
             depthGroup = UIKit.Rect(tacklePanel, "Depth").At(new Vector2(0, 0.5f), new Vector2(92, 0), new Vector2(152, 76), new Vector2(0, 0.5f));
             depthLabel = UIKit.Label(depthGroup, "찌 수심", 15, UIKit.Sky, TextAnchor.UpperCenter);
             depthLabel.rectTransform.Fill(0, 0, 3, 49);
@@ -550,7 +554,7 @@ namespace FishingKing
         }
 
         /// <summary>
-        /// 내 채비: the rod, reel, line and bait (lures) he owns, by tab, each with its stats and 장착. The rod, reel and
+        /// 내 채비: the rod, reel, line, hook and bait (lures) he owns, by tab, each with its stats and 장착. The rod, reel, hook and
         /// line change at the ready only (the rig in hand); the bait also while it is out (it is wound in for it).
         /// </summary>
         void OpenTackle(ItemKind tab)
@@ -563,20 +567,21 @@ namespace FishingKing
             var w = Dialog.Window("내 채비", new Vector2(760, 520), out var close);
             var bar = UIKit.Rect(w, "Tabs").At(new Vector2(0.5f, 1f), new Vector2(0, -54), new Vector2(712, 44), new Vector2(0.5f, 1f));
             UIKit.ScrollList(w, out var content, 6).GetComponent<RectTransform>().Fill(24, 24, 106, 24);
-            var kinds = new[] { (ItemKind.Rod, "낚싯대"), (ItemKind.Reel, "릴"), (ItemKind.Line, "낚싯줄"), (ItemKind.Bait, "미끼") };
+            var kinds = new[] { (ItemKind.Rod, "낚싯대"), (ItemKind.Reel, "릴"), (ItemKind.Line, "낚싯줄"), (ItemKind.Hook, "바늘"), (ItemKind.Bait, "미끼") };
             var tabs = new Button[kinds.Length];
             void Show(ItemKind k)
             {
                 for (int i = 0; i < kinds.Length; i++) tabs[i].SetStyle(kinds[i].Item1 == k ? "yellow" : "grey");
                 for (int i = content.childCount - 1; i >= 0; i--) Destroy(content.GetChild(i).gameObject);
                 if (k == ItemKind.Bait) BaitRows(content, close);
+                else if (k == ItemKind.Hook) HookRows(content, () => Show(k));
                 else GearRows(content, k, () => Show(k));
             }
             for (int i = 0; i < kinds.Length; i++)
             {
                 var k = kinds[i].Item1;
-                tabs[i] = UIKit.Button(bar, kinds[i].Item2, "grey", () => Show(k), new Vector2(170, 44), 20);
-                tabs[i].GetComponent<RectTransform>().At(new Vector2(0f, 0.5f), new Vector2(i * 180f, 0f), new Vector2(170, 44), new Vector2(0f, 0.5f));
+                tabs[i] = UIKit.Button(bar, kinds[i].Item2, "grey", () => Show(k), new Vector2(132, 44), 20);
+                tabs[i].GetComponent<RectTransform>().At(new Vector2(0f, 0.5f), new Vector2(i * 142f, 0f), new Vector2(132, 44), new Vector2(0f, 0.5f));
             }
             Show(tab);
         }
@@ -620,6 +625,44 @@ namespace FishingKing
                 }, new Vector2(120, 50), 19);
                 bb.GetComponent<RectTransform>().At(new Vector2(1, 0.5f), new Vector2(-10, 0), new Vector2(120, 50), new Vector2(1, 0.5f));
                 bb.interactable = !eq && ready;
+            }
+        }
+
+        /// <summary>The hooks he has (the small one free): fit and effects, how many, 사용 (at the ready only; a natural bait's rig).</summary>
+        void HookRows(RectTransform content, System.Action refresh)
+        {
+            var g = Game.I;
+            bool ready = ctl.State == FishingController.S.Ready;
+            var note = UIKit.Label(content, !ready ? "채비를 회수한 뒤에 바꿀 수 있어요" : g.Bait.isLure ? "루어는 자기 바늘을 써요 · 미끼 채비에서만 효과가 있어요" : "줄이 끊기면 1개 잃어요",
+                18, UIKit.Gold, TextAnchor.MiddleLeft);
+            note.Layout(30);
+            foreach (var h in GameDatabase.Hooks.Where(x => g.HasHook(x.id)))
+            {
+                var row = UIKit.Panel(content, "panel_paper", null, "Row");
+                row.Layout(78);
+                var ic = UIKit.Img(row.transform, Art.Item(h.id), new Vector2(52, 52));
+                ic.rectTransform.At(new Vector2(0, 0.5f), new Vector2(10, 0), new Vector2(52, 52), new Vector2(0, 0.5f));
+                string cnt = h.infinite ? "무한" : $"{g.HookCount(h.id)}개";
+                var name = UIKit.Label(row.transform, $"{h.name}  <size=16><color=#6a5a40>{cnt}</color></size>", 20, UIKit.Ink, TextAnchor.UpperLeft, false);
+                name.horizontalOverflow = HorizontalWrapMode.Overflow;
+                name.rectTransform.At(new Vector2(0, 1), new Vector2(72, -8), new Vector2(480, 26), new Vector2(0, 1));
+                var stats = UIKit.Label(row.transform, ShopUI.Stats(h), 15, new Color32(0x3a, 0x5a, 0x8a, 0xff), TextAnchor.LowerLeft, false);
+                stats.horizontalOverflow = HorizontalWrapMode.Overflow;
+                stats.rectTransform.At(new Vector2(0, 0), new Vector2(72, 8), new Vector2(480, 22), new Vector2(0, 0));
+                bool eq = g.IsEquipped(h);
+                var bb = UIKit.Button(row.transform, eq ? "사용 중" : "사용", eq || !ready ? "grey" : "green", () =>
+                {
+                    g.Equip(h);
+                    RefreshTackle();
+                    refresh();
+                }, new Vector2(120, 50), 19);
+                bb.GetComponent<RectTransform>().At(new Vector2(1, 0.5f), new Vector2(-10, 0), new Vector2(120, 50), new Vector2(1, 0.5f));
+                bb.interactable = !eq && ready;
+            }
+            if (GameDatabase.Hooks.Count(x => g.HasHook(x.id)) < GameDatabase.Hooks.Count)
+            {
+                var more = UIKit.Label(content, "다른 바늘은 지도의 상점에서 사요", 16, UIKit.Cream, TextAnchor.MiddleLeft);
+                more.Layout(28);
             }
         }
 
@@ -742,6 +785,8 @@ namespace FishingKing
             baitIcon.sprite = Art.Item(b.id);
             if (gearIcon != null) gearIcon.sprite = Art.Item(Game.I.Rod.id);
             baitCount.text = b.infinite ? "∞" : b.isLure ? "" : "x" + Game.I.BaitCount(b.id);
+            var hk = Game.I.Hook;
+            hookTag.text = b.isLure || hk == null ? "" : hk.name.Replace(" 바늘", "") + (hk.infinite ? "" : " " + Game.I.HookCount(hk.id));
             depthText.text = ctl.Stage.L.IsIce ? "-" : $"{ctl.Tackle.FloatDepth:0.0}m";
             bool showDepth = !b.isLure && !ctl.Stage.L.IsIce;
             depthGroup.gameObject.SetActive(showDepth);
