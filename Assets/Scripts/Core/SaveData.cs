@@ -129,7 +129,6 @@ namespace FishingKing
             var d = new SaveData();
             d.worldSeed = SaveSystem.NewSeed();
             d.ownedItems.AddRange(new[] { GameDatabase.StarterRod, GameDatabase.StarterReel, GameDatabase.StarterLine, GameDatabase.StarterBait, GameDatabase.StarterHook, "tank_0" });
-            d.baits.Add(new BaitCount { id = "bait_worm", count = 10 });
             d.aquariumCollectedAt = SaveSystem.Now;
             return d;
         }

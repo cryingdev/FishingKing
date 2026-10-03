@@ -637,7 +637,7 @@ powershell -ExecutionPolicy Bypass -File Tools\Test\new_species.ps1 -Id <id> [-N
 | id | 이름 | 가격 (1팩) | 팩 개수 `packSize` | 가라앉는 속도 `sinkSpeed` (m/s) | 특징 |
 |---|---|---|---|---|---|
 | `bait_paste` | 떡밥 | 0 | 1 | 1.0 | `infinite` (무한, 살 수 없음) |
-| `bait_worm` | 지렁이 | 120 | 20 | 1.1 | 새 게임 시작 때 10개 지급 (`SaveData.NewGame`) |
+| `bait_worm` | 지렁이 | 120 | 20 | 1.1 | 상점에서 구매 (새 게임에 지급 없음) |
 | `bait_corn` | 옥수수 | 150 | 20 | 1.2 | — |
 | `bait_shrimp` | 새우 | 350 | 15 | 1.2 | — |
 | `bait_sandworm` | 갯지렁이 | 450 | 15 | 1.4 | — |
@@ -856,7 +856,7 @@ powershell -ExecutionPolicy Bypass -File Tools\Test\new_species.ps1 -Id <id> [-N
 | `level` | int | 1 | 플레이어 레벨 (`Sanitize`: 최소 1) |
 | `xp` | int | 0 | 현재 레벨에서 쌓인 XP |
 | `ownedItems` | List&lt;string&gt; | 비어 있음 (`NewGame`: 시작 장비 4개 + `tank_0`) | 가진 장비·루어·수조 id. 자연 미끼도 처음 얻을 때 추가됨 (`Game.AddBait`) |
-| `baits` | List&lt;BaitCount&gt; | 비어 있음 (`NewGame`: `bait_worm` 10) | 자연 미끼 개수 |
+| `baits` | List&lt;BaitCount&gt; | 비어 있음 | 자연 미끼 개수 |
 | `rod` / `reel` / `line` / `bait` | string | 시작 장비 id | 장착 중인 장비 (`Sanitize`: 없는 id면 시작 장비로) |
 | `tankLevel` | int | 0 | 수조 단계 (`TankDef.level`) |
 | `aquarium` | List&lt;CaughtFish&gt; | 비어 있음 | 수조에 있는 물고기 (넣은 순서) |
