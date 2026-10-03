@@ -59,6 +59,14 @@ try {
     if (Test-Path $fishFile) { $IsLegend = $null -ne (Get-Content $fishFile -Raw -Encoding UTF8 | ConvertFrom-Json).encounter }
 } catch { Write-Warning "could not read the species data: $_ (the validator will say more)" }
 if (-not $Stage) { $Stage = "lake" }
+$StageCount = 0
+try { $StageCount = @(($stages | Where-Object { $_.id -eq $Stage }).fish).Count } catch {}
+if ($StageCount -gt 12) {
+    Write-Warning "$Stage now has $StageCount species: more than the map dialog's 12 cells. Ask the user, then run -Regress tour (and fix the dialog layout if it overflows)."
+}
+
+# a timed-out run is ended with its whole process tree (Unity's shader compiler, licensing client, bee_backend ...)
+function Stop-Tree([int]$procId) { & taskkill.exe /T /F /PID $procId 2>&1 | Out-Null }
 
 # ---------------------------------------------------------------------------------------------- the suites
 # Each: args (after the common -fkfresh -fksave/-fkshots/-logFile), pointer = drives the pointer with gestures (runs in the
@@ -173,7 +181,7 @@ function Run-Unity([string[]]$uargs, [string]$log, [int]$timeoutMin) {
     $t = Get-Date
     $p = Start-Process -FilePath $Unity -ArgumentList (($uargs + @("-logFile", (Q $log))) -join ' ') -PassThru -WindowStyle Hidden
     $null = $p.Handle   # (keeps the exit code readable)
-    if (-not $p.WaitForExit($timeoutMin * 60000)) { try { $p.Kill() } catch {} ; return @{ code = -1; secs = ((Get-Date) - $t).TotalSeconds } }
+    if (-not $p.WaitForExit($timeoutMin * 60000)) { try { Stop-Tree $p.Id } catch {} ; return @{ code = -1; secs = ((Get-Date) - $t).TotalSeconds } }
     $p.WaitForExit()
     return @{ code = $p.ExitCode; secs = ((Get-Date) - $t).TotalSeconds }
 }
@@ -246,7 +254,7 @@ try {
         foreach ($r in @($active)) {
             $over = ((Get-Date) - $r.Start).TotalMinutes -gt $r.Timeout
             if ($r.Proc.HasExited -or $over) {
-                if (-not $r.Proc.HasExited) { try { $r.Proc.Kill(); $r.Proc.WaitForExit(10000) | Out-Null } catch {} ; $r.Result = "TIMEOUT" } else { $r.Result = "exited" }
+                if (-not $r.Proc.HasExited) { try { Stop-Tree $r.Proc.Id; $r.Proc.WaitForExit(10000) | Out-Null } catch {} ; $r.Result = "TIMEOUT" } else { $r.Result = "exited" }
                 $r.End = Get-Date
                 $active.Remove($r)
                 if ($r -eq $laneCur) { $laneCur = $null }
@@ -256,7 +264,7 @@ try {
     }
 } finally {
     # never leave a process of ours behind (Ctrl+C, an error)
-    foreach ($r in $runs) { if ($r.Proc -and -not $r.Proc.HasExited) { try { $r.Proc.Kill() } catch {} } }
+    foreach ($r in $runs) { if ($r.Proc -and -not $r.Proc.HasExited) { try { Stop-Tree $r.Proc.Id } catch {} } }
 }
 
 # ---------------------------------------------------------------------------------------------- 4: the summary
