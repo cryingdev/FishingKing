@@ -27,6 +27,9 @@ namespace FishingKing
     /// <see cref="ScalePow"/>, never under <see cref="MinScale"/>: the arrow stays readable far out; its width snapped
     /// to whole pixels), always whole-pixel positioned, sorted over the water effects, the fish, the line and the angler
     /// (<see cref="Order"/>) but under the HUD. The fight over (any other state): gone at once.</para>
+    /// <para>Snagged it points a free way (<see cref="FishingController.SnagArrowDir"/>): sideways the side to sweep the rod;
+    /// for a rig caught on a prop and settled on slack also the rod's pitch, turned a quarter round to point the way the
+    /// FINGER slides (down to lift the rod, up to lower it; Docs/obstacles_spec.md 6.10).</para>
     /// </summary>
     [DefaultExecutionOrder(100)] // after the Angler's LateUpdate (the line's water entry) and the Tackle's (90: the float) of this frame
     public class SideArrow : MonoBehaviour
@@ -59,7 +62,8 @@ namespace FishingKing
         Sprite[] frames;
         Sprite onFrame;
         float fade, t, popT = 99f;
-        int shownSide;
+        Vector2Int shownDir;
+        int shownSide => shownDir.x;
         Mode lastMode;
         bool hidden = true;
 
@@ -67,8 +71,10 @@ namespace FishingKing
         public bool Visible => sr != null && sr.enabled;
         /// <summary>The state shown (meaningful while visible).</summary>
         public Mode State { get; private set; }
-        /// <summary>The way it points: +1 right, -1 left (0 before the first run).</summary>
+        /// <summary>The way it points: +1 right, -1 left (0 before the first run, or pointing up / down).</summary>
         public int Side => shownSide;
+        /// <summary>Snagged: the rod's pitch it shows, +1 lift (the arrow points down: slide down), -1 lower (points up); 0 sideways.</summary>
+        public int Pitch => shownDir.y;
         /// <summary>The frame shown: 0 plain, 1..7 the glint, 8 the bright "on" frame.</summary>
         public int Frame { get; private set; }
         public float Alpha => sr != null ? sr.color.a : 0f;
@@ -110,13 +116,14 @@ namespace FishingKing
             bool snag = ctl != null && ctl.State == FishingController.S.Snagged && frames[0] != null;
             // the fight over (landed, broken off, got away): gone at once (the line no longer runs to the fish)
             if (!fighting && !snag) fade = 0f;
-            bool want = fighting ? ctl.SideActive : snag && ctl.SnagArrowOn;
-            int side = want ? (fighting ? -ctl.FishRun : ctl.SnagFreeSide) : shownSide;
-            // a new run the other way: out first, then back in pointing the new way
-            if (want && shownSide != 0 && side != shownSide && fade > 0f) want = false;
-            if (fade <= 0f && side != 0 && side != shownSide) shownSide = side;
+            var snagDir = snag ? ctl.SnagArrowDir : Vector2Int.zero;
+            bool want = fighting ? ctl.SideActive : snag && snagDir != Vector2Int.zero;
+            var dir = want ? (fighting ? new Vector2Int(-ctl.FishRun, 0) : snagDir) : shownDir;
+            // a new run the other way (a new free way): out first, then back in pointing the new way
+            if (want && shownDir != Vector2Int.zero && dir != shownDir && fade > 0f) want = false;
+            if (fade <= 0f && dir != Vector2Int.zero && dir != shownDir) shownDir = dir;
             fade = Mathf.MoveTowards(fade, want ? 1f : 0f, dt / (want ? FadeIn : FadeOut));
-            if (fade <= 0f || shownSide == 0 || (!fighting && !snag))
+            if (fade <= 0f || shownDir == Vector2Int.zero || (!fighting && !snag))
             {
                 sr.enabled = false;
                 hidden = true;
@@ -126,8 +133,10 @@ namespace FishingKing
             // the state: from the side pressure while it counts, frozen as it fades out
             if (want)
             {
-                // (snagged: bright while the rod is held swept the free way, else the prompt)
-                float s = fighting ? ctl.SideNow : (Mathf.Abs(ctl.LeanReq) >= 0.5f && Mathf.Sign(ctl.LeanReq) == ctl.SnagFreeSide ? 1f : 0f);
+                // (snagged: bright while the rod is held swept / pitched the free way, else the prompt)
+                float s = fighting ? ctl.SideNow
+                    : shownDir.y != 0 ? (Mathf.Abs(ctl.PitchNow) >= 0.5f && Mathf.Sign(ctl.PitchNow) == shownDir.y ? 1f : 0f)
+                    : (Mathf.Abs(ctl.LeanReq) >= 0.5f && Mathf.Sign(ctl.LeanReq) == shownDir.x ? 1f : 0f);
                 State = s > Deadband ? Mode.Right : s < -Deadband ? Mode.Wrong : Mode.Prompt;
             }
             if (hidden || State != lastMode)
@@ -202,18 +211,25 @@ namespace FishingKing
                     float w = u < run ? 1f : 0.5f + 0.5f * Mathf.Cos((u - run) / Hold * 2f * Mathf.PI);
                     alpha *= Mathf.Lerp(PulseLo, 1f, w);
                     // a nudge the way to push while the glint runs
-                    dx = u < run ? Mathf.Round(NudgePx * Mathf.Sin(u / run * Mathf.PI)) * shownSide : 0f;
+                    dx = u < run ? Mathf.Round(NudgePx * Mathf.Sin(u / run * Mathf.PI)) : 0f;
                     break;
                 }
             }
             Scale = scale * pop;
-            sr.flipX = shownSide < 0;
+            // (the pitch: turned a quarter round to point the finger's way, down to lift the rod and up to lower it;
+            // the nudge and the shake go along it)
+            bool vert = shownDir.y != 0;
+            sr.flipX = !vert && shownSide < 0;
+            transform.rotation = vert ? Quaternion.Euler(0f, 0f, shownDir.y > 0 ? -90f : 90f) : Quaternion.identity;
             transform.localScale = new Vector3(Scale, Scale, 1f);
-            float up = GapPx + BottomPx * scale;   // (the pop grows round the centre: the gap shrinks a pixel or so meanwhile)
-            var p = p0 + new Vector2(dx, up) / PixelView.PPU;
+            float bottom = vert ? WidthPx * 0.5f : BottomPx;   // (turned, its lowest row is half its width below the centre)
+            float up = GapPx + bottom * scale;   // (the pop grows round the centre: the gap shrinks a pixel or so meanwhile)
+            var nudge = State == Mode.Wrong ? new Vector2(dx, 0f)
+                : vert ? new Vector2(0f, -dx * shownDir.y) : new Vector2(dx * shownSide, 0f);
+            var p = p0 + (nudge + new Vector2(0f, up)) / PixelView.PPU;
             var snapped = new Vector3(Mathf.Round(p.x * PixelView.PPU) / PixelView.PPU, Mathf.Round(p.y * PixelView.PPU) / PixelView.PPU, 0f);
             transform.position = snapped;
-            GapNow = (snapped.y - p0.y) * PixelView.PPU - BottomPx * Scale;
+            GapNow = (snapped.y - p0.y) * PixelView.PPU - bottom * Scale;
             sr.color = new Color(1f, 1f, 1f, alpha);
             sr.enabled = true;
         }

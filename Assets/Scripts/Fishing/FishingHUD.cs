@@ -34,6 +34,8 @@ namespace FishingKing
         // at least 960 wide, so the pair (from 160 units in from the right edge) never covers him or the props at his feet
         const float WalkBtn = 64, WalkGap = 12, WalkInset = 20, WalkBottom = 26;
         Text hint, flash, tensionLabel, fishName, distance, phaseLabel, baitCount, depthText, aimText, depthLabel;
+        /// <summary>The fight strip's phase label (the snag strip's guide; for the tests).</summary>
+        public string PhaseText => phaseLabel != null ? phaseLabel.text : "";
         Button depthMinus, depthPlus;
         Image gearIcon;
         /// <summary>At the reel's place while it is hidden (ready): the spool and the reel (no line: what to do).</summary>
@@ -216,7 +218,7 @@ namespace FishingKing
             var sl = UIKit.Label(fightPanel, "체력", 15, UIKit.Cream, TextAnchor.MiddleLeft);
             sl.rectTransform.At(new Vector2(0, 0), new Vector2(470, 5), new Vector2(40, 24), new Vector2(0, 0));
             staminaLabel = sl;
-            stamina = UIKit.Bar(fightPanel, new Vector2(156, 14), new Color32(0xff, 0x8a, 0x4a, 0xff), "Stamina");
+            stamina = UIKit.Bar(fightPanel, new Vector2(156, 14), StaminaCol, "Stamina");
             stamina.transform.parent.GetComponent<RectTransform>().At(new Vector2(0, 0), new Vector2(510, 10), new Vector2(156, 14), new Vector2(0, 0));
             staminaBar = stamina.transform.parent.gameObject;
             // the abrasion meter: 쓸림 and its bar (fk_items.py obstacles: abr_bar_bg 78x5, abr_bar_fill 76x3, drawn 2x),
@@ -818,6 +820,10 @@ namespace FishingKing
             // snag mode: the name slot reads 밑걸림 (with its icon), no stamina, no side strip, no abrasion meter
             fishName.enabled = !snag;
             snagIcon.enabled = snagName.enabled = snag;
+            // (a prop catch shows its slack there instead: UpdateSnag)
+            staminaLabel.text = "체력";
+            staminaLabel.color = UIKit.Cream;
+            stamina.color = StaminaCol;
             staminaLabel.gameObject.SetActive(!snag);
             staminaBar.SetActive(!snag);
             sideBg.gameObject.SetActive(!snag && !ctl.Stage.L.IsIce);
@@ -1058,6 +1064,25 @@ namespace FishingKing
             abrLabel.enabled = abrBg.enabled = abrFill.enabled = on;
         }
 
+        static readonly Color StaminaCol = new Color32(0xff, 0x8a, 0x4a, 0xff);
+
+        /// <summary>
+        /// A prop catch's slack in the stamina row (Docs/obstacles_spec.md 6.10): 팽팽 (red, empty) while the line is tight,
+        /// 느슨 with the slack over <see cref="FishingController.SlackMax"/> as the bar (sky).
+        /// </summary>
+        void SnagSlackRow(bool on, SnagInfo sn)
+        {
+            staminaLabel.gameObject.SetActive(on);
+            staminaBar.SetActive(on);
+            if (!on) return;
+            float slack = ctl.SnagSlack;
+            bool tight = slack < FishingController.SlackMin;
+            staminaLabel.text = tight ? "팽팽" : "느슨";
+            staminaLabel.color = tight ? UIKit.Bad : UIKit.Sky;
+            UIKit.SetBar(stamina, slack / FishingController.SlackMax);
+            stamina.color = UIKit.Sky;
+        }
+
         /// <summary>
         /// The fight strip in snag mode (Docs/obstacles_spec.md 10.2): 밑걸림 / 수초 / 갈대 / 연잎 in the name slot, the rig's
         /// distance, the snag tension on the tension bar, and the phase label: the tension warning, the free side (once the
@@ -1079,10 +1104,25 @@ namespace FishingKing
             tension.color = shownTension < 0.55f ? UIKit.Good : shownTension < 0.85f ? new Color32(0xff, 0xd2, 0x3a, 0xff) : UIKit.Bad;
             dragMark.enabled = false;
             bool blinkOn = Mathf.Repeat(Time.unscaledTime * 4f, 1f) < 0.6f;
-            if (sn.r >= 0.6f && sn.kind != "pad")
+            bool prop = sn.kind == "prop" && !ctl.Stage.L.IsIce;
+            SnagSlackRow(prop, sn);
+            if (sn.r >= FishingController.TightR && sn.kind != "pad")
             {
-                phaseLabel.text = "팽팽해요! 감지 마세요!";
+                phaseLabel.text = prop ? "팽팽해요! 감지 말고 줄을 풀어요" : "팽팽해요! 감지 마세요!";
                 phaseLabel.color = blinkOn ? UIKit.Bad : Color.Lerp(UIKit.Bad, Color.white, 0.4f);
+            }
+            else if (prop)
+            {
+                // (Docs/obstacles_spec.md 6.10: the physics' guide. Slack: the point backs out, then take the slack up;
+                // taut: the rod move whose pull would slide it out)
+                var g = ctl.SnagArrowDir;
+                if (ctl.SnagSlack >= FishingController.SlackMin)
+                    phaseLabel.text = ctl.SnagLoose ? "살짝 감아 줄을 세워요" : "느슨해졌어요… 바늘이 빠지길 기다려요";
+                else if (g != Vector2Int.zero)
+                    phaseLabel.text = g.y > 0 ? "▼ 아래로 당겨 낚싯대를 들어요" : g.y < 0 ? "▲ 위로 밀어 낚싯대를 내려요"
+                        : g.x < 0 ? "◀ 왼쪽으로 흔들어 빼요" : "오른쪽으로 흔들어 빼요 ▶";
+                else phaseLabel.text = ctl.SnagWedged ? "끼었어요! 톡 하거나 끊어요" : "줄을 풀어 느슨하게 → 반대로 흔들어 빼요";
+                phaseLabel.color = ctl.SnagSlack < FishingController.SlackMin && g != Vector2Int.zero ? UIKit.Gold : UIKit.Sky;
             }
             else if (ctl.SnagArrowOn)
             {
@@ -1092,9 +1132,7 @@ namespace FishingKing
             else
             {
                 // (no rod sweep through the ice hole: only the 톡 and a slack line free it there)
-                // (wedged on a prop, no sweep slides it off: a 톡 or 끊기)
-                phaseLabel.text = ctl.Stage.L.IsIce ? "감지 말고 톡!" : sn.kind == "prop" && sn.freeSide == 0 ? "끼었어요! 톡 하거나 끊어요"
-                    : "감지 말고 톡! 또는 좌우로 밀어요";
+                phaseLabel.text = ctl.Stage.L.IsIce ? "감지 말고 톡!" : "감지 말고 톡! 또는 좌우로 밀어요";
                 phaseLabel.color = UIKit.Sky;
             }
         }
