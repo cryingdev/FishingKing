@@ -63,6 +63,8 @@ namespace FishingKing
             float key = 0;
             if (PointerInput.KeyHeld(Key.Space) || PointerInput.KeyHeld(Key.R)) key = 2.6f;
             if (PointerInput.KeyHeld(Key.B)) key = -1.5f;
+            if (PointerInput.SimWind) key = 2.6f;
+            if (PointerInput.SimGive) key = -1.5f;
 
             if (!down)
             {
