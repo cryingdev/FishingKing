@@ -396,7 +396,8 @@ namespace FishingKing
                     var parts = new List<string> { h.infinite ? "무한" : $"{h.packSize}개 묶음", "맞는 크기 " + HookFit(h) };
                     if (h.hold > 1f) parts.Add("<color=#2e7d3a>잘 안 털림</color>");
                     if (h.snagK < 1f) parts.Add("<color=#2e7d3a>밑걸림 적음</color>");
-                    if (h.setBonus < 0f) parts.Add("<color=#b0402e>챔질 어려움</color>");
+                    if (h.setStrength >= 0.8f) parts.Add("<color=#b0402e>세게 챔질</color>");
+                    else if (h.setStrength <= 0.45f) parts.Add("가볍게 챔질");
                     return string.Join(" · ", parts);
                 }
                 case TankDef t:

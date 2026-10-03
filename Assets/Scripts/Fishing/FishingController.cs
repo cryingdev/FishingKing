@@ -1591,6 +1591,8 @@ namespace FishingKing
             biter = f;
             Tackle.ClearPad();
             biteWindow = 0.75f + Game.I.Rod.hookBonus + (Tackle.UsesFloat ? 0.1f : 0f);
+            biteAge = 0f;
+            pendingGrade = StrikeGrade.None;
             BiteHeld = BiteSlack = 0f;
             bitePressed = false;
             // a bowed line in the current is slow to set the hook (Docs/time_currents_spec.md 9.2)
@@ -1606,7 +1608,7 @@ namespace FishingKing
             Fx.Splash(p2, Mathf.Clamp(0.7f * P.ScaleAt(Tackle.Surface), 0.2f, 0.6f), Stage.WaterTint, 5, P.DepthOf(Tackle.Surface));
             biteMark.enabled = true;
             PlaceBiteMark(); // right away, not only from the next frame's update (it would flash at the origin)
-            hud.Flash("쑥! 지금 탭해서 챔질!", UIKit.Gold, 0.9f);
+            hud.Flash("쑥! 위로 쳐올려 챔질!", UIKit.Gold, 0.9f);
             SetState(S.Biting);
         }
 
@@ -1624,6 +1626,7 @@ namespace FishingKing
             Angler.Tension01 = BiteSlack >= BiteSlackHold ? 0.05f : 0.25f;
             if (BiteSlack >= BiteSlackHold && BiteHeld < BiteHoldMax) BiteHeld += dt;
             else biteWindow -= dt;
+            biteAge += dt;
             // the fish tugging: rings around the float / line
             lineRingT -= dt;
             if (lineRingT <= 0)
@@ -1642,7 +1645,17 @@ namespace FishingKing
             }
             bool tap = bitePressed && PointerInput.Released && Time.time - bitePressT <= BiteTapTime
                        && (PointerInput.Position - bitePressAt).magnitude <= LureInput.TapMaxTravel * Screen.height;
+            // a quick swipe UP from a press begun in the bite: the graded 챔질 (FishingController.Strike)
+            bool swiped = false;
+            float swipeS = 0f;
+            if (bitePressed && PointerInput.Released && !tap) swiped = LureInput.UpSwipe(out swipeS);
             if (PointerInput.Released) bitePressed = false;
+            if (swiped)
+            {
+                GradeNow(swipeS);
+                SetHook();
+                return;
+            }
             if (tap || (Gesture.Circling && revs >= LureInput.WindMin))
             {
                 SetHook();
@@ -1684,8 +1697,10 @@ namespace FishingKing
             biter = null;
             f.SetHooked();
             if (Tackle.UsesFloat && !Tackle.BaitGone) Game.I.ConsumeBait();
+            var grade = pendingGrade;
             BeginFight(f, false);
-            hud.Flash("걸었다! 원을 그려 릴을 감아요!", UIKit.Gold, 1.2f);
+            if (grade != StrikeGrade.None) hud.Flash($"{StrikeLabel(grade)}  걸었다! 원을 그려 릴을 감아요!", StrikeColor(grade), 1.4f);
+            else hud.Flash("걸었다! 원을 그려 릴을 감아요!", UIKit.Gold, 1.2f);
         }
 
         /// <summary>
@@ -1720,10 +1735,11 @@ namespace FishingKing
             float land = Vector3.Distance(tip, landing) + 0.3f;
             if (seed < 0) seed = Random.Range(0, 99999);
             Fight = new FightModel(Hooked.Sp, Hooked.Cm, Game.I.Rod, Game.I.Reel, Game.I.Line, Stage.Def.powerMult,
-                Vector3.Distance(tip, Hooked.Pos), land, seed, RigHook != null ? RigHook.HoldK(Hooked.Cm) : 1f);
+                Vector3.Distance(tip, Hooked.Pos), land, seed, (RigHook != null ? RigHook.HoldK(Hooked.Cm) : 1f) * PendingHold);
             // the line out goes on in the fight (from the rod tip to the fish from here); the reel gives no more than the
             // spool holds
             Fight.SpoolCap = Mathf.Min(Game.I.Reel.lineCap, Game.I.LineLeftNow);
+            ApplyStrike();   // (a graded 챔질: the stamina cut, the line jerked tight: FishingController.Strike)
             Debug.Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "[LINE] hooked: {0:0.0} m out (over the water from him), {1:0.0} m in the fight from the tip; the spool gives {2:0} m",
                 LineOut, Fight.Line, Fight.SpoolCap));
             LineOut = Fight.Line;

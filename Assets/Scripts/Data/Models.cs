@@ -260,6 +260,8 @@ namespace FishingKing
         public int packSize = 10;
         /// <summary>The fish lengths (cm) the hook suits: inside it the bites and the hold are as given, outside they fall off.</summary>
         public Vector2 fitCm = new Vector2(0f, 999f);
+        /// <summary>The 챔질 strength (0..1) that sets it best (FishingController.Strike): light for a fine wire, hard for a thick one or through a guard.</summary>
+        public float setStrength = 0.6f;
         /// <summary>Seconds added to (or taken off) the hook-set window.</summary>
         public float setBonus;
         /// <summary>How well it holds a fish of its size against slack and head shakes (1 = as the game always had).</summary>

@@ -155,6 +155,31 @@ namespace FishingKing
             Fire(strength);
         }
 
+        /// <summary>
+        /// The press just let go was a quick swipe UP the screen (the 챔질 in a bite: FishingController.Strike): at most
+        /// <see cref="FlickMaxTime"/>, at least <see cref="FlickMinTravel"/> up, within <see cref="FlickMaxAngle"/> of
+        /// straight up and fast enough; its <paramref name="strength"/> 0..1 on the 톡's scale (the same speeds, mirrored).
+        /// </summary>
+        public static bool UpSwipe(out float strength)
+        {
+            strength = 0f;
+            var s = PointerInput.Samples;
+            int n = s.Count;
+            if (n < 2) return false;
+            float H = Mathf.Max(1f, Screen.height);
+            float dur = s[n - 1].time - s[0].time;
+            var net = (s[n - 1].pos - s[0].pos) / H;
+            if (dur > FlickMaxTime || net.y < FlickMinTravel) return false;
+            if (Mathf.Abs(Mathf.Atan2(net.x, net.y)) * Mathf.Rad2Deg > FlickMaxAngle) return false;
+            var units = FlickCast.UnitsNow(H);
+            var r = FlickCast.Analyze(s, H, units);
+            if (r.speed < units.min) return false;
+            strength = Mathf.Clamp01(Mathf.InverseLerp(units.min, 0.5f * units.full, r.speed));
+            Debug.Log(string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "[Lure] swipe up {0:0.000}H in {1:0.00}s speed {2:0.00}{3} strength {4:0.00}", net.y, dur, r.speed, r.unit, strength));
+            return true;
+        }
+
         void Fire(float strength)
         {
             FlickNow = true;

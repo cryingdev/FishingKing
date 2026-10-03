@@ -255,10 +255,10 @@ namespace FishingKing
                 desc = "어둠 속에서 푸르게 빛나는 새우 모양 루어. 천천히 가라앉을 때 입질이 온다." });
 
             // hooks for the natural-bait rigs (Docs/data_reference.md, hooks): the small one free, the rest in packs of 10
-            Hooks.Add(new HookDef { id = "hook_small", name = "소형 바늘", price = 0, infinite = true, fitCm = new Vector2(0f, 35f), desc = "무한 제공되는 기본 바늘. 큰 고기는 잘 털린다." });
+            Hooks.Add(new HookDef { id = "hook_small", name = "소형 바늘", price = 0, infinite = true, fitCm = new Vector2(0f, 35f), setStrength = 0.4f, desc = "무한 제공되는 기본 바늘. 큰 고기는 잘 털린다." });
             Hooks.Add(new HookDef { id = "hook_medium", name = "중형 바늘", price = 200, fitCm = new Vector2(20f, 70f), desc = "붕어·배스·고등어 크기에 알맞은 바늘." });
-            Hooks.Add(new HookDef { id = "hook_large", name = "대형 바늘", price = 500, fitCm = new Vector2(50f, 999f), hold = 1.2f, desc = "큰 고기를 단단히 잡는 굵은 바늘. 작은 고기는 잘 안 문다." });
-            Hooks.Add(new HookDef { id = "hook_weedless", name = "위드리스 바늘", price = 800, fitCm = new Vector2(20f, 70f), setBonus = -0.15f, hold = 0.9f, snagK = 0.4f, grabK = 0.4f, desc = "바늘 끝을 철사로 막아 밑걸림이 적다. 대신 챔질이 조금 어렵다." });
+            Hooks.Add(new HookDef { id = "hook_large", name = "대형 바늘", price = 500, fitCm = new Vector2(50f, 999f), hold = 1.2f, setStrength = 0.85f, desc = "큰 고기를 단단히 잡는 굵은 바늘. 작은 고기는 잘 안 문다." });
+            Hooks.Add(new HookDef { id = "hook_weedless", name = "위드리스 바늘", price = 800, fitCm = new Vector2(20f, 70f), setStrength = 0.85f, hold = 0.9f, snagK = 0.4f, grabK = 0.4f, desc = "바늘 끝을 철사로 막아 밑걸림이 적다. 가드를 눌러야 해서 세게 챔질해야 한다." });
 
             // capacity in 칸 (소형 <40cm 1, 중형 40-100cm 2, 대형 100-200cm 4, 초대형 200cm+ 8) and the biggest size class
             Tanks.Add(new TankDef { id = "tank_0", name = "작은 어항", level = 0, capacity = 6, maxClass = 0, price = 0, desc = "책상 위 작은 어항. 40cm 미만 소형 물고기만 살 수 있다." });
