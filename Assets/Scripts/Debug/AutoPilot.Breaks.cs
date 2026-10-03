@@ -180,7 +180,7 @@ namespace FishingKing
                 w.frames++;
                 var br = tk.BaitR;
                 if (br.enabled && br.sprite == baitSprite) w.baitFrames++;
-                if (br.enabled && br.sprite != null && br.sprite.name == "hook_bare_w") w.bareFrames++;
+                if (br.enabled && br.sprite != null && br.sprite.name.StartsWith("hook_") && br.sprite.name.EndsWith("_w")) w.bareFrames++;
                 if (tk.FloatR.enabled) w.floatFrames++;
                 if (ctl.State == FishingController.S.Snagged)
                 {

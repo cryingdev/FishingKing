@@ -560,7 +560,7 @@ sting); the rest is the same as a forced break.
   bait dangles at the tip until it is home), `S.Ready`;
 - a **float rig keeps its float**: the bait still on the hook is used up once (`Game.I.ConsumeBait`; a bare hook loses
   nothing more), `Tackle.LetGoSnag` leaves the float where it lies (off a pad's edge for a pad snag) with the bare hook
-  (`Tackle.TakeBait`, `World/hook_bare_w`) sprung up to 0.4 of the snag's depth (`LineSnap.Recoil`: the line under the
+  (`Tackle.TakeBait`, the equipped hook's `World/<hook id>_w`) sprung up to 0.4 of the snag's depth (`LineSnap.Recoil`: the line under the
   float whips back from the snag point with the hook on its end), and after 0.7 s it is wound in **spent** (`S.Retrieving`,
   `SpentRetrieve`: no snag rolls, no fish engage, until `FinishRetrieve`);
 - the **loss toast** (`Toast.ShowItems` under the flash, 3.2 s, title `잃어버린 채비`) lists what went with item icons:

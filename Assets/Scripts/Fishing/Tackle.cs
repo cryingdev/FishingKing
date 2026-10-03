@@ -441,7 +441,8 @@ namespace FishingKing
         public string FloatItemId => stage.L.id == "sea" || stage.L.id == "ocean" ? "float_ball" : "float_stick";
 
         // ---- the bait gone (a float rig: eaten at a bite whose fish got off, stolen, torn off on a pad, lost at a snag)
-        public const string BareHookSprite = "World/hook_bare_w";
+        /// <summary>The bare hook drawn under the float: the equipped hook's own sprite (World/&lt;hook id&gt;_w; the small one by default).</summary>
+        public static string BareHookSprite => "World/" + (Game.I != null && Game.I.Hook != null ? Game.I.Hook.id : GameDatabase.StarterHook) + "_w";
         /// <summary>The natural bait is off the hook: the rig is drawn with the bare hook until it is cast again (re-baited).</summary>
         public bool BaitGone { get; private set; }
         /// <summary>A float rig with its bait gone: drawn with the bare hook, no fish takes it.</summary>
