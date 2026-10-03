@@ -25,12 +25,36 @@ namespace FishingKing
     }
 
     /// <summary>
-    /// A stage's bed as data (Docs/terrain_depth_spec.md 3.2): a 0.5 m grid of depths (whole cm), kinds, materials, zones
-    /// and flags over the fishable water and the art's overscan, generated at runtime from the save's world seed
-    /// (<see cref="BathyGen"/>, the stage's <see cref="TerrainRecipe"/>). Nothing of it is drawn: the painted water stays as
-    /// rendered, the grid keeps the old distance profile as its base. Only the lake has a recipe; every other stage (and
-    /// every point off the grid) keeps <see cref="StageLayout"/>'s profile exactly. Callers read depths through
-    /// <see cref="StageLayout.DepthAt(float, float)"/>, which adds the tide; <see cref="Depth"/> is the mean water.
+    /// A lake's character as drawn (Docs/lake_phase2_spec.md A1): its four u (depth, weed, rock, side), the numbers derived
+    /// from them and a label ("shallow weedy", "deep rocky", ...).
+    /// </summary>
+    public struct BedCharacter
+    {
+        public float uDepth, uWeed, uRock, uSide;
+        /// <summary>The base's main depth, shelf end, drop width, side shoaling and its axis, far rise; the noise's scale; the lane's carve target.</summary>
+        public float mainDepth, shelfEnd, dropWidth, side, sideX, farRise, noise, laneT;
+        public int holes, humps, weedFlats;
+        public string label;
+
+        /// <summary>"shallow" / "mid" / "deep" by u_depth (thirds), then "weedy" / "rocky" / "mixed" by the larger of u_weed and u_rock (over 0.6).</summary>
+        public static string Label(float ud, float uw, float ur)
+        {
+            string depth = ud < 1f / 3f ? "shallow" : ud > 2f / 3f ? "deep" : "mid";
+            string bed = uw >= 0.6f && uw >= ur ? "weedy" : ur >= 0.6f ? "rocky" : "mixed";
+            return depth + " " + bed;
+        }
+    }
+
+    /// <summary>
+    /// A stage's bed as data (Docs/terrain_depth_spec.md 3.2, Docs/lake_phase2_spec.md A1): a 0.5 m grid of depths (whole
+    /// cm), kinds, materials, zones and flags over the fishable water and the art's overscan, generated at runtime from the
+    /// save's world seed (<see cref="BathyGen"/>, the stage's <see cref="TerrainRecipe"/>). Nothing of it is drawn: the
+    /// painted water stays as rendered. The bed is generated freely from the seed's character; its distance profile
+    /// (<see cref="Profile"/>, the rows' medians) is derived from it and is the water off the grid. Only the lake has a
+    /// recipe; every other stage keeps <see cref="StageLayout"/>'s authored profile exactly. Callers read depths through
+    /// <see cref="StageLayout.DepthAt(float, float)"/>, which adds the tide; <see cref="Depth"/> is the mean water. The
+    /// lake's statistics (<see cref="Quantile"/>, <see cref="NodeRankPct"/>, the shares) are over the reference region
+    /// R_ref: z in [zNear + 1.5, 50], |x| within the 600 px view, every row weighing the same.
     /// </summary>
     public sealed class Bathymetry
     {
@@ -84,6 +108,7 @@ namespace FishingKing
             cached = b;
             cacheKey = key;
             Debug.Log(b.Summary());
+            Debug.Log(b.CharacterLine());
             return b;
         }
 
@@ -133,8 +158,83 @@ namespace FishingKing
         internal ushort[] cm, edgeCm, weedEdgeCm;
         internal byte[] kind, mat, zone, flags;
         internal List<BedZone> zones = new List<BedZone>();
-        /// <summary>The layout it was built for (the off-grid fallback and the tide in the along / disc queries).</summary>
+        /// <summary>The layout it was built for (the off-grid profile's far end and the tide in the along / disc queries).</summary>
         internal StageLayout L;
+        /// <summary>The derived profile P* per row (m, whole cm), the rows' median windows [rowI0, rowI1] (node columns).</summary>
+        internal float[] pStar;
+        internal int[] rowI0, rowI1;
+        /// <summary>The lake's statistics over R_ref: the depth (cm) at each whole percentile 0..100, every node's mid-rank (per mille), the shares.</summary>
+        internal ushort[] quantCm, rankPm;
+        internal float[] matShare = new float[4], kindShare = new float[9];
+        internal int[] refNodes;
+        internal float[] refU;
+        /// <summary>The mid-rank (0..1) of every whole cm 0..rankCmMax (for <see cref="RankPct"/>).</summary>
+        internal float[] rankOfCm;
+
+        /// <summary>The seed's character (Docs/lake_phase2_spec.md A1).</summary>
+        public BedCharacter Character { get; internal set; }
+
+        /// <summary>The derived profile's rows (m, z = Z0 + j x Cell).</summary>
+        public float[] ProfileRows => pStar;
+
+        /// <summary>R_ref's nodes and their weights (1 / (2 hw) a node: every row weighs the same), for pure callers.</summary>
+        public int[] RefNodes => refNodes;
+        public float[] RefU => refU;
+
+        /// <summary>
+        /// The derived distance profile (m, no tide): P* lerped between rows; before the grid its first row; beyond it the
+        /// last row scaled by the authored profile's shape (<see cref="StageLayout.AuthoredMeanDepth"/>).
+        /// </summary>
+        public float Profile(float z)
+        {
+            if (pStar == null) return L != null ? L.AuthoredMeanDepth(z) : 0f;
+            if (z <= Z0) return pStar[0];
+            if (z > Z1)
+            {
+                float a1 = L != null ? L.AuthoredMeanDepth(Z1) : 0f;
+                return a1 > 0f ? pStar[Nz - 1] * L.AuthoredMeanDepth(z) / a1 : pStar[Nz - 1];
+            }
+            float fz = (z - Z0) / Cell;
+            int j = Mathf.Min((int)fz, Nz - 2);
+            float t = Mathf.Min(1f, fz - j);
+            return pStar[j] + (pStar[j + 1] - pStar[j]) * t;
+        }
+
+        /// <summary>The depth (m) at a percentile of R_ref's depths (0 = the shallowest, 100 = the deepest; lerped between whole percentiles).</summary>
+        public float Quantile(float pct)
+        {
+            float p = Mathf.Clamp(pct, 0f, 100f);
+            int i = Mathf.Min(99, (int)p);
+            float t = p - i;
+            return (quantCm[i] + (quantCm[i + 1] - (float)quantCm[i]) * t) * 0.01f;
+        }
+
+        /// <summary>A node's depth as a percentile of R_ref's (its mid-rank, 0..100).</summary>
+        public float NodeRankPct(int k) => rankPm[k] * 0.1f;
+
+        /// <summary>A depth (m) as a percentile of R_ref's (the mid-rank of its whole cm; 0 shallower than all, 100 deeper).</summary>
+        public float RankPct(float depthM)
+        {
+            int c = Mathf.RoundToInt(depthM * 100f);
+            if (c < 0) return 0f;
+            if (c >= rankOfCm.Length) return 100f;
+            return rankOfCm[c] * 100f;
+        }
+
+        /// <summary>R_ref's share (U-weighted) of a material / a kind.</summary>
+        public float MatShare(BedMat m) => matShare[(int)m];
+        public float KindShare(BedKind k) => kindShare[(int)k];
+
+        /// <summary>The median of row j's final depths over its window (the profile's check: D3b).</summary>
+        public float FinalRowMedian(int j)
+        {
+            int n = rowI1[j] - rowI0[j] + 1;
+            if (n <= 0) return pStar[j];
+            var v = new float[n];
+            for (int i = 0; i < n; i++) v[i] = cm[j * Nx + rowI0[j] + i] * 0.01f;
+            Array.Sort(v);
+            return (n & 1) == 1 ? v[n / 2] : 0.5f * (v[n / 2 - 1] + v[n / 2]);
+        }
 
         public IReadOnlyList<BedZone> Zones => zones;
 
@@ -238,8 +338,11 @@ namespace FishingKing
 
         internal float EdgeDistNode(int k) => Mathf.Min(99f, edgeCm[k] * 0.01f);
 
-        /// <summary>The water's depth anywhere (the grid, off it the profile; the tide added).</summary>
-        float Water(float x, float z) => L != null ? L.DepthAt(x, z) : Depth(x, z);
+        /// <summary>
+        /// The water's depth anywhere over this grid (off it its own derived profile; the tide added). Read from the grid
+        /// itself, never through L.Bathy (which is assigned only after a build, and in the sweeps is another grid).
+        /// </summary>
+        float Water(float x, float z) => (Covers(x, z) ? Depth(x, z) : Profile(z)) + StageLayout.TideOffset;
 
         /// <summary>The least water along a-b, sampled every 0.25 m (ends included).</summary>
         public float MinDepthAlong(Vector2 a, Vector2 b)
@@ -295,6 +398,16 @@ namespace FishingKing
             return string.Format(System.Globalization.CultureInfo.InvariantCulture,
                 "[BATHY] {0}: world seed {1} stage seed {2} attempt {3}{4} hash 0x{5:x8} built {6:0.0} ms depth min/mean/max {7:0.00}/{8:0.00}/{9:0.00} zones{10}",
                 StageId, WorldSeed, StageSeed, Attempt, Fallback ? " fallback" : "", Hash, BuildMs, DepthMin, DepthMean, DepthMax, sb);
+        }
+
+        /// <summary>The [BATHY] character line of a build: its u, the derived numbers, R_ref's quartiles and shares.</summary>
+        public string CharacterLine()
+        {
+            var c = Character;
+            return string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                "[BATHY] character depth {0:0.00} weed {1:0.00} rock {2:0.00} side {3:0.00} \"{4}\": Dm {5:0.00} shelf {6:0.0} drop {7:0.0} lane {8:0.00} holes {9} humps {10} weed flats {11}; Q10/50/90 {12:0.00}/{13:0.00}/{14:0.00} m; weed {15:0.0}% gravel {16:0.0}% sand {17:0.0}% mud {18:0.0}%",
+                c.uDepth, c.uWeed, c.uRock, c.uSide, c.label, c.mainDepth, c.shelfEnd, c.dropWidth, c.laneT, c.holes, c.humps, c.weedFlats,
+                Quantile(10f), Quantile(50f), Quantile(90f), 100f * MatShare(BedMat.Weed), 100f * MatShare(BedMat.Gravel), 100f * MatShare(BedMat.Sand), 100f * MatShare(BedMat.Mud));
         }
     }
 }

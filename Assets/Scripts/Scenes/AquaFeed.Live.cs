@@ -362,6 +362,19 @@ namespace FishingKing
             DropPiece(h.box, body, h.vel, h.flip);
         }
 
+        /// <summary>
+        /// Test hook (-fkauto newspecies, -fkaqua species): one piece of a live food let go with its body at
+        /// <paramref name="body"/> (world), as a release over the tank lets it go (no pointer). False: that food is not on
+        /// the ledge or none is left.
+        /// </summary>
+        public bool DebugDrop(string feedId, Vector2 body)
+        {
+            var b = BoxOf(feedId);
+            if (b == null || AquaCare.Stock(feedId).pieces <= 0 || held != null) return false;
+            DropPiece(b, body, Vector2.zero, false);
+            return true;
+        }
+
         /// <summary>Let go off the tank (or a dialog opened): the piece goes back into its container.</summary>
         void PutBack(bool hint)
         {

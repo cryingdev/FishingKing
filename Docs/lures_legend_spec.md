@@ -377,7 +377,7 @@ The coelacanth row (now `LegendEncounters.Coelacanth()`, attached through `"enco
 **The lurk point.** While the stage legend is off cooldown, a lurk point exists:
 - `x` inside the visible half-width;
 - `z` from 14 to `min(FishZMax, 30)`;
-- depth = `DepthAt(x, z) − 0.5` (the bed under the lurk point; on the lake a drop-off node beside weed, Docs/terrain_depth_spec.md 10).
+- depth = `DepthAt(x, z) − 0.5` (the bed under the lurk point; on the lake a drop-off node beside weed, Docs/terrain_depth_spec.md 10; the bed is generated freely per seed, Docs/lake_phase2_spec.md, and validated to keep the spot for every rod, V8).
 
 It appears 20–40 s after the stage opens or after a cooldown ends. It moves every 90–150 s.
 

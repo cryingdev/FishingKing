@@ -508,10 +508,126 @@ def top_shadow(p, fr, cx, w, h, ppu):
     return out
 
 
+# ---- opt-in top view of an eel-like fish (fk_fish `top=dict(tail="taper", wave=N[, amp, stub])`, only
+# freshwater_eel sets it): no fork polygon, the body tapers to a 1 px tip, the spine is an S-curve of `wave`
+# half-waves along the whole length (frames 0/1 in opposite phase), pectoral stubs kept. Every other species
+# goes through top_shadow and the rest of render_top unchanged (their sprites stay byte-identical).
+def taper_opt(p):
+    top = p.get("top")
+    return top if top and top.get("tail") == "taper" else None
+
+
+def _taper_geom(p, ppu):
+    """-> (b, x_tip, x_nose, spine(x, sgn), hw(x)) in model units for the taper top view."""
+    top = taper_opt(p)
+    q = dict(p)
+    q["w"] = min(p.get("w", 0.55) * 1.45, 0.95)
+    b = FF.Body(q)
+    x_tip = b.x(0.0) - p["tail"]["len"] * 0.6           # the round tail fin continues the taper
+    x_nose = b.x(1.0)
+    n = top.get("wave", 2)
+    amp = top.get("amp", 1.5) / ppu                     # S-curve amplitude at the tail, px -> units
+
+    def s_of(x):
+        return (x - x_tip) / (x_nose - x_tip)           # 0 = tail tip, 1 = snout
+
+    def spine(x, sgn):
+        s = min(1.0, max(0.0, s_of(x)))
+        env = 0.3 + 0.7 * (1.0 - s)                     # the head swings least, the tail most
+        return sgn * amp * env * math.sin(math.pi * n * (1.0 - s))
+
+    def hw(x):
+        t = x + 0.5
+        tip = 0.5 / ppu                                 # 1 px wide at the very tip
+        if t <= 0.0:
+            h0 = b.half_w(0.0) * 0.45
+            k = (x - x_tip) / (b.x(0.0) - x_tip)
+            return max(tip, tip + (h0 - tip) * k)
+        return max(tip, b.half_w(t) * (0.45 + 0.55 * FF.smoothstep(0.0, 0.6, t)))
+    return b, x_tip, x_nose, spine, hw
+
+
+def _taper_shape(p, fr, ppu):
+    """Polygons (body, stubs) in model units, frame fr."""
+    top = taper_opt(p)
+    b, x_tip, x_nose, spine, hw = _taper_geom(p, ppu)
+    sgn = 1 if fr == 0 else -1
+    xs = np.linspace(x_tip, x_nose, 96)
+    upper = [(x, spine(x, sgn) + hw(x)) for x in xs]
+    lower = [(x, spine(x, sgn) - hw(x)) for x in xs[::-1]]
+    px1 = 1.0 / ppu
+    st = top.get("stub", 1.0)                           # pectoral stub size (1 = the default stubs' 1.7 px)
+    tp = p.get("pect_t", min(0.78, p["peak"] + 0.12))
+    xe = b.x(tp)
+    stubs = []
+    for side in (1, -1):
+        ye = spine(xe, sgn) + side * hw(xe)
+        stubs.append([(xe + 0.6 * px1 * st, ye - side * 0.6 * px1), (xe - 1.9 * px1 * st, ye + side * 1.7 * px1 * st),
+                      (xe - 1.4 * px1 * st, ye - side * 0.6 * px1)])
+    return upper + lower, stubs
+
+
+def taper_canvas(p):
+    """Canvas of the taper top view: (cx, w, h, ppu); width px + 2 like every sprite, height even (spine centred)."""
+    b, x_tip, x_nose, spine, hw = _taper_geom(p, 16.0)
+    ppu = (p["px"] - 2) / (x_nose - x_tip)
+    ymax = 0.0
+    for fr in (0, 1):
+        body, stubs = _taper_shape(p, fr, ppu)
+        ymax = max([ymax] + [abs(y) for _, y in body] + [abs(y) for s in stubs for _, y in s])
+    pad = 2
+    w = int(math.ceil((x_nose - x_tip) * ppu)) + pad * 2
+    h = int(math.ceil(2 * ymax * ppu)) + pad * 2
+    h += h % 2
+    return (x_tip + x_nose) / 2, w, h, ppu
+
+
+def top_shadow_taper(p, fr, cx, w, h, ppu):
+    body_poly, stubs = _taper_shape(p, fr, ppu)
+    b, x_tip, x_nose, spine, hw = _taper_geom(p, ppu)
+    sgn = 1 if fr == 0 else -1
+    cols = np.arange(w) + 0.5
+    rows = np.arange(h) + 0.5
+    X = np.broadcast_to(cx + (cols[None, :] - w / 2) / ppu, (h, w))
+    Y = np.broadcast_to((h / 2 - rows[:, None]) / ppu, (h, w))
+    body = _pip(X, Y, body_poly)
+    # every column from the tip to the snout keeps at least 1 px on the spine, so the thin taper never breaks up
+    for c in range(w):
+        xw = cx + (c + 0.5 - w / 2) / ppu
+        if x_tip <= xw <= x_nose and not body[:, c].any():
+            r = int(math.floor(h / 2 - spine(xw, sgn) * ppu))
+            if 0 <= r < h:
+                body[r, c] = True
+    a = body.copy()
+    for st in stubs:
+        a |= _pip(X, Y, st)
+    cb, cr = shadow_cols(p)
+    out = np.zeros((h, w, 4), np.float32)
+    out[a, :3] = cb
+    out[a, 3] = 1.0
+    # darker back ridge along the S spine (1 px; 2 px where the body is >= 6 px wide), t 0.1..0.9 as in top_shadow
+    for c in range(w):
+        xw = cx + (c + 0.5 - w / 2) / ppu
+        t = xw + 0.5
+        if not 0.1 <= t <= 0.9:
+            continue
+        rr = h / 2 - spine(xw, sgn) * ppu
+        sel = [int(math.floor(rr - 0.5)), int(math.floor(rr - 0.5)) + 1] if 2 * hw(xw) * ppu >= 6 else [int(math.floor(rr))]
+        for r in sel:
+            if 0 <= r < h and body[r, c]:
+                out[r, c, :3] = cr
+    return out
+
+
 def render_top(fid):
     if fid in FF.TOP_USES_SIDE:
         return                              # written by render_side (2-tone side silhouette)
     p = graded(FF.F[fid])
+    if taper_opt(p):
+        cx, w, h, ppu = taper_canvas(p)
+        for fr in (0, 1):
+            R.save_png(top_shadow_taper(p, fr, cx, w, h, ppu), os.path.join(OUT, f"{fid}_t{fr}.png"))
+        return
     C.clear_objects()
     R.reset_materials()
     CUR["ppu"] = 16.0

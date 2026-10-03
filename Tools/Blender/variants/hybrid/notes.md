@@ -18,7 +18,7 @@ monkeypatched inside the hyb_fish process only).
 | `hyb_core.py` | **the kit**: colour maths, palettes, presets, sky / water / mist / glitter / shaft helpers, materials, geometry, camera helpers, render passes + mirror pass, quantise / dither / despeckle / contour / outline / rim, stage JSON writer, sheet helpers |
 | `hyb_lake.py` | lake stage (preset `lake`): `lake_back.png`, `lake_front.png`, `stage_lake.json` |
 | `hyb_character.py` | angler, 7 poses: `character/angler_<pose>.png`, `character/character.json`, `character_sheet.png` |
-| `hyb_fish.py` | all 36 fish: `fish/<id>_0/_1/_t0/_t1.png`, `fish_sheet.png` (+ `work/fish_all.png`) |
+| `hyb_fish.py` | every fish (42): `fish/<id>_0/_1/_t0/_t1.png`, `fish_sheet.png` (+ `work/fish_all.png`); a model with `top=dict(tail="taper", ...)` (only `freshwater_eel`) gets the tapering S-curve top shadow (`top_shadow_taper`) instead of the forked one |
 | `hyb_preview.py` | `preview_lake.png` (game crop 480x270 at 2x, 3 fish shadows, angler, rod) + shadow/water luminance print |
 | `hyb_presets.py` | `presets.png`: one mood plate per preset, built only from the kit (lake, stream / sea, swamp / ice, ocean / cave) |
 | `hyb_check.py` | sanity check vs the game data (fish sizes, character.json fields, stage JSON keys, colour counts) |

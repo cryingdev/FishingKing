@@ -1,0 +1,22 @@
+{
+  "id": "barbel_steed",
+  "name": "누치",
+  "desc": "모래와 자갈 바닥을 뒤지는 수염 달린 물고기. 걸리면 바닥으로 힘차게 내달린다.",
+  "rarity": "uncommon",
+  "minCm": 20,
+  "maxCm": 60,
+  "weightK": 1.1,
+  "basePrice": 130,
+  "power": 3.6,
+  "stamina": 12,
+  "speed": 3.0,
+  "aggression": 0.5,
+  "jump": 0,
+  "depthMin": 2,
+  "depthMax": 6,
+  "baits": "worm:1,corn:0.5,shrimp:0.5,paste:0.4,softworm:0.4,golden:0.4,@bottom:0.5",
+  "activity": { "dawn": 1.2, "day": 1.1, "evening": 1.2, "night": 0.8 },
+  "cover": { "types": [] },
+  "diet": { "foods": ["pellet", "shrimp"], "style": "bottom", "note": "a barbelled bottom feeder sifting sand and gravel: pellets, crustaceans" },
+  "habitat": "depth:p35-p80,channel:1.8,hump:1.4,open:1.3,dropoff:1.1,shoal:1.0,basin:0.8,hole:0.7,flat:0.6,shelf:0.5,gravel:1.7,sand:1.6,mud:0.5,weed:0.4,edge:0.3,col:bottom,beta:0.75,@dawn:-10p,@day:5p,@evening:-10p,@night:-15p,@day.channel:1.4,@night.shoal:1.4,runDeep"
+}

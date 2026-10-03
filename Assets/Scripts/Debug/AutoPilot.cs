@@ -64,6 +64,10 @@ namespace FishingKing
             string scenario = i + 1 < args.Length ? args[i + 1] : "fish";
             // -fkoccwatch: the per-frame occlusion detector watches the whole run (the occlusion scenario always has it)
             if (Array.IndexOf(args, "-fkoccwatch") >= 0 || scenario == "occlusion") OcclusionWatch.Ensure(ap.shots, true);
+            // the scenarios that need a fish to come when they put the rig by it: every fish in reach is feeding (the
+            // lake's per-encounter roll off, Docs/lake_phase2_spec.md A5)
+            if (scenario == "breaks" || scenario == "obstacles" || scenario == "lure" || scenario == "hold" || scenario == "steer"
+                || scenario == "pan" || scenario == "occlusion" || scenario == "zoom") FishingController.FeedAll = true;
             ap.StartCoroutine(scenario == "tour" ? ap.Tour() : scenario == "walk" ? ap.Walk() : scenario == "flick" ? ap.FlickTest()
                 : scenario == "windup" ? ap.WindupShots() : scenario == "lure" ? ap.LureTest() : scenario == "encounter" ? ap.EncounterTest()
                 : scenario == "steer" ? ap.SteerTest() : scenario == "periods" ? ap.PeriodsTest() : scenario == "current" ? ap.CurrentTest()
@@ -73,8 +77,9 @@ namespace FishingKing
                 : scenario == "panmeasure" ? ap.PanMeasure() : scenario == "pan" ? ap.PanTest()
                 : scenario == "breaks" ? ap.BreaksTest() : scenario == "legendspot" ? ap.LegendSpotTest()
                 : scenario == "music" ? ap.MusicTest() : scenario == "hold" ? ap.HoldTest()
-                : scenario == "depth" ? ap.DepthTest() : scenario == "habitat" ? ap.HabitatSoakTest()
-                : scenario == "species" ? ap.SpeciesTest() : ap.Fish());
+                : scenario == "depth" ? ap.DepthTest() : scenario == "economy" ? ap.EconomySoakTest()
+                : scenario == "species" ? ap.SpeciesTest() : scenario == "cards" ? ap.CardsTest()
+                : scenario == "newspecies" ? ap.NewSpeciesTest() : ap.Fish());
         }
 
         /// <summary>-fkflick &lt;speed&gt;[:&lt;deg&gt;]: the flick of the fish / walk scenarios' casts (angle null = not given).</summary>
@@ -1040,18 +1045,8 @@ namespace FishingKing
             ShopUI.Open(canvas, ItemKind.Tank);
             yield return new WaitForSeconds(0.6f);
             yield return Shot("shop_tank");
-            CollectionUI.Open(canvas);
-            yield return new WaitForSeconds(0.6f);
-            yield return Shot("collection");
-            var tile = FindObjectsByType<Button>(FindObjectsSortMode.None)
-                .FirstOrDefault(b => b.transform.parent != null && b.transform.parent.name.StartsWith("Grid_"));
-            if (tile != null)
-            {
-                tile.onClick.Invoke();
-                yield return new WaitForSeconds(0.6f);
-                yield return Shot("collection_detail");
-                CloseDialogs();
-            }
+            // (-fkdetail <species id>: that species' page instead of the first caught one's)
+            yield return CollectionShots(canvas, Arg("-fkdetail"), "");
             SceneFlow.Go("Aquarium");
             yield return new WaitForSeconds(1.8f);
             yield return Shot("aquarium");
@@ -1084,6 +1079,31 @@ namespace FishingKing
                 }
             }
             Application.Quit();
+        }
+
+        /// <summary>
+        /// The collection (도감) over <paramref name="canvas"/>, shot as collection&lt;suffix&gt;, and a caught species' page
+        /// (<paramref name="detail"/>'s, else the first caught one's) as collection_detail&lt;suffix&gt;. <paramref name="found"/>:
+        /// the page that came up was <paramref name="detail"/>'s.
+        /// </summary>
+        IEnumerator CollectionShots(Transform canvas, string detail, string suffix, Action<bool> found = null)
+        {
+            CollectionUI.Open(canvas);
+            yield return new WaitForSeconds(0.6f);
+            yield return Shot("collection" + suffix);
+            var tile = FindObjectsByType<Button>(FindObjectsSortMode.None)
+                .Where(b => b.transform.parent != null && b.transform.parent.name.StartsWith("Grid_"))
+                .OrderBy(b => detail != null && b.name == detail ? 0 : 1).FirstOrDefault();
+            bool page = false;
+            if (tile != null)
+            {
+                tile.onClick.Invoke();
+                yield return new WaitForSeconds(0.6f);
+                page = Dialog.Open;
+                yield return Shot("collection_detail" + suffix);
+                CloseDialogs();
+            }
+            found?.Invoke(page && tile.name == detail);
         }
 
         static void CloseDialogs()

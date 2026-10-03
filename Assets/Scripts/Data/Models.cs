@@ -22,12 +22,19 @@ namespace FishingKing
             new Color32(0x8a, 0x3f, 0xd0, 0xff), new Color32(0xa8, 0x74, 0x00, 0xff),
         };
         static readonly int[] Xp = { 10, 25, 60, 150, 400 };
+        static readonly float[] Spawn = { 40f, 16f, 3.5f, 1.5f, 1.2f };
 
         public static string Name(Rarity r) => Names[(int)r];
         public static Color Color(Rarity r) => Colors[(int)r];
         public static Color InkColor(Rarity r) => Inks[(int)r];
         public static int BaseXp(Rarity r) => Xp[(int)r];
         public static int Stars(Rarity r) => (int)r + 1;
+
+        /// <summary>
+        /// The spawn weight's base by rarity on a stage with a generated bed (Docs/lake_phase2_spec.md A4): common 40,
+        /// uncommon 16, rare 3.5, epic 1.5, legendary 1.2; the stage then derives each species' weight from it.
+        /// </summary>
+        public static float SpawnBase(Rarity r) => Spawn[(int)r];
     }
 
     /// <summary>UI facts about lure actions: names, chip colours and icons (Sprites/UI/act_*), where a lure runs.</summary>
@@ -262,7 +269,15 @@ namespace FishingKing
         public float powerMult = 1f;
         public float biteMult = 1f;
         public int population = 8;
+        /// <summary>
+        /// The species exposed here and their spawn weights, in roster order. On a stage with a generated bed a weight is the
+        /// base the stage derives from (the roster's override, or the rarity's <see cref="RarityInfo.SpawnBase"/>).
+        /// </summary>
         public List<KeyValuePair<string, float>> spawns = new List<KeyValuePair<string, float>>();
+        /// <summary>The weights are derived from the stage's bed (Docs/lake_phase2_spec.md A4). (A property: the species dump walks fields only.)</summary>
+        public bool Derived { get; set; }
+        /// <summary>Per species: its weight was given in stages.json (an override of the rarity's base).</summary>
+        public Dictionary<string, bool> GivenWeight { get; } = new Dictionary<string, bool>();
     }
 
     // ---------------------------------------------------------------------------------------- legend encounter data

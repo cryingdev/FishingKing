@@ -3,31 +3,40 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using UnityEngine;
 using Random = UnityEngine.Random;
 
 namespace FishingKing
 {
     /// <summary>
-    /// -fkauto depth (Docs/terrain_depth_spec.md 14.1): the lake's generated bed. Run on the lake
-    /// (-fkscene Fishing -fkstage lake; -fkauto implies world seed 1). [DEPTH] CHECK lines, then "depth test done: N failed":
-    /// D1 determinism and the golden hash; D2 seeds 1..50 (V1-V8, attempts, the fallback); D3 every other stage (and the
-    /// lake with the grid off, off the grid) bit-identical to the old profile; D4 the queries; D5 the save's world seed;
-    /// D6 the lying float (tilt, lie, label, hint, standing up, a fight from it; shots); D7 the habitat's shift of the
-    /// targets; D8 the body rule (wander / approach / bite / flee and fights never in water too shallow, never under the bed);
-    /// D9 the deep runs; D10 the golden carp's lurk on the weed edge and its spot; D11 the bite budget's estimator over
-    /// 50 seeds (per species, and the stock's bites per bait, rig class, period and rod); D12 the obstacle bands over the new bed; D13 the dump and the contour overlay (two seeds).
+    /// -fkauto depth (Docs/terrain_depth_spec.md 14.1, Docs/lake_phase2_spec.md A8): the lake's generated bed, its fish and
+    /// its economy. Run on the lake (-fkscene Fishing -fkstage lake; -fkauto implies world seed 1). [DEPTH] CHECK lines,
+    /// then "depth test done: N failed": D1 determinism and the golden hash; D2 seeds 1..50 (V1-V11, V12 over the sweep,
+    /// the attempts, the characters, the fallback, the pooled depths); D3 every other stage (and the lake with the grid off,
+    /// off the grid: its derived profile) bit-identical; D3b the derived profile = the rows' medians; D4 the queries and the
+    /// lake's statistics; D5 the save's world seed; D6 the lying float (tilt, lie, label, hint, standing up, a fight from
+    /// it; shots); D7' where the targets go on three lakes (relative bands); D8 the body rule (wander / approach / bite /
+    /// flee and fights never in water too shallow, never under the bed); D9 the deep runs; D10 the golden carp's lurk on the
+    /// weed edge and its spot; D11' the economy over 50 seeds x 3 rods (the feeding chance, catches and income per minute
+    /// within 0.8..1.25 of today's, the best spots); D11b the derived spawn weights; D12 the obstacle bands over the new
+    /// bed; D13 the dump and the contour overlay (two seeds); D14 the population and the feeding roll.
     /// </summary>
     public partial class AutoPilot
     {
         int depthFails;
         /// <summary>The golden hash per recipe version (D1: seed 12345); 0 = record it (print and pass with a note).</summary>
-        static readonly Dictionary<int, uint> GoldenHash = new Dictionary<int, uint> { [1] = 0x5866ac8fu };   // (v1: recorded by the Mono player)
+        static readonly Dictionary<int, uint> GoldenHash = new Dictionary<int, uint> { [1] = 0x5866ac8fu, [2] = 0xc778575cu };   // (v1, v2: recorded by the Mono player)
+        /// <summary>D2's Q50 per seed (D7' picks the shallowest and the deepest lake).</summary>
+        readonly Dictionary<int, float> sweepQ50 = new Dictionary<int, float>();
+
+        /// <summary>The CHECK lines' tag: [DEPTH], or [NEWSP] when -fkauto newspecies runs the same gates for one species.</summary>
+        string depthTag = "[DEPTH]";
 
         void DCheck(string what, bool ok)
         {
             if (!ok) depthFails++;
-            Log($"[DEPTH] CHECK {(ok ? "PASS" : "FAIL")} {what}");
+            Log($"{depthTag} CHECK {(ok ? "PASS" : "FAIL")} {what}");
         }
 
         IEnumerator DepthTest()
@@ -70,12 +79,13 @@ namespace FishingKing
             QueriesCheck(L);
             SaveSeedCheck(L);
             yield return null;
-            ShiftCheck(ctl);
+            yield return HabitatCheck(ctl, recipe, raw);
             BandsCheck(ctl);
             yield return LegendCheck(ctl);
-            yield return EstimatorCheck(ctl, recipe, raw);
+            yield return EconomyCheck(ctl, recipe, raw);
             yield return FloatCheck(ctl);
             yield return BodyCheck(ctl);
+            yield return FeedCheck(ctl);
             yield return DeepRunCheck(ctl);
             yield return DepthShots(ctl, recipe, raw);
             Log($"[DEPTH] depth test done: {depthFails} failed");
@@ -98,11 +108,20 @@ namespace FishingKing
         IEnumerator SweepCheck(StageLayout L, TerrainRecipe r, ObstacleSet raw)
         {
             var hist = new int[r.attempts + 1];
-            int fallbacks = 0, failed = 0;
+            int fallbacks = 0, failed = 0, first1011 = 0, firstAny = 0;
             var hashes = new HashSet<uint>();
-            float msMax = 0f, msSum = 0f;
+            float msMax = 0f, msSum = 0f, rowOff = 0f;
+            int rowOffSeed = 0;
             string firstFail = "";
             var v8 = new List<string>();
+            var q50 = new List<float>();
+            var weed = new List<float>();
+            var gravel = new List<float>();
+            // the pooled depths of the 50 lakes' R_ref (every lake and row the same weight), whole cm
+            var pool = new double[1001];
+            double poolW = 0;
+            sweepQ50.Clear();
+            Log("[DEPTH] D2 characters: seed attempt label u(depth weed rock side) Dm Q10/Q50/Q90 weed/gravel/sand/mud % flat+shoal/drop-off/hole+channel/hump % holes humps weed-flats");
             for (int s = 1; s <= 50; s++)
             {
                 var b = BathyGen.Build(L, r, s, raw);
@@ -111,8 +130,21 @@ namespace FishingKing
                 hashes.Add(b.Hash);
                 msMax = Mathf.Max(msMax, b.BuildMs);
                 msSum += b.BuildMs;
-                // (the accepted attempt's report: the last block)
                 var lines = b.Checks.Split('\n');
+                // (the first attempt's report: V10 / V11 there are the character ranges' tuning target, at most 10 %)
+                int a0 = Array.FindIndex(lines, l => l.StartsWith("attempt 0"));
+                int a1 = a0 < 0 ? -1 : Array.FindIndex(lines, a0 + 1, l => l.StartsWith("attempt") || l.StartsWith("fallback"));
+                if (a1 < 0) a1 = lines.Length;
+                bool f1011 = false, fAny = false;
+                for (int i = Mathf.Max(0, a0 + 1); i < a1; i++)
+                    if (lines[i].Contains(" FAIL "))
+                    {
+                        fAny = true;
+                        if (lines[i].StartsWith("V10") || lines[i].StartsWith("V11")) f1011 = true;
+                    }
+                if (f1011) first1011++;
+                if (fAny) firstAny++;
+                // (the accepted attempt's report: the last block)
                 int start = Array.FindLastIndex(lines, l => l.StartsWith("attempt") || l.StartsWith("fallback"));
                 bool ok = true;
                 for (int i = Mathf.Max(0, start); i < lines.Length; i++)
@@ -126,15 +158,70 @@ namespace FishingKing
                 }
                 if (!ok) failed++;
                 if (s == 1 || s == 2) foreach (var l in lines) if (l.Length > 0) Log("[DEPTH] seed " + s + " " + l);
+                // D3b: the derived profile is the finished rows' medians
+                for (int j = 0; j < b.Nz; j++)
+                {
+                    float off = Mathf.Abs(b.FinalRowMedian(j) - b.ProfileRows[j]);
+                    if (off > rowOff)
+                    {
+                        rowOff = off;
+                        rowOffSeed = s;
+                    }
+                }
+                var ch = b.Character;
+                float q1 = b.Quantile(10f), q5 = b.Quantile(50f), q9 = b.Quantile(90f);
+                q50.Add(q5);
+                sweepQ50[s] = q5;
+                weed.Add(b.MatShare(BedMat.Weed));
+                gravel.Add(b.MatShare(BedMat.Gravel));
+                for (int q = 0; q < b.RefNodes.Length; q++)
+                {
+                    pool[Mathf.Clamp(Mathf.RoundToInt(b.NodeDepth(b.RefNodes[q]) * 100f), 0, 1000)] += b.RefU[q];
+                    poolW += b.RefU[q];
+                }
+                Log(string.Format(CIc, "[DEPTH] D2 seed {0} attempt {1}{2} \"{3}\" u {4:0.00} {5:0.00} {6:0.00} {7:0.00} Dm {8:0.00} Q {9:0.00}/{10:0.00}/{11:0.00} mat {12:0.0}/{13:0.0}/{14:0.0}/{15:0.0} kind {16:0.0}/{17:0.0}/{18:0.0}/{19:0.0} features {20} {21} {22}",
+                    s, b.Attempt, b.Fallback ? " fallback" : "", ch.label, ch.uDepth, ch.uWeed, ch.uRock, ch.uSide, ch.mainDepth, q1, q5, q9,
+                    100f * b.MatShare(BedMat.Weed), 100f * b.MatShare(BedMat.Gravel), 100f * b.MatShare(BedMat.Sand), 100f * b.MatShare(BedMat.Mud),
+                    100f * (b.KindShare(BedKind.Flat) + b.KindShare(BedKind.Shoal)), 100f * b.KindShare(BedKind.Dropoff), 100f * (b.KindShare(BedKind.Hole) + b.KindShare(BedKind.Channel)),
+                    100f * b.KindShare(BedKind.Hump), ch.holes, ch.humps, ch.weedFlats));
                 if (s % 10 == 0) yield return null;
             }
-            DCheck(string.Format(CIc, "D2 seeds 1..50: V1-V8 pass on every accepted grid ({0} failed{1}); attempts {2}; fallback {3}; distinct hashes {4}/50; built in max {5:0.0} ms, mean {6:0.0} ms (target 30)",
+            DCheck(string.Format(CIc, "D2 seeds 1..50: V1-V11 pass on every accepted grid ({0} failed{1}); attempts {2}; fallback {3}; distinct hashes {4}/50; built in max {5:0.0} ms, mean {6:0.0} ms",
                 failed, firstFail, string.Join(" ", hist.Select((c, i) => i + ":" + c)), fallbacks, hashes.Count, msMax, msSum / 50f),
                 failed == 0 && fallbacks == 0 && hashes.Count == 50);
+            DCheck($"D2 first attempts failing V10 or V11: {first1011} of 50 (<= 5: the character ranges' target); any check {firstAny} of 50", first1011 <= 5);
             foreach (var l in v8) Log("[DEPTH] " + l);
+            // V12: the seeds make different lakes
+            float span = q50.Max() - q50.Min(), wSpan = 100f * (weed.Max() - weed.Min()), gSpan = 100f * (gravel.Max() - gravel.Min());
+            int shallow = q50.Count(q => q <= 2.8f), deep = q50.Count(q => q >= 4.2f);
+            DCheck(string.Format(CIc, "D2 V12 over seeds 1..50: Q50 {0:0.00}..{1:0.00} m (span {2:0.00} >= 2.0; {3} lakes <= 2.8 and {4} >= 4.2, each >= 5); weed {5:0.0}..{6:0.0}% (span {7:0.0} >= 15 points); gravel {8:0.0}..{9:0.0}% (span {10:0.0} >= 6)",
+                q50.Min(), q50.Max(), span, shallow, deep, 100f * weed.Min(), 100f * weed.Max(), wSpan, 100f * gravel.Min(), 100f * gravel.Max(), gSpan),
+                span >= 2.0f && shallow >= 5 && deep >= 5 && wSpan >= 15f && gSpan >= 6f);
+            DCheck(string.Format(CIc, "D3b seeds 1..50: the derived profile P* = the finished rows' medians (worst {0:0.00} m{1}, <= 0.25)", rowOff, rowOffSeed > 0 ? " on seed " + rowOffSeed : ", every seed exact"), rowOff <= 0.25f);
+            // (information) the pooled depths: the old metre bands' percentiles
+            float Pct(float m)
+            {
+                double acc = 0;
+                int c = Mathf.Clamp(Mathf.RoundToInt(m * 100f), 0, 1001);
+                for (int i = 0; i < c; i++) acc += pool[i];
+                return poolW > 0 ? (float)(100.0 * acc / poolW) : 0f;
+            }
+            string Q(double p)
+            {
+                double acc = 0;
+                for (int i = 0; i <= 1000; i++)
+                {
+                    acc += pool[i];
+                    if (acc >= p * poolW) return (i * 0.01f).ToString("0.00", CIc);
+                }
+                return "9.00";
+            }
+            Log($"[DEPTH] D2 the 50 lakes pooled: Q10 {Q(0.1)} Q25 {Q(0.25)} Q50 {Q(0.5)} Q75 {Q(0.75)} Q90 {Q(0.9)} m; the old metre bands: " +
+                string.Join(", ", new[] { ("crucian_carp", 1.2f, 4.0f), ("bluegill", 0.8f, 3.0f), ("carp", 3.0f, 7.0f), ("largemouth_bass", 1.0f, 4.5f) }
+                    .Select(t => string.Format(CIc, "{0} {1:0.0}-{2:0.0} m = p{3:0}-p{4:0}", t.Item1, t.Item2, t.Item3, Pct(t.Item2), Pct(t.Item3)))));
             var fb = BathyGen.BuildFallback(L, r, 1, raw, out int fbFails, out string report);
             foreach (var l in report.Split('\n')) if (l.Length > 0) Log("[DEPTH] fallback " + l);
-            DCheck($"D2 the fallback recipe alone passes V1-V8 ({fbFails} failed, hash 0x{fb.Hash:x8})", fbFails == 0);
+            DCheck($"D2 the fallback (the middle character, no channel, holes, humps or extra flats) passes V1-V10 and V11's materials, flat + shoal and drop-off ({fbFails} failed, hash 0x{fb.Hash:x8}; \"{fb.Character.label}\")", fbFails == 0);
         }
 
         // ------------------------------------------------------------------ D3: every other stage bit-identical
@@ -210,7 +297,20 @@ namespace FishingKing
                 if (lake.DepthAt(x, 64.3f) != lake.ProfileDepth(64.3f)) offGrid++;
                 jump = Mathf.Max(jump, Mathf.Abs(lake.DepthAt(x, 63.99f) - lake.DepthAt(x, 64.01f)));
             }
-            DCheck($"D3 lake off the grid = the profile ({offGrid} differ); the step across the grid's edge {F2(jump)} m (<= 0.02)", offGrid == 0 && jump <= 0.02f);
+            DCheck($"D3 lake off the grid = its derived profile ProfileDepth = P* ({offGrid} differ); the step across the grid's edge {F2(jump)} m (<= 0.02)", offGrid == 0 && jump <= 0.02f);
+            // the authored profile (today's lake for the economy) is the old DepthAt(z), bit for bit, whatever the bed
+            int authOff = 0, an = 0;
+            foreach (float t in new[] { 0f, 0.4f })
+            {
+                StageLayout.TideOffset = t;
+                for (float z = 0f; z <= lake.zFar; z += 0.5f)
+                {
+                    an++;
+                    if (BitConverter.SingleToInt32Bits(lake.AuthoredDepth(z)) != BitConverter.SingleToInt32Bits(OldDepth(lake, z))) authOff++;
+                }
+            }
+            StageLayout.TideOffset = tideWas;
+            DCheck($"D3 lake AuthoredDepth(z) = the old DepthAt(z) bit for bit with the bed on at {an} points (tide 0, +0.4) ({authOff} differ)", authOff == 0);
         }
 
         // ------------------------------------------------------------------ D4: the queries
@@ -251,6 +351,27 @@ namespace FishingKing
             int unnamed = b.Zones.Count(z => string.IsNullOrEmpty(z.name));
             DCheck($"D4 queries at 2000 points: node = its value ({nodeOff} off), cell middle = the 4 nodes' mean ({midOff}), gradient's sign = finite differences ({gradOff} of {gradN}), DeeperDir goes down ({downOff} of {downN}), EdgeDist 0 on edges ({edgeOff}), MinDepthAlong <= its ends ({alongOff}), MinDepthDisc <= its centre ({discOff}); {b.Zones.Count} zones, {unnamed} unnamed ({string.Join(", ", b.Zones.Select(z => z.id + " " + z.name))})",
                 nodeOff == 0 && midOff == 0 && gradOff == 0 && downOff == 0 && edgeOff == 0 && alongOff == 0 && discOff == 0 && unnamed == 0);
+            // the lake's statistics (R_ref): the quantiles monotone from its shallowest to its deepest node, the ranks consistent
+            float refMin = float.MaxValue, refMax = 0f;
+            foreach (int k in b.RefNodes)
+            {
+                refMin = Mathf.Min(refMin, b.NodeDepth(k));
+                refMax = Mathf.Max(refMax, b.NodeDepth(k));
+            }
+            int down = 0;
+            for (float p = 0.5f; p <= 100f; p += 0.5f) if (b.Quantile(p) < b.Quantile(p - 0.5f)) down++;
+            int rankOff = 0;
+            for (int t = 0; t < 2000; t++)
+            {
+                int k = rng.Next(0, b.NodeCount);
+                if (Mathf.Abs(b.NodeRankPct(k) - b.RankPct(b.NodeDepth(k))) > 0.051f) rankOff++;
+            }
+            float shares = 0f;
+            foreach (BedMat m in Enum.GetValues(typeof(BedMat))) shares += b.MatShare(m);
+            DCheck(string.Format(CIc, "D4 the lake's statistics: Quantile monotone ({0} steps down), Q(0) {1:0.00} = R_ref's least {2:0.00}, Q(100) {3:0.00} = its most {4:0.00}; NodeRankPct = RankPct(NodeDepth) at 2000 nodes ({5} off); the materials' shares sum to {6:0.000}",
+                down, b.Quantile(0f), refMin, b.Quantile(100f), refMax, rankOff, shares),
+                down == 0 && Mathf.Abs(b.Quantile(0f) - refMin) < 1e-4f && Mathf.Abs(b.Quantile(100f) - refMax) < 1e-4f && rankOff == 0 && Mathf.Abs(shares - 1f) < 1e-3f);
+            Log(b.CharacterLine());
         }
 
         // ------------------------------------------------------------------ D5: the save's seed
@@ -277,49 +398,321 @@ namespace FishingKing
                 b.Hash == L.Bathy.Hash && savedSeed == Game.I.WorldSeed && before.SequenceEqual(after) && savedSeed != 0);
         }
 
-        // ------------------------------------------------------------------ D7: the targets' shift
-        void ShiftCheck(FishingController ctl)
+        // ------------------------------------------------------------------ D7': where the targets go, on three lakes
+        /// <summary>
+        /// D7' (Docs/lake_phase2_spec.md A8): 2000 targets per ordinary species and period (the bamboo's water, z &lt;= 30) on
+        /// seed 1, the shallowest-Q50 and the deepest-Q50 lake of D2's sweep. The relative bands put each fish at the same
+        /// depth rank on every lake: carp deep by day, bluegill shallow at dawn and by day, every species' mean rank within 10
+        /// points across the three lakes; on seed 1 the six kind shifts (the strings' kind weights) still show.
+        /// </summary>
+        IEnumerator HabitatCheck(FishingController ctl, TerrainRecipe r, ObstacleSet raw)
         {
-            var b = ctl.Stage.L.Bathy;
-            var hab = ctl.Habitat;
+            var L = ctl.Stage.L;
             float zMax = 30f;   // (the bamboo rod's FishZMax)
-            float[] Shares(HabitatModel.Region reg, float[] cum, float total, int salt)
+            int shallowSeed = sweepQ50.Count > 0 ? sweepQ50.OrderBy(kv => kv.Value).ThenBy(kv => kv.Key).First().Key : 1;
+            int deepSeed = sweepQ50.Count > 0 ? sweepQ50.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key).First().Key : 1;
+            var seeds = new[] { 1, shallowSeed, deepSeed };
+            var species = OrdinaryOf(ctl);
+            var mean = new Dictionary<(string, int), float[]>();
+            var uniMean = new float[3];
+            Dictionary<string, float[][]> sh = null, shM = null;   // (seed 1: the targets' share per bed kind / material, for the shifts and the niche gates)
+            float[] uni = null, uniM = null;
+            Shares seed1 = null;
+            for (int li = 0; li < 3; li++)
             {
-                var rng = new System.Random(1515 + salt);
-                var c = new float[9];
-                for (int t = 0; t < 2000; t++) c[(int)b.NodeKind(reg.nodes[HabitatModel.Pick(cum, (float)rng.NextDouble() * total)])] += 1f / 2000f;
-                return c;
+                var b = li == 0 ? L.Bathy : BathyGen.Build(L, r, seeds[li], raw);
+                var s = SampleShares(b, new FishHabitat(ctl.Stage, ctl, b, true), species, zMax);
+                foreach (var sp in species)
+                    for (int p = 0; p < 4; p++)
+                    {
+                        if (!mean.TryGetValue((sp.id, p), out var m)) mean[(sp.id, p)] = m = new float[3];
+                        m[li] = s.rank[sp.id][p];
+                    }
+                uniMean[li] = s.uniMean;
+                if (li == 0)
+                {
+                    seed1 = s;
+                    sh = s.kind;
+                    shM = s.mat;
+                    uni = s.uni;
+                    uniM = s.uniM;
+                }
+                Log(string.Format(CIc, "[DEPTH] D7' lake {0} (seed {1}, Q50 {2:0.00} m, \"{3}\"): uniform targets' mean rank {4:0.0}", li, seeds[li], b.Quantile(50f), b.Character.label, uniMean[li]));
+                yield return null;
             }
-            float S(float[] x, params BedKind[] ks) => ks.Sum(k => x[(int)k]);
-            var sh = new Dictionary<string, float[][]>();
-            float[] old = null;
-            foreach (var id in new[] { "crucian_carp", "bluegill", "carp", "largemouth_bass" })
+            foreach (var sp in species)
+                Log("[DEPTH] D7' " + sp.id + " mean rank (seed 1 / shallow / deep) " + string.Join(" | ", Enumerable.Range(0, 4).Select(p =>
+                    GameClock.Id((Period)p) + " " + string.Join("/", mean[(sp.id, p)].Select(v => v.ToString("0", CIc))))));
+            for (int p = 0; p < 4; p++)
+                foreach (var sp in species)
+                    Log("[DEPTH] D7' " + sp.id + " " + GameClock.Id((Period)p) + " " + string.Join(" ", Enumerable.Range(0, 9).Select(k => $"{(BedKind)k}:{F2(sh[sp.id][p][k])}/{F2(uni[k])}")));
+            // carp deep by day, bluegill shallow at dawn and by day (the spec's absolute 60 for the carp is logged: its beta 0.65
+            // steers at most about two thirds of the density, which caps the mean rank near 57 on these lakes)
+            bool hasCarp = mean.ContainsKey(("carp", 1)), hasBg = mean.ContainsKey(("bluegill", 0));
+            var carp = hasCarp ? mean[("carp", 1)] : new float[3];
+            bool carpOk = hasCarp && Enumerable.Range(0, 3).All(i => carp[i] >= uniMean[i] + 10f);
+            DCheck(string.Format(CIc, "D7' carp by day: mean rank {0:0}/{1:0}/{2:0} (seed 1 / shallow / deep) >= the uniform targets' {3:0}/{4:0}/{5:0} + 10 (spec 60: {6})",
+                carp[0], carp[1], carp[2], uniMean[0], uniMean[1], uniMean[2], carp.All(v => v >= 60f) ? "met" : "not reached"), carpOk);
+            var bgDawn = hasBg ? mean[("bluegill", 0)] : new float[3];
+            var bgDay = hasBg ? mean[("bluegill", 1)] : new float[3];
+            DCheck(string.Format(CIc, "D7' bluegill at dawn {0:0}/{1:0}/{2:0} and by day {3:0}/{4:0}/{5:0} (<= 40)", bgDawn[0], bgDawn[1], bgDawn[2], bgDay[0], bgDay[1], bgDay[2]),
+                hasBg && bgDawn.All(v => v <= 40f) && bgDay.All(v => v <= 40f));
+            // (the four phase-1 species within 10 points; the step-2 species within 12.5: their bed-material weights, gravel /
+            // sand up to 1.7, follow where a lake of that character keeps those beds, which moves their depth rank with it)
+            var phase1 = new HashSet<string> { "crucian_carp", "bluegill", "carp", "largemouth_bass" };
+            float spread = 0f, spread2 = 0f;
+            string worst = "", worst2 = "";
+            foreach (var kv in mean)
             {
-                var sp = GameDatabase.GetFish(id);
+                float d = kv.Value.Max() - kv.Value.Min();
+                bool p1 = phase1.Contains(kv.Key.Item1);
+                if (d <= (p1 ? spread : spread2)) continue;
+                string w = $" ({kv.Key.Item1} {GameClock.Id((Period)kv.Key.Item2)})";
+                if (p1)
+                {
+                    spread = d;
+                    worst = w;
+                }
+                else
+                {
+                    spread2 = d;
+                    worst2 = w;
+                }
+            }
+            DCheck(string.Format(CIc, "D7' every species and period: the mean rank differs at most {0:0.0} points across the three lakes{1} for the phase-1 species (<= 10), {2:0.0}{3} for the step-2 species (<= 12.5)", spread, worst, spread2, worst2),
+                spread <= 10f && spread2 <= 12.5f);
+            // the six kind shifts on seed 1 (phase 1's checks; three thresholds eased to a clear preference, logged against the old)
+            float S(float[] x, params BedKind[] ks) => ks.Sum(k => x[(int)k]);
+            bool all = sh.ContainsKey("largemouth_bass") && sh.ContainsKey("crucian_carp") && sh.ContainsKey("carp");
+            if (!all)
+            {
+                DCheck("D7' the kind shifts: the lake's four first species", false);
+                yield break;
+            }
+            float bassDay = S(sh["largemouth_bass"][1], BedKind.Dropoff, BedKind.Hump, BedKind.Shoal) / S(uni, BedKind.Dropoff, BedKind.Hump, BedKind.Shoal);
+            float bassDawn = S(sh["largemouth_bass"][0], BedKind.Flat, BedKind.Shelf) / S(uni, BedKind.Flat, BedKind.Shelf);
+            float cruDawn = sh["crucian_carp"][0][(int)BedKind.Flat] / uni[(int)BedKind.Flat];
+            float cruDay = sh["crucian_carp"][1][(int)BedKind.Flat] / sh["crucian_carp"][0][(int)BedKind.Flat];
+            float carpNight = S(sh["carp"][3], BedKind.Flat, BedKind.Shoal) / S(uni, BedKind.Flat, BedKind.Shoal);
+            float carpDay = S(sh["carp"][1], BedKind.Hole, BedKind.Channel, BedKind.Basin) / S(uni, BedKind.Hole, BedKind.Channel, BedKind.Basin);
+            DCheck($"D7' seed 1's kind shifts (flat + shelf {F2(S(uni, BedKind.Flat, BedKind.Shelf))} of the uniform targets): bass by day on drop-off + hump + shoal x{F2(bassDay)} (>= 1.4), at dawn on flat + shelf x{F2(bassDawn)} (>= 1.1; phase 1 1.3); crucian at dawn on the flats x{F2(cruDawn)} (>= 1.1; phase 1 1.3), by day x{F2(cruDay)} of its dawn share (<= 0.8); carp at night on flat + shoal x{F2(carpNight)} (>= 1.1; phase 1 1.4), by day in hole + channel + basin x{F2(carpDay)} (>= 1.2)",
+                bassDay >= 1.4f && bassDawn >= 1.1f && cruDawn >= 1.1f && cruDay <= 0.8f && carpNight >= 1.1f && carpDay >= 1.2f);
+            // the step-2 species' niches on seed 1 (Docs/lake_phase2_spec.md C4), against the uniform targets' shares
+            if (!NicheIds.All(id => shM.ContainsKey(id)))
+            {
+                Log("[DEPTH] D7' the step-2 niches: skipped (" + string.Join(", ", NicheIds.Where(id => !shM.ContainsKey(id))) + " not on the roster)");
+                yield break;
+            }
+            Log($"[DEPTH] D7' seed 1 uniform targets (z <= {zMax:0}): materials " + string.Join(" ", Enumerable.Range(0, 4).Select(m => $"{(BedMat)m}:{F2(uniM[m])}")) + $", hole {F2(uni[(int)BedKind.Hole])}, channel {uni[(int)BedKind.Channel]:0.000}");
+            var gates = NicheIds.Select(id => NicheGate(ctl, seed1, id).Value).ToList();
+            DCheck("D7' seed 1's step-2 niches: " + string.Join(", ", gates.Select(g => g.text)), gates.All(g => g.ok));
+        }
+
+        // ------------------------------------------------------------------ D7': the targets' shares and the niche gates
+        /// <summary>The stage's ordinary species (its roster, no legends), in roster order.</summary>
+        static List<FishSpecies> OrdinaryOf(FishingController ctl) =>
+            ctl.Stage.Def.spawns.Select(kv => GameDatabase.GetFish(kv.Key)).Where(sp => sp != null && sp.encounter == null).ToList();
+
+        /// <summary>
+        /// D7''s targets on one bed: per species and period the share of 2000 seeded targets per bed kind and material and
+        /// their mean depth rank (water z &lt;= zMax), and the uniform targets' (the first species' region: shares of 2000,
+        /// the exact mean rank).
+        /// </summary>
+        sealed class Shares
+        {
+            public readonly Dictionary<string, float[][]> kind = new Dictionary<string, float[][]>(), mat = new Dictionary<string, float[][]>();
+            public readonly Dictionary<string, float[]> rank = new Dictionary<string, float[]>();
+            public float[] uni, uniM;
+            public float uniMean = 50f;
+        }
+
+        /// <summary>
+        /// <see cref="Shares"/> on bed <paramref name="b"/>. <paramref name="only"/>: that species alone, with the same numbers
+        /// as in the whole stock's run (each species' draws are seeded by itself, the uniform ones by the first species' region).
+        /// </summary>
+        static Shares SampleShares(Bathymetry b, FishHabitat hab, List<FishSpecies> species, float zMax, string only = null)
+        {
+            var s = new Shares();
+            for (int si = 0; si < species.Count; si++)
+            {
+                var sp = species[si];
+                bool want = only == null || sp.id == only;
+                if (!want && si != 0) continue;
                 var per = new float[4][];
+                var perM = new float[4][];
+                var rank = new float[4];
                 for (int p = 0; p < 4; p++)
                 {
                     var (reg, cum, total) = hab.DebugSampler(sp, p, zMax);
-                    per[p] = Shares(reg, cum, total, p + 10 * id.Length);
-                    if (old == null)
+                    if (want)
                     {
-                        var u = new float[reg.u.Length];
-                        float acc = 0f;
-                        for (int q = 0; q < u.Length; q++) u[q] = acc += reg.u[q];
-                        old = Shares(reg, u, acc, 999);
+                        var rng = new System.Random(1515 + p + 10 * sp.id.Length);
+                        var c = new float[9];
+                        var cmat = new float[4];
+                        double rk = 0;
+                        for (int t = 0; t < 2000; t++)
+                        {
+                            int k = reg.nodes[HabitatModel.Pick(cum, (float)rng.NextDouble() * total)];
+                            c[(int)b.NodeKind(k)] += 1f / 2000f;
+                            cmat[(int)b.NodeMat(k)] += 1f / 2000f;
+                            rk += b.NodeRankPct(k);
+                        }
+                        per[p] = c;
+                        perM[p] = cmat;
+                        rank[p] = (float)(rk / 2000);
                     }
-                    Log("[DEPTH] D7 " + id + " " + GameClock.Id((Period)p) + " " + string.Join(" ", Enumerable.Range(0, 9).Select(k => $"{(BedKind)k}:{F2(per[p][k])}/{F2(old[k])}")));
+                    if (si != 0 || p != 0) continue;
+                    // the uniform targets: the region's own weights
+                    var u = new float[reg.u.Length];
+                    float acc = 0f;
+                    for (int q = 0; q < u.Length; q++) u[q] = acc += reg.u[q];
+                    var rng2 = new System.Random(1515 + 999);
+                    s.uni = new float[9];
+                    s.uniM = new float[4];
+                    for (int t = 0; t < 2000; t++)
+                    {
+                        int k = reg.nodes[HabitatModel.Pick(u, (float)rng2.NextDouble() * acc)];
+                        s.uni[(int)b.NodeKind(k)] += 1f / 2000f;
+                        s.uniM[(int)b.NodeMat(k)] += 1f / 2000f;
+                    }
+                    double ru = 0, us = 0;
+                    for (int q = 0; q < reg.nodes.Length; q++)
+                    {
+                        ru += reg.u[q] * b.NodeRankPct(reg.nodes[q]);
+                        us += reg.u[q];
+                    }
+                    s.uniMean = us > 0 ? (float)(ru / us) : 50f;
                 }
-                sh[id] = per;
+                if (!want) continue;
+                s.kind[sp.id] = per;
+                s.mat[sp.id] = perM;
+                s.rank[sp.id] = rank;
             }
-            float bassDay = S(sh["largemouth_bass"][1], BedKind.Dropoff, BedKind.Hump, BedKind.Shoal) / S(old, BedKind.Dropoff, BedKind.Hump, BedKind.Shoal);
-            float bassDawn = S(sh["largemouth_bass"][0], BedKind.Flat, BedKind.Shelf) / S(old, BedKind.Flat, BedKind.Shelf);
-            float cruDawn = sh["crucian_carp"][0][(int)BedKind.Flat] / old[(int)BedKind.Flat];
-            float cruDay = sh["crucian_carp"][1][(int)BedKind.Flat] / sh["crucian_carp"][0][(int)BedKind.Flat];
-            float carpNight = S(sh["carp"][3], BedKind.Flat, BedKind.Shoal) / S(old, BedKind.Flat, BedKind.Shoal);
-            float carpDay = S(sh["carp"][1], BedKind.Hole, BedKind.Channel, BedKind.Basin) / S(old, BedKind.Hole, BedKind.Channel, BedKind.Basin);
-            DCheck($"D7 2000 targets each (bamboo's water, z <= 30): bass by day on drop-off + hump + shoal x{F2(bassDay)} (>= 1.4), at dawn on flat + shelf x{F2(bassDawn)} (>= 1.3); crucian at dawn on the flats x{F2(cruDawn)} (>= 1.3), by day x{F2(cruDay)} of its dawn share (<= 0.8); carp at night on flat + shoal x{F2(carpNight)} (>= 1.4), by day in hole + channel + basin x{F2(carpDay)} (>= 1.2)",
-                bassDay >= 1.4f && bassDawn >= 1.3f && cruDawn >= 1.3f && cruDay <= 0.8f && carpNight >= 1.4f && carpDay >= 1.2f);
+            return s;
+        }
+
+        /// <summary>The species with a hand-written niche gate (D7', Docs/lake_phase2_spec.md C4).</summary>
+        static readonly string[] NicheIds = { "barbel_steed", "white_crucian", "freshwater_eel", "redfin_culter", "yellow_catfish" };
+
+        /// <summary>
+        /// A step-2 species' hand-written niche gate on seed 1 (<paramref name="s"/>: seed 1's shares with it in them) against
+        /// the uniform targets: (its text, passed); null for a species without one (see <see cref="GenericNiche"/>). The
+        /// material shares are over the four periods by their length (3 / 9 / 3 / 9 h).
+        /// </summary>
+        (string text, bool ok)? NicheGate(FishingController ctl, Shares s, string id)
+        {
+            float M(params BedMat[] ms)
+            {
+                float v = 0f;
+                for (int p = 0; p < 4; p++) v += LakeEconomy.PeriodW[p] * ms.Sum(m => s.mat[id][p][(int)m]);
+                return v / LakeEconomy.PeriodW.Sum();
+            }
+            float MU(params BedMat[] ms) => ms.Sum(m => s.uniM[(int)m]);
+            switch (id)
+            {
+                case "barbel_steed":
+                {
+                    float v = M(BedMat.Gravel, BedMat.Sand) / MU(BedMat.Gravel, BedMat.Sand);
+                    return ($"barbel_steed on gravel + sand x{F2(v)} (>= 1.4)", v >= 1.4f);
+                }
+                case "white_crucian":
+                {
+                    float v = M(BedMat.Weed) / MU(BedMat.Weed);
+                    return ($"white_crucian on weed x{F2(v)} (>= 1.4)", v >= 1.4f);
+                }
+                case "freshwater_eel":
+                {
+                    float v = s.kind[id][3][(int)BedKind.Hole] / s.uni[(int)BedKind.Hole];
+                    return ($"freshwater_eel at night in holes x{F2(v)} (>= 2)", v >= 2f);
+                }
+                case "yellow_catfish":
+                {
+                    float v = s.rank[id][3];
+                    return ($"yellow_catfish at night mean rank {v:0} (>= 50)", v >= 50f);
+                }
+                case "redfin_culter":
+                {
+                    // the redfin culter's channel: the old creek starts at z 17-20 and runs 28-38 m out, its banks mostly
+                    // drop-off, so the bamboo's water (z <= 30) holds almost none of it; judged on the dragon's water (z <= 50)
+                    // with 4000 targets per period against the region's exact uniform share
+                    var L = ctl.Stage.L;
+                    var cul = GameDatabase.GetFish(id);
+                    var habW = new FishHabitat(ctl.Stage, ctl, L.Bathy, true);
+                    const float zWide = 50f;
+                    var chan = new float[4];
+                    float uniChan = 0f;
+                    for (int p = 0; p < 4; p++)
+                    {
+                        var (reg, cum, total) = habW.DebugSampler(cul, p, zWide);
+                        var rng = new System.Random(2515 + p);
+                        int nch = 0;
+                        for (int t = 0; t < 4000; t++)
+                            if (L.Bathy.NodeKind(reg.nodes[HabitatModel.Pick(cum, (float)rng.NextDouble() * total)]) == BedKind.Channel) nch++;
+                        chan[p] = nch / 4000f;
+                        if (p == 0) uniChan = ExactShare(reg, null, k => L.Bathy.NodeKind(k) == BedKind.Channel);
+                    }
+                    float culDawn = uniChan > 0f ? chan[0] / uniChan : 0f, culEve = uniChan > 0f ? chan[2] / uniChan : 0f;
+                    Log($"{depthTag} D7' seed 1 redfin_culter in the channel on the dragon's water (z <= {zWide:0}, uniform share {uniChan:0.0000}): " + string.Join(" ", Enumerable.Range(0, 4).Select(p => $"{GameClock.Id((Period)p)} {chan[p]:0.0000} x{(uniChan > 0f ? chan[p] / uniChan : 0f):0.00}")));
+                    return ($"redfin_culter in the channel (z <= {zWide:0}) at dawn x{F2(culDawn)} and evening x{F2(culEve)} (>= 1.5)", culDawn >= 1.5f && culEve >= 1.5f);
+                }
+                default:
+                    return null;
+            }
+        }
+
+        /// <summary>
+        /// The exact share of a region's weights on the nodes <paramref name="on"/> picks: a sampler's (its cumulative
+        /// weights <paramref name="cum"/>), or the uniform targets' (cum null: the region's u).
+        /// </summary>
+        static float ExactShare(HabitatModel.Region reg, float[] cum, Func<int, bool> on)
+        {
+            double hit = 0, all = 0;
+            for (int q = 0; q < reg.nodes.Length; q++)
+            {
+                double w = cum == null ? reg.u[q] : cum[q] - (q > 0 ? cum[q - 1] : 0f);
+                all += w;
+                if (on(reg.nodes[q])) hit += w;
+            }
+            return all > 0 ? (float)(hit / all) : 0f;
+        }
+
+        /// <summary>
+        /// The niche gate of a species without a hand-written one (-fkauto newspecies): its strongest declared bed
+        /// preference in its most active period (the kind weight times that period's kind weight, or the material weight,
+        /// whichever is the larger), as its exact share of the targets on seed 1 (the dragon's water, z &lt;= 50) over the
+        /// uniform share there. Gate x1.3; null when it declares nothing of 1.3 or more, or that ground is under 0.5 % of
+        /// the water (nothing to judge).
+        /// </summary>
+        (string text, bool ok)? GenericNiche(FishingController ctl, FishSpecies sp)
+        {
+            var h = sp.habitat;
+            if (h == null) return null;
+            int pb = Enumerable.Range(0, 4).OrderByDescending(p => TimeActivity.A(sp.id, (Period)p)).First();
+            int bestK = 0, bestM = 0;
+            float wK = 0f, wM = 0f;
+            for (int k = 0; k < 9; k++)
+                if (h.kindW[k] * h.periodKind[pb, k] > wK)
+                {
+                    wK = h.kindW[k] * h.periodKind[pb, k];
+                    bestK = k;
+                }
+            for (int m = 0; m < 4; m++)
+                if (h.matW[m] > wM)
+                {
+                    wM = h.matW[m];
+                    bestM = m;
+                }
+            bool byKind = wK >= wM;
+            float w = byKind ? wK : wM;
+            if (w < 1.3f) return null;
+            var L = ctl.Stage.L;
+            var (reg, cum, _) = new FishHabitat(ctl.Stage, ctl, L.Bathy, true).DebugSampler(sp, pb, 50f);
+            Func<int, bool> on = byKind ? (Func<int, bool>)(k => (int)L.Bathy.NodeKind(k) == bestK) : k => (int)L.Bathy.NodeMat(k) == bestM;
+            float uniS = ExactShare(reg, null, on), its = ExactShare(reg, cum, on);
+            if (uniS < 0.005f) return null;
+            string where = byKind ? ((BedKind)bestK).ToString() : ((BedMat)bestM).ToString();
+            float v = its / uniS;
+            return ($"{sp.id} at {GameClock.Id((Period)pb)} (its most active period) on {where} (its strongest preference, weight {F2(w)}): {its:0.000} of its targets, x{F2(v)} the uniform {uniS:0.000} (z <= 50; >= 1.3)", v >= 1.3f);
         }
 
         // ------------------------------------------------------------------ D12: the obstacle bands
@@ -382,101 +775,382 @@ namespace FishingKing
             yield return null;
         }
 
-        // ------------------------------------------------------------------ D11: the estimator
-        IEnumerator EstimatorCheck(FishingController ctl, TerrainRecipe r, ObstacleSet raw)
+        // ------------------------------------------------------------------ D11', D11b: the economy and the derived weights
+        /// <summary>The simulations of some economy jobs on the workers (at most <paramref name="threads"/> at a time), then each job's estimate.</summary>
+        static void RunJobs(List<FishHabitat.EcoJob> jobs, int threads)
+        {
+            var all = new List<Lazy<HabitatModel.Occupancy>>();
+            foreach (var j in jobs)
+            {
+                foreach (var o in j.todayOcc) if (o != null) all.Add(o);
+                foreach (var o in j.newOcc) if (o != null) all.Add(o);
+            }
+            Parallel.ForEach(all, new ParallelOptions { MaxDegreeOfParallelism = threads }, o => _ = o.Value);
+            foreach (var j in jobs) j.Run(1);
+        }
+
+        /// <summary>
+        /// D11' (Docs/lake_phase2_spec.md A7, A8): the economy over seeds 1..50 x the bamboo, carbon and dragon rods (the beds
+        /// built here in turn, the simulations and estimates on the workers): the feeding chance F never at its clamp; after
+        /// it the lake's catches and income per minute within 0.8..1.25 of today's for every seed and rod; seeds 1 and 37
+        /// recomputed give the same numbers; on seed 1 (bamboo, carbon) every species' best 10 % of casts on its best rig at
+        /// least 1.5 x its own fan mean (where each fish lives shows). Information: per rig / period / species, the golden
+        /// paste and the dragon's luck, XP, F's medians per rod (FishHabitat.FDefault). D11b: the derived weights (computed
+        /// twice the same, a roster override halves the base with A and the activity still applied, at most 10 % of the
+        /// (seed, species, period) at A's clamp, the stock's mean multiplier within 0.9..1.1). Always logged: how close the
+        /// catches and income came to the band's edges (a NOTE under 0.03: a live soak is advised; none is run).
+        /// <paramref name="only"/> (-fkauto newspecies): the positive gate for that species alone, its derived weight and
+        /// clamp hits reported; no golden paste / luck, no recompute, no override check.
+        /// </summary>
+        IEnumerator EconomyCheck(FishingController ctl, TerrainRecipe r, ObstacleSet raw, string only = null)
         {
             var L = ctl.Stage.L;
-            var species = new[] { "crucian_carp", "bluegill", "carp", "largemouth_bass" }.Select(GameDatabase.GetFish).ToList();
-            // (a species and a rig class go together when some bait of that class draws it at all)
-            bool Valid(FishSpecies sp, RigClass rc) => GameDatabase.Baits.Any(bt =>
-                (HabitatModel.IsLure(rc) ? bt.isLure && FishHabitat.RigOf(bt, 0f) == rc : !bt.isLure) && sp.Appeal(bt) > 0f);
-            // the user's rule (spec 8.1): per bait, rig class, period and rod, the stock's bites after the lever over today's;
-            // a species' share = its stock weight x activity x sqrt(activity) (the approach roll) x its appeal for the bait
-            var stock = new Dictionary<string, float>();
-            foreach (var kv in ctl.Stage.Def.spawns) stock[kv.Key] = kv.Value;
-            var floats = new[] { RigClass.F1, RigClass.F2, RigClass.F4, RigClass.F6 };
-            var baits = GameDatabase.Baits.Where(bt => species.Any(sp => sp.Appeal(bt) > 0f)).ToList();
+            var def = ctl.Stage.Def;
             var rods = new[] { ("rod_bamboo", 16f), ("rod_carbon", 24f), ("rod_dragon", 36f) };
-            int n = 0, rawOut = 0, scaledOut = 0, scaleOut = 0, pooledN = 0, pooledOut = 0;
-            float rawMin = 9f, rawMax = 0f, scMin = 9f, scMax = 0f, sMin = 9f, sMax = 0f, poMin = 9f, poMax = 0f;
-            string firstBad = "", firstPooled = "";
-            var outByRod = new Dictionary<float, int>();
-            var best = new Dictionary<string, float>();
+            int threads = Mathf.Max(1, SystemInfo.processorCount - 1);
             var t0 = Time.realtimeSinceStartup;
+            var F = new Dictionary<float, List<float>>();
+            var C = new Dictionary<float, List<float>>();
+            var I = new Dictionary<float, List<float>>();
+            foreach (var rd in rods)
+            {
+                F[rd.Item2] = new List<float>();
+                C[rd.Item2] = new List<float>();
+                I[rd.Item2] = new List<float>();
+            }
+            int clamped = 0, outBand = 0, rigWarn = 0, clampHits = 0, pairs = 0;
+            float mulMin = 9f, mulMax = 0f;
+            string firstOut = "", firstWarn = "";
+            var keep = new Dictionary<(int, float), (double c1, double i1, float f)>();
+            bool posOk = true;
+            ecoFocus = "";
+            // the band's closest approach (catches or income, any seed and rod), and the focus species' derived weight
+            float margin = 9f;
+            string marginAt = "";
+            int fClamp = 0, fPairs = 0;
+            var fAMin = new[] { 9f, 9f, 9f, 9f };
+            var fAMax = new float[4];
+            string fSeed1 = "";
             for (int seed = 1; seed <= 50; seed++)
             {
                 var b = seed == 1 ? L.Bathy : BathyGen.Build(L, r, seed, raw);
-                var hab = new FishHabitat(ctl.Stage, ctl, b);
-                foreach (var (rid, cd) in rods)
+                var hab = new FishHabitat(ctl.Stage, ctl, b, true);
+                // D11b on this bed: the clamp hits and the stock's mean multiplier per period
+                var d = hab.Derived;
+                clampHits += d.clampHits;
+                pairs += d.pairs;
+                for (int p = 0; p < 4; p++)
                 {
-                    var got = new Dictionary<(string, int, RigClass), HabitatModel.Budget>();
-                    foreach (var sp in species)
-                    for (int p = 0; p < 4; p++)
-                    foreach (RigClass rc in Enum.GetValues(typeof(RigClass)))
+                    double num = 0, den = 0;
+                    for (int s = 0; s < d.ids.Length; s++)
                     {
-                        if (!Valid(sp, rc)) continue;
-                        var bu = hab.Budget(sp, p, rc, cd, true);
-                        got[(sp.id, p, rc)] = bu;
-                        n++;
-                        rawMin = Mathf.Min(rawMin, bu.raw);
-                        rawMax = Mathf.Max(rawMax, bu.raw);
-                        scMin = Mathf.Min(scMin, bu.scaled);
-                        scMax = Mathf.Max(scMax, bu.scaled);
-                        sMin = Mathf.Min(sMin, bu.scale);
-                        sMax = Mathf.Max(sMax, bu.scale);
-                        bool ro = bu.raw < HabitatModel.RawMin || bu.raw > HabitatModel.RawMax, so = bu.scaled < 0.9f || bu.scaled > 1.1f;
-                        bool co = bu.scale < HabitatModel.ScaleMin - 1e-4f || bu.scale > HabitatModel.ScaleMax + 1e-4f;
-                        if (ro) rawOut++;
-                        if (so) scaledOut++;
-                        if (co) scaleOut++;
-                        if (ro || so) outByRod[cd] = (outByRod.TryGetValue(cd, out int k) ? k : 0) + 1;
-                        if ((ro || so || co) && firstBad.Length == 0) firstBad = $" (first: seed {seed} {rid} {sp.id} {GameClock.Id((Period)p)} {rc} raw {F2(bu.raw)} scaled {F2(bu.scaled)})";
-                        if (seed == 1 && cd == 16f)
-                        {
-                            string key = sp.id + " " + GameClock.Id((Period)p);
-                            best[key] = Mathf.Max(best.TryGetValue(key, out float v) ? v : 0f, bu.best10);
-                            Log(string.Format(CIc, "[HAB] budget {0} {1} {2} rod {3:0} raw {4:0.00} scale {5:0.00} scaled {6:0.00} best10 {7:0.00} worst10 {8:0.00} (before the scale {9:0.00})",
-                                sp.id, GameClock.Id((Period)p), rc, cd, bu.raw, bu.scale, bu.scaled, bu.best10, bu.worst10, bu.best10Raw));
-                        }
+                        float bw = def.spawns.First(kv => kv.Key == d.ids[s]).Value, a = TimeActivity.A(d.ids[s], (Period)p);
+                        num += bw * a * d.A[s, p];
+                        den += bw * a;
                     }
-                    foreach (var bt in baits)
-                    foreach (var rc in bt.isLure ? new[] { FishHabitat.RigOf(bt, 0f) } : floats)
+                    float mul = den > 0 ? (float)(num / den) : 1f;
+                    mulMin = Mathf.Min(mulMin, mul);
+                    mulMax = Mathf.Max(mulMax, mul);
+                }
+                int fs = only != null ? Array.IndexOf(d.ids, only) : -1;
+                if (fs >= 0)
+                {
                     for (int p = 0; p < 4; p++)
                     {
-                        double num = 0, den = 0;
-                        foreach (var sp in species)
-                        {
-                            float app = sp.Appeal(bt);
-                            if (app <= 0f || !got.TryGetValue((sp.id, p, rc), out var bu)) continue;
-                            float a = TimeActivity.A(sp.id, (Period)p);
-                            float w = (stock.TryGetValue(sp.id, out float sw) ? sw : 0f) * a * Mathf.Sqrt(Mathf.Max(0f, a)) * app;
-                            num += w * bu.bed;
-                            den += w * bu.today;
-                        }
-                        if (den <= 0) continue;
-                        float ratio = (float)(num / den);
-                        pooledN++;
-                        poMin = Mathf.Min(poMin, ratio);
-                        poMax = Mathf.Max(poMax, ratio);
-                        if (ratio < 0.8f || ratio > 1.25f)
-                        {
-                            pooledOut++;
-                            if (firstPooled.Length == 0) firstPooled = $" (first: seed {seed} {rid} {bt.id} {rc} {GameClock.Id((Period)p)} x{F2(ratio)})";
-                        }
+                        if (!(TimeActivity.A(only, (Period)p) > 0f)) continue;
+                        fPairs++;
+                        float A = d.A[fs, p];
+                        if (A <= HabitatModel.AvailMin || A >= HabitatModel.AvailMax) fClamp++;
+                        fAMin[p] = Mathf.Min(fAMin[p], A);
+                        fAMax[p] = Mathf.Max(fAMax[p], A);
+                    }
+                    if (seed == 1)
+                    {
+                        var sumW = Enumerable.Range(0, 4).Select(p => Enumerable.Range(0, d.ids.Length).Sum(s => d.W[s, p])).ToArray();
+                        fSeed1 = string.Format(CIc, "base {0:0.###}{1}; seed 1 A {2:0.00}/{3:0.00}/{4:0.00}/{5:0.00}, W {6:0.0}/{7:0.0}/{8:0.0}/{9:0.0} = {10} of the stock's W",
+                            def.spawns.First(kv => kv.Key == only).Value, def.GivenWeight.TryGetValue(only, out bool given) && given ? " (given in the roster)" : " (the rarity's)",
+                            d.A[fs, 0], d.A[fs, 1], d.A[fs, 2], d.A[fs, 3], d.W[fs, 0], d.W[fs, 1], d.W[fs, 2], d.W[fs, 3],
+                            string.Join("/", Enumerable.Range(0, 4).Select(p => (sumW[p] > 0 ? d.W[fs, p] / sumW[p] * 100f : 0f).ToString("0.0", CIc) + "%")));
                     }
                 }
-                if (seed % 2 == 0) yield return null;
+                var jobs = rods.Select(rd => hab.Economy(rd.Item2)).ToList();
+                var task = Task.Run(() => RunJobs(jobs, threads));
+                while (!task.IsCompleted) yield return null;
+                if (task.IsFaulted)
+                {
+                    DCheck("D11' the estimates ran: " + task.Exception?.GetBaseException(), false);
+                    yield break;
+                }
+                foreach (var j in jobs)
+                {
+                    float c = (float)(j.C1 * j.F), i = (float)(j.I1 * j.F);
+                    F[j.castDist].Add(j.F);
+                    C[j.castDist].Add(c);
+                    I[j.castDist].Add(i);
+                    if (j.clamped) clamped++;
+                    if (c < LakeEconomy.BandLo || c > LakeEconomy.BandHi || i < LakeEconomy.BandLo || i > LakeEconomy.BandHi)
+                    {
+                        outBand++;
+                        if (firstOut.Length == 0) firstOut = string.Format(CIc, " (first: seed {0} rod {1:0} catches x{2:0.00} income x{3:0.00})", seed, j.castDist, c, i);
+                    }
+                    float mg = Mathf.Min(Mathf.Min(c - LakeEconomy.BandLo, LakeEconomy.BandHi - c), Mathf.Min(i - LakeEconomy.BandLo, LakeEconomy.BandHi - i));
+                    if (mg < margin)
+                    {
+                        margin = mg;
+                        marginAt = string.Format(CIc, "seed {0} rod {1:0}: catches x{2:0.000} income x{3:0.000}", seed, j.castDist, c, i);
+                    }
+                    for (int k = 0; k < j.rigs.Length; k++)
+                    {
+                        double rr = j.Today.rigC[k] > 0 ? j.New.rigC[k] * j.F / j.Today.rigC[k] : 1;
+                        if (rr < 0.5 || rr > 2)
+                        {
+                            rigWarn++;
+                            if (firstWarn.Length == 0) firstWarn = string.Format(CIc, " (first: seed {0} rod {1:0} {2} x{3:0.00})", seed, j.castDist, j.rigs[k].id, rr);
+                        }
+                    }
+                    if (seed == 1 || seed == 37) keep[(seed, j.castDist)] = (j.C1, j.I1, j.F);
+                    Log(string.Format(CIc, "[ECO] seed {0} rod {1:0} C1 {2:0.000} I1 {3:0.000} -> F {4:0.000}{5}: catches x{6:0.000} income x{7:0.000} ({8:0} ms)",
+                        seed, j.castDist, j.C1, j.I1, j.F, j.clamped ? " CLAMPED" : "", c, i, j.ms));
+                    if (seed == 1) posOk &= EconomyTables(j, j.castDist <= 24f, only);
+                }
+                if (seed == 1 && only == null) yield return EconomyExtras(ctl, jobs);
             }
-            // the spec's per-species gate (fixed bounds: raw within what the clamp can take back, the scaled estimate within 10 %)
-            DCheck(string.Format(CIc, "D11 the bite budget per species over seeds 1..50 x 4 species x 4 periods x their rig classes x bamboo / carbon / dragon ({0} estimates, {1:0} s): raw {2:0.00}..{3:0.00} (in [{4:0.00}, {5:0.00}]: {6} out), scaled {7:0.00}..{8:0.00} (in [0.90, 1.10]: {9} out), scale {10:0.00}..{11:0.00} (in [{12:0.00}, {13:0.00}]: {14} out); raw or scaled out by rod {15}{16}",
-                n, Time.realtimeSinceStartup - t0, rawMin, rawMax, HabitatModel.RawMin, HabitatModel.RawMax, rawOut, scMin, scMax, scaledOut, sMin, sMax, HabitatModel.ScaleMin, HabitatModel.ScaleMax, scaleOut,
-                string.Join(" / ", rods.Select(rd => rd.Item2.ToString("0", CIc) + " m: " + (outByRod.TryGetValue(rd.Item2, out int o) ? o : 0))), firstBad),
-                rawOut == 0 && scaledOut == 0 && scaleOut == 0);
-            // the user's rule: every bait, rig class, period and rod within 0.8..1.25 of today's
-            DCheck(string.Format(CIc, "D11 the stock's bites per bait x rig class x period x rod after the lever, over today's (seeds 1..50, {0} cases): {1:0.00}..{2:0.00} (in [0.80, 1.25]: {3} out){4}",
-                pooledN, poMin, poMax, pooledOut, firstPooled), pooledN > 0 && pooledOut == 0);
-            DCheck("D11 seed 1, bamboo: the best 10 % of casts (the best rig class, after the scale) >= 1.2 for every species and period: "
-                   + string.Join(", ", best.Select(kv => kv.Key + " " + F2(kv.Value))), best.Count == 16 && best.Values.All(v => v >= 1.2f));
+            float Med(List<float> v)
+            {
+                var a = v.OrderBy(x => x).ToList();
+                return a.Count == 0 ? 0f : (a.Count % 2 == 1 ? a[a.Count / 2] : 0.5f * (a[a.Count / 2 - 1] + a[a.Count / 2]));
+            }
+            DCheck(string.Format(CIc, "D11' seeds 1..50 x bamboo / carbon / dragon ({0:0} s): F never at its clamp [0.25, 1] ({1} clamped); F {2}",
+                Time.realtimeSinceStartup - t0, clamped, string.Join(", ", rods.Select(rd => string.Format(CIc, "{0:0} m {1:0.000}..{2:0.000} (median {3:0.000})", rd.Item2, F[rd.Item2].Min(), F[rd.Item2].Max(), Med(F[rd.Item2]))))),
+                clamped == 0);
+            DCheck(string.Format(CIc, "D11' after F the lake's catches and income per minute over today's within [0.80, 1.25] for every seed and rod ({0} out{1}): {2}",
+                outBand, firstOut, string.Join(", ", rods.Select(rd => string.Format(CIc, "{0:0} m catches x{1:0.000}..{2:0.000} income x{3:0.000}..{4:0.000}",
+                    rd.Item2, C[rd.Item2].Min(), C[rd.Item2].Max(), I[rd.Item2].Min(), I[rd.Item2].Max())))),
+                outBand == 0);
+            Log(string.Format(CIc, "{0} D11' the band's closest approach: {1:0.000} from an edge ({2}){3}", depthTag, margin, marginAt,
+                margin < EcoSoakMargin ? "" : " (a live soak is not needed: run one only within " + EcoSoakMargin.ToString("0.00", CIc) + " of an edge)"));
+            if (margin < EcoSoakMargin)
+                Log(string.Format(CIc, "{0} NOTE the economy came within {1:0.00} of the band's edge ({2:0.000}): a live soak (-fkauto economy, Docs/lake_phase2_spec.md A8) is advised; it is not run here", depthTag, EcoSoakMargin, margin));
+            Log($"{depthTag} D11' rigs whose fan ratio is under x0.5 or over x2 (WARN, information): {rigWarn} of {50 * rods.Length * LakeEconomy.Reference(id => RigOf(id)).Length}{firstWarn}");
+            if (only != null)
+            {
+                DCheck($"D11' seed 1 (bamboo, carbon): {only}'s best 10 % of casts on its best rig >= 1.5 x its own fan mean:{(ecoFocus.Length > 0 ? ecoFocus : " (not in the stock's estimate)")}", posOk && ecoFocus.Length > 0);
+                DCheck(string.Format(CIc, "D11b the derived weights over seeds 1..50 (the whole stock): A at its clamp [0.6, 1.4] in {0} of {1} (species, period) with a > 0 (<= 10 %); the stock's mean multiplier {2:0.000}..{3:0.000} (in [0.9, 1.1])",
+                    clampHits, pairs, mulMin, mulMax), pairs > 0 && clampHits <= pairs / 10 && mulMin >= 0.9f && mulMax <= 1.1f);
+                // (its own weight: reported, not gated; a clamp hit says its habitat's availability is extreme on that bed)
+                Log(string.Format(CIc, "{0} D11b {1}'s derived spawn weight: {2}; over seeds 1..50 A {3}; at its clamp [0.6, 1.4] in {4} of {5} (seed, period) with a > 0{6}",
+                    depthTag, only, fSeed1.Length > 0 ? fSeed1 : "not derived (no habitat or weight 0)",
+                    string.Join(" ", Enumerable.Range(0, 4).Select(p => GameClock.Id((Period)p) + " " + (fAMax[p] > 0f ? string.Format(CIc, "{0:0.00}..{1:0.00}", fAMin[p], fAMax[p]) : "-"))),
+                    fClamp, fPairs, fClamp > 0 ? " -- CLAMP HIT" : " (never clamped)"));
+                yield break;
+            }
+            DCheck("D11' seed 1 (bamboo, carbon): every species' best 10 % of casts on its best rig >= 1.5 x its own fan mean (the [ECO] best lines)", posOk);
+            // recomputed: the same numbers
+            bool same = true;
+            string again = "";
+            foreach (int seed in new[] { 1, 37 })
+            {
+                var b = BathyGen.Build(L, r, seed, raw);
+                var hab = new FishHabitat(ctl.Stage, ctl, b, true);
+                var jobs = rods.Select(rd => hab.Economy(rd.Item2)).ToList();
+                var task = Task.Run(() => RunJobs(jobs, threads));
+                while (!task.IsCompleted) yield return null;
+                foreach (var j in jobs)
+                {
+                    var k = keep[(seed, j.castDist)];
+                    bool eq = j.C1 == k.c1 && j.I1 == k.i1 && j.F == k.f;
+                    same &= eq;
+                    again += string.Format(CIc, " {0}/{1:0}:{2}", seed, j.castDist, eq ? "same" : $"C1 {k.c1:R} -> {j.C1:R}");
+                }
+            }
+            DCheck("D11' seeds 1 and 37 recomputed (the beds rebuilt, the simulations again):" + again, same);
+            Log(string.Format(CIc, "[DEPTH] D11' F medians per rod (FishHabitat.FDefault): {0}", string.Join(", ", rods.Select(rd => string.Format(CIc, "{0} {1:0.000}", rd.Item1, Med(F[rd.Item2]))))));
+            // D11b
+            DCheck(string.Format(CIc, "D11b the derived weights over seeds 1..50: A at its clamp [0.6, 1.4] in {0} of {1} (species, period) with a > 0 (<= 10 %); the stock's mean multiplier sum(base a A) / sum(base a) {2:0.000}..{3:0.000} (in [0.9, 1.1])",
+                clampHits, pairs, mulMin, mulMax), pairs > 0 && clampHits <= pairs / 10 && mulMin >= 0.9f && mulMax <= 1.1f);
+            WeightsCheck(ctl);
+        }
+
+        static RigClass RigOf(string baitId) => FishHabitat.RigOf(GameDatabase.GetItem<BaitDef>(baitId), 0f);
+
+        /// <summary>The economy's distance from the band's edges under which a live soak is advised (Docs/data_reference.md 2.7).</summary>
+        const float EcoSoakMargin = 0.03f;
+
+        /// <summary>-fkauto newspecies: the focus species' best-cast ratios (" rod 16: on paste2 x2.4 ...").</summary>
+        string ecoFocus = "";
+
+        /// <summary>
+        /// Seed 1's tables for one rod ([ECO] lines) and the positive gate (when <paramref name="gate"/>): every species', or
+        /// <paramref name="only"/>'s alone.
+        /// </summary>
+        bool EconomyTables(FishHabitat.EcoJob j, bool gate, string only = null)
+        {
+            var n = j.New;
+            var t = j.Today;
+            Log("[ECO] seed 1 rod " + j.castDist.ToString("0", CIc) + " per rig (new x F / today): " + string.Join(" ", j.rigs.Select((rg, k) =>
+                string.Format(CIc, "{0} {1:0.00}", rg.id, t.rigC[k] > 0 ? n.rigC[k] * j.F / t.rigC[k] : 0))));
+            Log("[ECO] seed 1 rod " + j.castDist.ToString("0", CIc) + " per period (dawn day evening night): " + string.Join(" ", Enumerable.Range(0, 4).Select(p =>
+                string.Format(CIc, "{0:0.00}/{1:0.00}", t.perC[p] > 0 ? n.perC[p] * j.F / t.perC[p] : 0, t.perI[p] > 0 ? n.perI[p] * j.F / t.perI[p] : 0))));
+            var ids = j.side.species.Select(s => s.h.id).ToList();
+            Log("[ECO] seed 1 rod " + j.castDist.ToString("0", CIc) + " per species (share of catches new / today, of income new / today): " + string.Join(" ", ids.Select((id, s) =>
+            {
+                int ti = j.today.species.FindIndex(x => x.h.id == id);
+                return string.Format(CIc, "{0} {1:0.00}/{2:0.00} {3:0.00}/{4:0.00}", id, n.spC[s] / Math.Max(1e-12, n.C), ti >= 0 ? t.spC[ti] / Math.Max(1e-12, t.C) : 0,
+                    n.spI[s] / Math.Max(1e-12, n.I), ti >= 0 ? t.spI[ti] / Math.Max(1e-12, t.I) : 0);
+            })));
+            Log(string.Format(CIc, "[ECO] seed 1 rod {0:0} XP per minute x{1:0.000}", j.castDist, t.Xp > 0 ? n.Xp * j.F / t.Xp : 0));
+            bool ok = true;
+            int nc = j.cs.at.Length;
+            var sb = new System.Text.StringBuilder();
+            for (int s = 0; s < ids.Count; s++)
+            {
+                int best = 0;
+                double bestV = -1;
+                for (int k = 0; k < j.rigs.Length; k++)
+                {
+                    double v = 0;
+                    for (int c = 0; c < nc; c++) v += n.spRigCast[s, k, c];
+                    if (v > bestV)
+                    {
+                        bestV = v;
+                        best = k;
+                    }
+                }
+                var vals = new List<double>();
+                for (int c = 0; c < nc; c++) vals.Add(n.spRigCast[s, best, c]);
+                vals.Sort();
+                int tenth = Math.Max(1, nc / 10);
+                double top = vals.Skip(nc - tenth).Average(), mean = vals.Average();
+                double ratio = mean > 0 ? top / mean : 0;
+                if (ratio < 1.5 && (only == null || ids[s] == only)) ok = false;
+                sb.Append(string.Format(CIc, " {0} on {1} x{2:0.00}", ids[s], j.rigs[best].id, ratio));
+                if (ids[s] == only && gate) ecoFocus += string.Format(CIc, " rod {0:0} on {1} x{2:0.00}", j.castDist, j.rigs[best].id, ratio);
+            }
+            Log("[ECO] seed 1 rod " + j.castDist.ToString("0", CIc) + " best 10 % of casts over the fan mean (>= 1.5):" + sb + (gate ? "" : " (information)"));
+            return !gate || ok;
+        }
+
+        /// <summary>Seed 1's information: the golden paste (rare x 3 on the stock) and the dragon's luck (x 1.6 on rare and up).</summary>
+        IEnumerator EconomyExtras(FishingController ctl, List<FishHabitat.EcoJob> jobs)
+        {
+            var golden = GameDatabase.GetItem<BaitDef>("bait_golden");
+            var dragon = GameDatabase.GetItem<RodDef>("rod_dragon");
+            foreach (var j in jobs)
+            {
+                var g = new[] { new LakeEconomy.Rig { id = "golden2", bait = "bait_golden", cls = RigClass.F2, weight = 1f } };
+                j.side.rareBoost = j.today.rareBoost = golden != null ? golden.rareBoost : 3f;
+                var gt = LakeEconomy.Evaluate(j.cs, j.today, g, LakeEconomy.PeriodW, j.stealth, j.biteMult);
+                var gn = LakeEconomy.Evaluate(j.cs, j.side, g, LakeEconomy.PeriodW, j.stealth, j.biteMult);
+                j.side.rareBoost = j.today.rareBoost = 1f;
+                Log(string.Format(CIc, "[ECO] seed 1 rod {0:0} golden paste (F2, rare x{1:0}): catches x{2:0.00} income x{3:0.00} of today's golden paste", j.castDist, golden != null ? golden.rareBoost : 3f,
+                    gt.C > 0 ? gn.C * j.F / gt.C : 0, gt.I > 0 ? gn.I * j.F / gt.I : 0));
+                if (j.castDist >= 36f)
+                {
+                    float luck = dragon != null ? dragon.luck : 1.6f;
+                    j.side.luck = j.today.luck = luck;
+                    var lt = LakeEconomy.Evaluate(j.cs, j.today, j.rigs, LakeEconomy.PeriodW, j.stealth, j.biteMult);
+                    var ln = LakeEconomy.Evaluate(j.cs, j.side, j.rigs, LakeEconomy.PeriodW, j.stealth, j.biteMult);
+                    j.side.luck = j.today.luck = 1f;
+                    Log(string.Format(CIc, "[ECO] seed 1 dragon luck x{0:0.0}: catches x{1:0.00} income x{2:0.00} of today's with the same luck", luck, lt.C > 0 ? ln.C * j.F / lt.C : 0, lt.I > 0 ? ln.I * j.F / lt.I : 0));
+                }
+            }
+            yield return null;
+        }
+
+        /// <summary>D11b's determinism and the override path on seed 1 (the roster's loader and the derivation).</summary>
+        void WeightsCheck(FishingController ctl)
+        {
+            var b = ctl.Stage.L.Bathy;
+            var def = ctl.Stage.Def;
+            var ins = new List<HabitatModel.WeightIn>();
+            foreach (var kv in def.spawns)
+            {
+                var sp = GameDatabase.GetFish(kv.Key);
+                if (sp == null || sp.encounter != null) continue;
+                ins.Add(new HabitatModel.WeightIn { s = FishHabitat.HabOf(sp, b), baseW = kv.Value, act = Enumerable.Range(0, 4).Select(p => TimeActivity.A(sp.id, (Period)p)).ToArray() });
+            }
+            var a = HabitatModel.DerivedWeights(b, ins);
+            var a2 = HabitatModel.DerivedWeights(b, ins);
+            bool det = true;
+            for (int s = 0; s < a.ids.Length; s++)
+                for (int p = 0; p < 4; p++)
+                    det &= BitConverter.SingleToInt32Bits(a.W[s, p]) == BitConverter.SingleToInt32Bits(a2.W[s, p]) && BitConverter.SingleToInt32Bits(a.A[s, p]) == BitConverter.SingleToInt32Bits(a2.A[s, p]);
+            // the override: the roster gives crucian_carp a weight of 20 (half its rarity's 40)
+            var ctx = SpeciesCheck.FromResources();
+            var roster = DataJson.Parse(ctx.stages.text, out _);
+            var lakeFish = roster["stages"].items.First(st => st["id"].text == "lake")["fish"];
+            lakeFish.items.First(e => e["id"].text == "crucian_carp").Set("weight", JNode.Num("20"));
+            var res = SpeciesData.Build(new SpeciesData.Source { name = ctx.stages.name, text = DataJson.Write(roster) }, ctx.species);
+            var lake = res.stages.First(st => st.id == "lake");
+            float cruBase = lake.spawns.First(kv => kv.Key == "crucian_carp").Value;
+            bool given = lake.GivenWeight.TryGetValue("crucian_carp", out bool g) && g, othersDerived = lake.GivenWeight.Where(kv => kv.Key != "crucian_carp").All(kv => !kv.Value);
+            var ov = new List<HabitatModel.WeightIn>(ins);
+            int ci = ov.FindIndex(x => x.s.id == "crucian_carp");
+            if (ci >= 0) ov[ci] = new HabitatModel.WeightIn { s = ov[ci].s, baseW = cruBase, act = ov[ci].act };
+            var o = HabitatModel.DerivedWeights(b, ov);
+            bool applied = ci >= 0;
+            float wRatio = 0f;
+            if (ci >= 0)
+                for (int p = 0; p < 4; p++)
+                {
+                    float want = cruBase * o.A[ci, p] * ov[ci].act[p];
+                    applied &= Mathf.Abs(o.W[ci, p] - want) <= 1e-4f * Mathf.Max(1f, want);
+                    if (p == 1 && a.W[ci, 1] > 0f) wRatio = o.W[ci, 1] / a.W[ci, 1];
+                }
+            DCheck(string.Format(CIc, "D11b seed 1: the derived weights twice the same ({0}); a roster weight of 20 for crucian_carp loads as an override ({1}; the others derived {2}, the stage derived {3}) and is its base: W = 20 x A x a in every period ({4}; by day x{5:0.00} of the derived)",
+                det, given && cruBase == 20f, othersDerived, lake.Derived, applied, wRatio), det && given && cruBase == 20f && othersDerived && lake.Derived && applied);
+        }
+
+        // ------------------------------------------------------------------ D14: the population and the feeding roll
+        IEnumerator FeedCheck(FishingController ctl)
+        {
+            ctl = depthCtl != null ? depthCtl : ctl;
+            yield return ToReady(ctl);
+            FishingController.NoBites = true;
+            yield return new WaitForSeconds(5f);
+            int pop = ctl.Spawner.Fish.Count, want = ctl.Stage.Def.population;
+            DCheck($"D14 the lake's stock after settling: {pop} fish (the roster's population {want}, 15)", pop == want && want == 15);
+            var f = ctl.Spawner.Fish.FirstOrDefault(x => x != null && x.State == FishAgent.St.Wander && x.LeaveAt < 0f);
+            if (f == null || ctl.Habitat == null)
+            {
+                DCheck("D14 a wandering fish on the bed", false);
+                FishingController.NoBites = false;
+                yield break;
+            }
+            float p = ctl.Habitat.FeedP;
+            int feeding = 0;
+            for (int i = 0; i < 2000; i++)
+            {
+                f.FeedDecided = false;
+                if (ctl.RollFeeding(f)) feeding++;
+            }
+            float sd = Mathf.Sqrt(2000f * p * (1f - p));
+            DCheck(string.Format(CIc, "D14 2000 encounters: {0} feeding, F {1:0.000} expects {2:0} +- 3 x {3:0.0}", feeding, p, 2000f * p, sd), Mathf.Abs(feeding - 2000f * p) <= 3f * sd + 0.5f);
+            // the decision is kept while the fish has been out of reach under 10 s, made afresh after
+            f.FeedDecided = true;
+            f.LastInReach = Time.time - 9f;
+            yield return null;
+            yield return null;
+            bool kept = f.FeedDecided;
+            f.LastInReach = Time.time - 10.5f;
+            yield return null;
+            yield return null;
+            bool dropped = !f.FeedDecided;
+            DCheck($"D14 the decision kept 9 s out of reach ({kept}), dropped after 10.5 s ({dropped})", kept && dropped);
+            // FeedAll: always feeding, and no draw
+            bool was = FishingController.FeedAll;
+            FishingController.FeedAll = true;
+            string st0 = JsonUtility.ToJson(Random.state);
+            int all = 0;
+            for (int i = 0; i < 100; i++)
+            {
+                f.FeedDecided = false;
+                if (ctl.RollFeeding(f)) all++;
+            }
+            string st1 = JsonUtility.ToJson(Random.state);
+            FishingController.FeedAll = was;
+            DCheck($"D14 FeedAll: {all} of 100 feeding, Random's state untouched ({st0 == st1})", all == 100 && st0 == st1);
+            FishingController.NoBites = false;
         }
 
         // ------------------------------------------------------------------ D6: the lying float

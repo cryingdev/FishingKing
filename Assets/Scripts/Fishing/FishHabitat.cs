@@ -11,11 +11,14 @@ using Random = UnityEngine.Random;
 namespace FishingKing
 {
     /// <summary>
-    /// The fish's ecology on the generated bed (Docs/terrain_depth_spec.md 7, 8), made by FishingController.Init when the
-    /// stage has one (the lake): where a fish swims to and is stocked (a node drawn by its habitat's density instead of a
-    /// uniform x and z), how deep it swims there (its column, shifted by the period), the least water it swims in, and the
-    /// bite budget's reach scale (how far a fish senses the rig, so the bites per minute of a rig at a time of day stay
-    /// today's). The math is <see cref="HabitatModel"/>; this holds the caches and draws with UnityEngine.Random.
+    /// The fish's ecology on the generated bed (Docs/terrain_depth_spec.md 7, Docs/lake_phase2_spec.md A3-A7), made by
+    /// FishingController.Init when the stage has one (the lake): where a fish swims to and is stocked (a node drawn by its
+    /// habitat's density, its depth band relative to this lake), how deep it swims there (its column, shifted by the
+    /// period), the least water it swims in, the stage's spawn weights derived from the bed (each species' base by rarity x
+    /// how much of its habitat this lake has x its activity), and the feeding chance F a fish in reach of the rig rolls once
+    /// per encounter, set so the lake's catches and income per minute stay today's (the economy estimate, run on worker
+    /// threads at the stage's start). The math is <see cref="HabitatModel"/> and <see cref="LakeEconomy"/>; this holds the
+    /// caches and draws with UnityEngine.Random.
     /// </summary>
     public sealed class FishHabitat
     {
@@ -24,12 +27,13 @@ namespace FishingKing
         public readonly Bathymetry B;
         readonly StageView stage;
         readonly FishingController ctl;
+        readonly bool quiet;
         readonly Dictionary<string, Sampler> samplers = new Dictionary<string, Sampler>();
         readonly Dictionary<string, HabitatModel.Region> regions = new Dictionary<string, HabitatModel.Region>();
-        readonly Dictionary<string, HabitatModel.CastSet> castSets = new Dictionary<string, HabitatModel.CastSet>();
-        readonly Dictionary<string, float> scales = new Dictionary<string, float>();
-        // where the fish spend their time (spec 8.2): on this bed per species, period and fish region; today's lake per stage,
-        // species and fish region (the same for every seed). Made on demand, or ahead on a worker (Prewarm).
+        readonly Dictionary<string, HabSpecies> habs = new Dictionary<string, HabSpecies>();
+        readonly Dictionary<string, float[]> avail = new Dictionary<string, float[]>();
+        // where the fish spend their time (the economy's estimate): on this bed per species, period and fish region; today's
+        // lake per stage, species and fish region (the same for every seed). Made on worker threads (Prewarm).
         readonly Dictionary<string, Lazy<HabitatModel.Occupancy>> occBed = new Dictionary<string, Lazy<HabitatModel.Occupancy>>();
         static readonly Dictionary<string, Lazy<HabitatModel.Occupancy>> occToday = new Dictionary<string, Lazy<HabitatModel.Occupancy>>();
         // the half width by z, tabled for the simulation (it may run on a worker thread)
@@ -46,15 +50,36 @@ namespace FishingKing
 
         StageLayout L => stage.L;
 
-        public FishHabitat(StageView stage, FishingController ctl, Bathymetry b)
+        /// <summary>The stage's spawn weights on this bed (Docs/lake_phase2_spec.md A4): the ordinary species' availability A and W per period.</summary>
+        public HabitatModel.Derived Derived { get; }
+
+        public FishHabitat(StageView stage, FishingController ctl, Bathymetry b, bool quiet = false)
         {
             this.stage = stage;
             this.ctl = ctl;
+            this.quiet = quiet;
             B = b;
             halfZ0 = stage.L.zNear - 1f;
             int n = Mathf.Max(2, Mathf.CeilToInt((stage.L.zFar + 1f - halfZ0) / HalfStep) + 1);
             halfTab = new float[n];
             for (int i = 0; i < n; i++) halfTab[i] = Half(halfZ0 + i * HalfStep);
+            // the derived spawn weights over the stage's ordinary species (its roster's weight is the base: the rarity's, or an override)
+            var list = new List<HabitatModel.WeightIn>();
+            foreach (var kv in stage.Def.spawns)
+            {
+                var sp = GameDatabase.GetFish(kv.Key);
+                if (sp == null || sp.encounter != null || !(kv.Value > 0f)) continue;
+                list.Add(new HabitatModel.WeightIn { s = Hab(sp), baseW = kv.Value, act = Act(sp) });
+            }
+            Derived = HabitatModel.DerivedWeights(b, list);
+            var sb = new System.Text.StringBuilder();
+            for (int s = 0; s < Derived.ids.Length; s++)
+            {
+                avail[Derived.ids[s]] = new[] { Derived.A[s, 0], Derived.A[s, 1], Derived.A[s, 2], Derived.A[s, 3] };
+                sb.Append(string.Format(CI, " {0} A={1:0.00}/{2:0.00}/{3:0.00}/{4:0.00} W={5:0.0}/{6:0.0}/{7:0.0}/{8:0.0}", Derived.ids[s],
+                    Derived.A[s, 0], Derived.A[s, 1], Derived.A[s, 2], Derived.A[s, 3], Derived.W[s, 0], Derived.W[s, 1], Derived.W[s, 2], Derived.W[s, 3]));
+            }
+            if (!quiet) Debug.Log(string.Format(CI, "[HAB] weights seed {0}:{1}", b.WorldSeed, sb));
         }
 
         /// <summary>The least water a fish of this size swims in (m): clamp(0.2 + 0.4 cm / 100, 0.3, 1.2).</summary>
@@ -73,11 +98,30 @@ namespace FishingKing
             return halfTab[i] + (halfTab[i + 1] - halfTab[i]) * (t - i);
         }
 
-        static HabSpecies Hab(FishSpecies sp) => new HabSpecies
+        static float[] Act(FishSpecies sp) => new[] { TimeActivity.A(sp.id, Period.Dawn), TimeActivity.A(sp.id, Period.Day), TimeActivity.A(sp.id, Period.Evening), TimeActivity.A(sp.id, Period.Night) };
+
+        /// <summary>A species as the habitat model sees it on a bed (its relative band resolved there).</summary>
+        public static HabSpecies HabOf(FishSpecies sp, Bathymetry b) => new HabSpecies
         {
             id = sp.id, dMin = sp.depthMin, dMax = sp.depthMax, minCm = sp.minCm, maxCm = sp.maxCm, speed = sp.speed,
-            coverSeek = sp.coverSeek, h = sp.habitat,
+            coverSeek = sp.coverSeek, h = sp.habitat, res = HabitatModel.Resolve(sp.habitat, b),
         };
+
+        /// <summary>The species on this bed (cached; its band logged once: [HAB] band).</summary>
+        HabSpecies Hab(FishSpecies sp)
+        {
+            if (habs.TryGetValue(sp.id, out var h)) return h;
+            h = HabOf(sp, B);
+            habs[sp.id] = h;
+            if (h.res != null && !quiet)
+                for (int p = 0; p < 4; p++)
+                    Debug.Log(string.Format(CI, "[HAB] band {0} {1} p{2:0}-p{3:0} = {4:0.00}..{5:0.00} m (swim shift {6:+0.00;-0.00} m)",
+                        sp.id, GameClock.Id((Period)p), h.res.lo[p], h.res.hi[p], h.res.loM[p], h.res.hiM[p], h.res.swimShiftM[p]));
+            return h;
+        }
+
+        /// <summary>Test hook: the species on this bed.</summary>
+        internal HabSpecies DebugHab(FishSpecies sp) => Hab(sp);
 
         HabitatModel.Region Region(float zMin, float zMax)
         {
@@ -147,8 +191,8 @@ namespace FishingKing
 
         /// <summary>
         /// How deep it swims over water <paramref name="water"/> m deep (spec 7.5): mid-water species between their depths,
-        /// bottom species within 2 m of the bed, both shifted by half the period's shift; at least 0.3. A species without a
-        /// habitat keeps today's rule.
+        /// bottom species within 2 m of the bed, both shifted by half the period's shift (a relative band's in metres on this
+        /// lake); at least 0.3. A species without a habitat keeps today's rule.
         /// </summary>
         public float SwimDepth(FishSpecies sp, int period, float water)
         {
@@ -157,59 +201,80 @@ namespace FishingKing
                 float bottom = water - 0.3f;
                 return Mathf.Max(0.3f, Random.Range(Mathf.Min(sp.depthMin, bottom), Mathf.Min(sp.depthMax, bottom)));
             }
-            HabitatModel.SwimRange(sp.habitat, sp.depthMin, sp.depthMax, period, water, out float lo, out float hi);
+            HabitatModel.SwimRange(sp.habitat, Hab(sp).res, sp.depthMin, sp.depthMax, period, water, out float lo, out float hi);
             return Mathf.Max(0.3f, Random.Range(lo, hi));
         }
 
-        // ------------------------------------------------------------------ the bite budget (spec 8)
-        /// <summary>The rig's class: a float rig by its float depth, a lure by its buoyancy.</summary>
-        public static RigClass RigOf(Tackle tk) => RigOf(tk.Bait, tk.FloatDepth);
-
-        /// <summary>A bait's rig class (a float rig set at <paramref name="floatDepth"/>; a lure by its buoyancy).</summary>
-        public static RigClass RigOf(BaitDef b, float floatDepth)
+        // ------------------------------------------------------------------ the derived spawn weights (Docs/lake_phase2_spec.md A4)
+        /// <summary>
+        /// FishSpawner.Pick's weight for a species on this bed: its roster base x its availability here (the clock's two
+        /// periods blended) x its activity now. A species the stage does not list ordinarily (a test's -fkfish) keeps A = 1.
+        /// </summary>
+        public float SpawnWeight(FishSpecies sp, float baseW, PeriodBlend look)
         {
-            if (b == null || !b.isLure)
-                return floatDepth <= 1.0f ? RigClass.F1 : floatDepth <= 2.5f ? RigClass.F2 : floatDepth <= 4.5f ? RigClass.F4 : RigClass.F6;
-            return b.buoyancy == Buoyancy.Float ? RigClass.Surface : b.buoyancy == Buoyancy.Suspend ? RigClass.Mid : RigClass.Bottom;
+            float a = TimeActivity.A(sp.id, look);
+            if (!avail.TryGetValue(sp.id, out var A)) return baseW * a;
+            return baseW * Mathf.Lerp(A[(int)look.From], A[(int)look.To], look.F) * a;
+        }
+
+        // ------------------------------------------------------------------ the feeding chance (Docs/lake_phase2_spec.md A5, A7)
+        /// <summary>
+        /// The feeding chance before this bed's estimate is ready: the 50-seed medians of -fkauto depth D11' with the lake's
+        /// ten ordinary species (bamboo 0.537, carbon 0.483, dragon 0.435), the rods it does not measure lerped by their cast
+        /// distance.
+        /// </summary>
+        public static float FDefault(string rodId) => rodId switch
+        {
+            "rod_bamboo" => 0.537f,
+            "rod_glass" => 0.510f,
+            "rod_carbon" => 0.483f,
+            "rod_biggame" => 0.471f,
+            "rod_surf" => 0.443f,
+            "rod_dragon" => 0.435f,
+            _ => 0.48f,
+        };
+
+        static readonly Dictionary<string, float> feedCache = new Dictionary<string, float>();
+        readonly object feedLock = new object();
+        float feed = -1f, feedCd = -1f, wantCd = -1f;
+
+        static string FeedKey(uint hash, float castDist) => hash.ToString("x8", CI) + "/" + castDist.ToString("0.0", CI);
+
+        /// <summary>A bed's F for a rod from an estimate already made (any FishHabitat of it), or false.</summary>
+        public static bool CachedFeed(uint hash, float castDist, out float f)
+        {
+            lock (feedCache) return feedCache.TryGetValue(FeedKey(hash, castDist), out f);
         }
 
         /// <summary>
-        /// The reach scale for this fish's species and the rig now: the outgoing and incoming periods' scales blended by the
-        /// clock (each computed once per species, period, rig class and rod, spec 8.2).
+        /// The chance a fish in reach of the rig is feeding (rolled once per encounter, FishingController.WantsToApproach):
+        /// this bed's F for the rod in hand once its estimate is ready (a new rod starts one), else <see cref="FDefault"/>.
         /// </summary>
-        public float ReachScale(FishSpecies sp, PeriodBlend look, Tackle tk)
+        public float FeedP
         {
-            var rig = RigOf(tk);
-            float cd = Game.I.Rod.castDist;
-            float a = Scale(sp, (int)look.From, rig, cd);
-            if (look.F <= 0f || look.To == look.From) return a;
-            return Mathf.Lerp(a, Scale(sp, (int)look.To, rig, cd), look.F);
-        }
-
-        float Scale(FishSpecies sp, int period, RigClass rig, float castDist)
-        {
-            string key = sp.id + "/" + period + "/" + rig + "/" + castDist.ToString("0.0", CI);
-            if (scales.TryGetValue(key, out float s)) return s;
-            var bu = Budget(sp, period, rig, castDist, true);
-            scales[key] = bu.scale;
-            Debug.Log(string.Format(CI, "[HAB] budget {0} {1} {2} rod {3:0} raw {4:0.00} scale {5:0.00} scaled {6:0.00} best10 {7:0.00} worst10 {8:0.00}",
-                sp.id, GameClock.Id((Period)period), rig, castDist, bu.raw, bu.scale, bu.scaled, bu.best10, bu.worst10));
-            return bu.scale;
+            get
+            {
+                float cd = Game.I.Rod.castDist;
+                lock (feedLock)
+                {
+                    if (feed >= 0f && Mathf.Approximately(feedCd, cd)) return feed;
+                }
+                if (CachedFeed(B.Hash, cd, out float f))
+                {
+                    lock (feedLock)
+                    {
+                        feed = f;
+                        feedCd = cd;
+                    }
+                    return f;
+                }
+                if (!Mathf.Approximately(wantCd, cd)) Prewarm(cd);
+                return FDefault(Game.I.Rod.id);
+            }
         }
 
         /// <summary>The fish region's far end for a rod (FishingController.FishZMax).</summary>
-        float ZMax(float castDist) => Mathf.Min(L.zFar - 2f, castDist + 14f);
-
-        /// <summary>Test hook (-fkauto depth): the estimator for this species, period, rig class and cast distance.</summary>
-        public HabitatModel.Budget Budget(FishSpecies sp, int period, RigClass rig, float castDist, bool full)
-        {
-            float zMax = ZMax(castDist);
-            float reach = HabitatModel.IsLure(rig) ? 7f : 5f;
-            string ck = castDist.ToString("0.0", CI) + "/" + reach.ToString("0", CI);
-            if (!castSets.TryGetValue(ck, out var cs))
-                castSets[ck] = cs = HabitatModel.Casts(B, L, castDist, BathyGen.AnchorX(L.id), reach);
-            return HabitatModel.Estimate(cs, Hab(sp), rig, OccBed(sp, period, zMax).Value, OccToday(sp, zMax).Value, full);
-        }
+        public float ZMax(float castDist) => Mathf.Min(L.zFar - 2f, castDist + 14f);
 
         List<HabitatModel.CoverZone> Covers(FishSpecies sp, float zMax)
         {
@@ -242,7 +307,7 @@ namespace FishingKing
             return lz;
         }
 
-        /// <summary>The species' time on today's lake (no bed; the same for every seed, so shared by every FishHabitat).</summary>
+        /// <summary>The species' time on today's lake (no bed, the authored profile; the same for every seed, so shared by every FishHabitat).</summary>
         Lazy<HabitatModel.Occupancy> OccToday(FishSpecies sp, float zMax)
         {
             string key = L.id + "/" + sp.id + "/" + zMax.ToString("0.0", CI);
@@ -250,7 +315,7 @@ namespace FishingKing
             {
                 if (occToday.TryGetValue(key, out var lz)) return lz;
                 var w = new HabitatModel.SimWorld { L = L, zMin = L.zNear + 1.5f, zMax = zMax, half = HalfTabled, covers = Covers(sp, zMax) };
-                var hs = Hab(sp);
+                var hs = new HabSpecies { id = sp.id, dMin = sp.depthMin, dMax = sp.depthMax, minCm = sp.minCm, maxCm = sp.maxCm, speed = sp.speed, coverSeek = sp.coverSeek, h = sp.habitat };
                 uint seed = HabitatModel.Fnv(sp.id) ^ (uint)(zMax * 10f) * 2654435761u ^ 0x51ED27u;
                 lz = new Lazy<HabitatModel.Occupancy>(() => HabitatModel.Simulate(w, hs, 0, seed, HabitatModel.SimFishToday), LazyThreadSafetyMode.ExecutionAndPublication);
                 occToday[key] = lz;
@@ -258,38 +323,163 @@ namespace FishingKing
             }
         }
 
+        /// <summary>An economy species: its habitat, rarity, activity, appeal for every bait, price and stock weight per period.</summary>
+        static LakeEconomy.Species EcoSpecies(FishSpecies sp, HabSpecies h, float[] w)
+        {
+            var e = new LakeEconomy.Species { h = h, rarity = sp.rarity, act = Act(sp), price = sp.Price, w = w, xp = RarityInfo.BaseXp(sp.rarity) };
+            foreach (var bt in GameDatabase.Baits)
+            {
+                float a = sp.Appeal(bt);
+                if (a > 0f) e.appeal[bt.id] = a;
+            }
+            return e;
+        }
+
         /// <summary>
-        /// Makes the estimator's simulations for the rod in hand ahead, on a worker thread (the stage's stock, today's lake
-        /// and the bed's four periods, the period now first), so the first fish to sense the rig does not wait for them.
+        /// One economy estimate for a rod (Docs/lake_phase2_spec.md A7): both sides (this bed with its stock, population and
+        /// derived weights; today's lake with the legacy stock) over the reference player's fan and rigs. Made on the main
+        /// thread (the databases, the obstacles, the samplers); <see cref="Run"/> anywhere.
+        /// </summary>
+        public sealed class EcoJob
+        {
+            public uint hash;
+            public int seed;
+            public float castDist, zMax, stealth, biteMult;
+            public StageLayout L;
+            public Bathymetry b;
+            public LakeEconomy.Side side, today;
+            public HabitatModel.CastSet cs;
+            public LakeEconomy.Rig[] rigs;
+            internal Lazy<HabitatModel.Occupancy>[,] newOcc, todayOcc;
+            /// <summary>After <see cref="Run"/>: both sides at F = 1, the ratios, F (and whether it hit its clamp), the time taken.</summary>
+            public LakeEconomy.Eval Today, New;
+            public double C1, I1;
+            public float F;
+            public bool clamped;
+            public double ms;
+
+            /// <summary>The simulations (at most <paramref name="threads"/> at a time), then the two sides and F.</summary>
+            public void Run(int threads)
+            {
+                var sw = Stopwatch.StartNew();
+                var all = new List<Lazy<HabitatModel.Occupancy>>();
+                foreach (var lz in todayOcc) if (lz != null) all.Add(lz);
+                foreach (var lz in newOcc) if (lz != null) all.Add(lz);
+                if (threads <= 1) foreach (var lz in all) _ = lz.Value;
+                else Parallel.ForEach(all, new ParallelOptions { MaxDegreeOfParallelism = threads }, lz => _ = lz.Value);
+                Fill();
+                Today = LakeEconomy.Evaluate(cs, today, rigs, LakeEconomy.PeriodW, stealth, biteMult);
+                New = LakeEconomy.Evaluate(cs, side, rigs, LakeEconomy.PeriodW, stealth, biteMult, true);
+                C1 = Today.C > 0 ? New.C / Today.C : 1;
+                I1 = Today.I > 0 ? New.I / Today.I : 1;
+                F = LakeEconomy.Feed(C1, I1, out clamped);
+                ms = sw.Elapsed.TotalMilliseconds;
+            }
+
+            void Fill()
+            {
+                side.occ = new HabitatModel.Occupancy[side.species.Count, 4];
+                today.occ = new HabitatModel.Occupancy[today.species.Count, 4];
+                for (int s = 0; s < side.species.Count; s++)
+                    for (int p = 0; p < 4; p++) side.occ[s, p] = newOcc[s, p].Value;
+                for (int s = 0; s < today.species.Count; s++)
+                    for (int p = 0; p < 4; p++) today.occ[s, p] = todayOcc[s, 0].Value;
+            }
+
+            /// <summary>
+            /// The estimate for other casts and rigs (the live soak's spots), after <see cref="Run"/>: both sides over
+            /// <paramref name="at"/>, the new one at feeding chance <paramref name="f"/>.
+            /// </summary>
+            public (LakeEconomy.Eval today, LakeEconomy.Eval bed) Predict(Vector2[] at, LakeEconomy.Rig[] soakRigs, float[] periodW, float f)
+            {
+                var c = HabitatModel.CastsAt(b, L, at, castDist);
+                var t = LakeEconomy.Evaluate(c, today, soakRigs, periodW, stealth, biteMult);
+                float was = side.feed;
+                side.feed = f;
+                var n = LakeEconomy.Evaluate(c, side, soakRigs, periodW, stealth, biteMult);
+                side.feed = was;
+                return (t, n);
+            }
+        }
+
+        /// <summary>
+        /// The economy job for a rod (main thread): the stage's ordinary species with this bed's derived weights and
+        /// occupancies (its population, F = 1), today's legacy stock (8 fish) on the authored lake, the reference fan and rigs.
+        /// </summary>
+        public EcoJob Economy(float castDist)
+        {
+            float zMax = ZMax(castDist);
+            var job = new EcoJob
+            {
+                hash = B.Hash, seed = B.WorldSeed, castDist = castDist, zMax = zMax, L = L, b = B,
+                stealth = GameDatabase.GetItem<LineDef>(GameDatabase.StarterLine)?.stealth ?? 1f, biteMult = stage.Def.biteMult,
+                cs = HabitatModel.Casts(B, L, castDist, BathyGen.AnchorX(L.id)),
+                rigs = LakeEconomy.Reference(id => RigOf(GameDatabase.GetItem<BaitDef>(id), 0f)),
+                side = new LakeEconomy.Side { population = stage.Def.population },
+                today = new LakeEconomy.Side { population = LakeEconomy.PopToday, today = true },
+            };
+            var ids = Derived.ids;
+            job.newOcc = new Lazy<HabitatModel.Occupancy>[ids.Length, 4];
+            for (int s = 0; s < ids.Length; s++)
+            {
+                var sp = GameDatabase.GetFish(ids[s]);
+                job.side.species.Add(EcoSpecies(sp, Hab(sp), new[] { Derived.W[s, 0], Derived.W[s, 1], Derived.W[s, 2], Derived.W[s, 3] }));
+                for (int p = 0; p < 4; p++) job.newOcc[s, p] = OccBed(sp, p, zMax);
+            }
+            job.todayOcc = new Lazy<HabitatModel.Occupancy>[LakeEconomy.LegacyIds.Length, 1];
+            for (int s = 0; s < LakeEconomy.LegacyIds.Length; s++)
+            {
+                var sp = GameDatabase.GetFish(LakeEconomy.LegacyIds[s]);
+                var act = Act(sp);
+                var w = new float[4];
+                for (int p = 0; p < 4; p++) w[p] = LakeEconomy.LegacyW[s] * act[p];
+                var hs = new HabSpecies { id = sp.id, dMin = sp.depthMin, dMax = sp.depthMax, minCm = sp.minCm, maxCm = sp.maxCm, speed = sp.speed, coverSeek = sp.coverSeek, h = sp.habitat };
+                job.today.species.Add(EcoSpecies(sp, hs, w));
+                job.todayOcc[s, 0] = OccToday(sp, zMax);
+            }
+            return job;
+        }
+
+        /// <summary>The last economy job this FishHabitat ran (the live soak's prediction).</summary>
+        public EcoJob LastJob { get; private set; }
+
+        /// <summary>
+        /// Makes this bed's economy estimate for the rod on worker threads (at most half the cores) and sets F
+        /// ([ECO] seed .. rod .. C1 .. I1 .. -> F ..); the main thread never waits (F_default meanwhile).
         /// </summary>
         public void Prewarm(float castDist)
         {
-            float zMax = ZMax(castDist);
-            var todo = new List<Lazy<HabitatModel.Occupancy>>();
-            int now = (int)GameClock.Look.From;
-            var species = new List<FishSpecies>();
-            foreach (var kv in stage.Def.spawns)
-            {
-                var sp = GameDatabase.GetFish(kv.Key);
-                if (sp != null && sp.encounter == null && kv.Value > 0f) species.Add(sp);
-            }
-            foreach (var sp in species) todo.Add(OccToday(sp, zMax));
-            for (int k = 0; k < 4; k++)
-                foreach (var sp in species)
-                    todo.Add(OccBed(sp, (now + k) % 4, zMax));
+            wantCd = castDist;
+            if (CachedFeed(B.Hash, castDist, out _)) return;
+            var job = Economy(castDist);
+            int threads = Mathf.Max(1, Environment.ProcessorCount / 2);
             Task.Run(() =>
             {
-                var sw = Stopwatch.StartNew();
                 try
                 {
-                    foreach (var lz in todo) _ = lz.Value;
-                    Debug.Log(string.Format(CI, "[HAB] prewarm: {0} simulations for rod {1:0} in {2:0} ms (worker)", todo.Count, castDist, sw.Elapsed.TotalMilliseconds));
+                    job.Run(threads);
+                    lock (feedCache) feedCache[FeedKey(job.hash, castDist)] = job.F;
+                    LastJob = job;
+                    Debug.Log(string.Format(CI, "[ECO] seed {0} rod {1:0} C1 {2:0.000} I1 {3:0.000} -> F {4:0.000}{5} (today C {6:0.0000} I {7:0.000}; {8} + {9} simulations, {10:0} ms on {11} threads)",
+                        job.seed, castDist, job.C1, job.I1, job.F, job.clamped ? " CLAMPED" : "", job.Today.C, job.Today.I, job.newOcc.Length, job.todayOcc.Length, job.ms, threads));
                 }
                 catch (Exception e)
                 {
-                    Debug.LogWarning("[HAB] prewarm failed (made on demand instead): " + e.Message);
+                    Debug.LogWarning("[ECO] estimate failed (F stays the default): " + e);
                 }
             });
+        }
+
+        // ------------------------------------------------------------------ rig classes
+        /// <summary>The rig's class: a float rig by its float depth, a lure by its buoyancy.</summary>
+        public static RigClass RigOf(Tackle tk) => RigOf(tk.Bait, tk.FloatDepth);
+
+        /// <summary>A bait's rig class (a float rig set at <paramref name="floatDepth"/>; a lure by its buoyancy).</summary>
+        public static RigClass RigOf(BaitDef b, float floatDepth)
+        {
+            if (b == null || !b.isLure)
+                return floatDepth <= 1.0f ? RigClass.F1 : floatDepth <= 2.5f ? RigClass.F2 : floatDepth <= 4.5f ? RigClass.F4 : RigClass.F6;
+            return b.buoyancy == Buoyancy.Float ? RigClass.Surface : b.buoyancy == Buoyancy.Suspend ? RigClass.Mid : RigClass.Bottom;
         }
 
         /// <summary>Test hook: the sampler's region nodes and cumulative weights (D7's draws).</summary>

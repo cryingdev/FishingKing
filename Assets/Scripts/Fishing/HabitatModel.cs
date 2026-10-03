@@ -9,10 +9,12 @@ namespace FishingKing
     public enum Column { Mid, Bottom }
 
     /// <summary>
-    /// A species' habitat on the generated bed (Docs/terrain_depth_spec.md 7.1): its preferred water depth [a, b], a weight
-    /// per bed kind and material, how much it likes an edge, its column, how strongly the habitat steers it (beta), the
-    /// period shifts of its depths (m, - shallower) and per-period kind weights, and whether a big one runs for the deep.
-    /// Parsed from a "key:value,..." string (the species file's "habitat").
+    /// A species' habitat on the generated bed (Docs/terrain_depth_spec.md 7.1, Docs/lake_phase2_spec.md A3): its preferred
+    /// water depth, a weight per bed kind and material, how much it likes an edge, its column, how strongly the habitat
+    /// steers it (beta), the period shifts of its depths and per-period kind weights, and whether a big one runs for the
+    /// deep. The depth is relative to the lake ("depth:p25-p70": percentiles of the bed's depths over R_ref, shifts
+    /// "@dawn:-15p" in percent points) or, the old form, in metres ("depth:1.2-4.0", "@dawn:-0.8"). Parsed from a
+    /// "key:value,..." string (the species file's "habitat").
     /// </summary>
     public sealed class HabitatDef
     {
@@ -25,6 +27,12 @@ namespace FishingKing
         public float[] shift = new float[4];
         public float[,] periodKind = new float[4, 9];
         public bool runDeep;
+        /// <summary>The depth band is relative (percentiles <see cref="pa"/>..<see cref="pb"/>; the period shifts <see cref="shiftP"/> in points).</summary>
+        public bool rel;
+        public float pa, pb;
+        public float[] shiftP = new float[4];
+        /// <summary>The units the tokens used (the validator's E9): a depth in metres / in percent, a shift in metres / in points.</summary>
+        public bool depthM, depthP, shiftM, shiftPct;
 
         public HabitatDef()
         {
@@ -37,8 +45,9 @@ namespace FishingKing
         static readonly string[] PeriodKeys = { "dawn", "day", "evening", "night" };
 
         /// <summary>
-        /// "depth:a-b", a kind or material key with its weight, "edge:x", "col:mid|bottom", "beta:x", "@period:shift",
-        /// "@period.kind:weight", "runDeep". An unknown key is warned about (<paramref name="warn"/>) and skipped.
+        /// "depth:pA-pB" (or "depth:a-b" in metres), a kind or material key with its weight, "edge:x", "col:mid|bottom",
+        /// "beta:x", "@period:Np" (or "@period:shift" in metres), "@period.kind:weight", "runDeep". An unknown key is warned
+        /// about (<paramref name="warn"/>) and skipped.
         /// </summary>
         public static HabitatDef Parse(string id, string spec, Action<string> warn)
         {
@@ -60,8 +69,17 @@ namespace FishingKing
                 if (key == "depth")
                 {
                     var ab = val.Split('-');
-                    if (ab.Length == 2 && float.TryParse(ab[0], NumberStyles.Float, ci, out float lo) && float.TryParse(ab[1], NumberStyles.Float, ci, out float hi))
+                    if (ab.Length == 2 && ab[0].StartsWith("p") && ab[1].StartsWith("p")
+                        && float.TryParse(ab[0].Substring(1), NumberStyles.Float, ci, out float plo) && float.TryParse(ab[1].Substring(1), NumberStyles.Float, ci, out float phi))
                     {
+                        h.rel = true;
+                        h.depthP = true;
+                        h.pa = plo;
+                        h.pb = phi;
+                    }
+                    else if (ab.Length == 2 && float.TryParse(ab[0], NumberStyles.Float, ci, out float lo) && float.TryParse(ab[1], NumberStyles.Float, ci, out float hi))
+                    {
+                        h.depthM = true;
                         h.a = lo;
                         h.b = hi;
                     }
@@ -85,7 +103,18 @@ namespace FishingKing
                 {
                     var pk = key.Substring(1).Split('.');
                     int pi = Array.IndexOf(PeriodKeys, pk[0]);
-                    if (pi >= 0 && pk.Length == 1 && F(out float sh)) { h.shift[pi] = sh; continue; }
+                    if (pi >= 0 && pk.Length == 1 && val.EndsWith("p") && float.TryParse(val.Substring(0, val.Length - 1), NumberStyles.Float, ci, out float sp))
+                    {
+                        h.shiftP[pi] = sp;
+                        h.shiftPct = true;
+                        continue;
+                    }
+                    if (pi >= 0 && pk.Length == 1 && F(out float sh))
+                    {
+                        h.shift[pi] = sh;
+                        h.shiftM = true;
+                        continue;
+                    }
                     if (pi >= 0 && pk.Length == 2)
                     {
                         int kk = Array.IndexOf(KindKeys, pk[1]);
@@ -98,7 +127,7 @@ namespace FishingKing
         }
     }
 
-    /// <summary>The rig classes the bite budget is kept per (Docs/terrain_depth_spec.md 8.1).</summary>
+    /// <summary>The rig classes (Docs/terrain_depth_spec.md 8.1): floats by their depth, lures by their buoyancy.</summary>
     public enum RigClass { F1, F2, F4, F6, Surface, Mid, Bottom }
 
     /// <summary>A species as the habitat model sees it.</summary>
@@ -109,30 +138,110 @@ namespace FishingKing
         /// <summary>Its swim speed (FishSpecies.speed: a wanderer swims at 0.18..0.3 of it) and how much it seeks cover.</summary>
         public float speed, coverSeek;
         public HabitatDef h;
+        /// <summary>Its relative band resolved on the bed in use (null: an absolute band, or no bed).</summary>
+        public HabRes res;
     }
 
     /// <summary>
-    /// The habitat model on a <see cref="Bathymetry"/> (Docs/terrain_depth_spec.md 7, 8), free of the running game so the
-    /// tests can sweep it: the habitat factor of a node, the target / spawn densities (the old uniform one and the new one
-    /// leaning towards the habitat by beta), the swim depths and the bite budget's estimator.
+    /// A relative depth band resolved on one bed (Docs/lake_phase2_spec.md A3): per period the band in percent after the
+    /// shift (slid back into [0, 100], never shrunk), its depths there, and the swim depth's shift in metres (the depth at
+    /// the shifted band's middle less the depth at the unshifted middle).
+    /// </summary>
+    public sealed class HabRes
+    {
+        public readonly float[] lo = new float[4], hi = new float[4], loM = new float[4], hiM = new float[4], swimShiftM = new float[4];
+    }
+
+    /// <summary>
+    /// The habitat model on a <see cref="Bathymetry"/> (Docs/terrain_depth_spec.md 7, Docs/lake_phase2_spec.md A3, A4),
+    /// free of the running game so the tests can sweep it: a relative band resolved on a bed, the habitat factor of a node,
+    /// the target / spawn densities (leaning towards the habitat by beta), the swim depths, the derived spawn weights and
+    /// the simulation of where the fish spend their time (the economy's estimator, <see cref="LakeEconomy"/>).
     /// </summary>
     public static class HabitatModel
     {
         /// <summary>The least water a fish of this size swims in (m): 0.3 .. 1.2 (a 90 cm carp 0.56).</summary>
         public static float MinWater(float cm) => Mathf.Clamp(0.2f + 0.4f * cm / 100f, 0.3f, 1.2f);
 
-        /// <summary>The habitat factor h of water <paramref name="w"/> m deep over this bed in period <paramref name="p"/> (spec 7.2), 0 too shallow.</summary>
-        public static float H(HabitatDef h, int p, float w, BedKind k, BedMat m, float edgeDist, float minWater)
+        /// <summary>The width a relative band keeps when a shift slides it (points).</summary>
+        public const float MinBand = 10f;
+
+        /// <summary>
+        /// A relative band on this bed (Docs/lake_phase2_spec.md A3): per period [pa, pb] + the period's shift, slid back
+        /// into [0, 100] keeping its width; its depths; the swim shift Quantile(shifted middle) - Quantile(middle). Null for
+        /// an absolute band or without a bed. Pure.
+        /// </summary>
+        public static HabRes Resolve(HabitatDef h, Bathymetry b)
+        {
+            if (h == null || !h.rel || b == null) return null;
+            var r = new HabRes();
+            float mid = 0.5f * (h.pa + h.pb), qMid = b.Quantile(mid);
+            for (int p = 0; p < 4; p++)
+            {
+                float lo = h.pa + h.shiftP[p], hi = h.pb + h.shiftP[p];
+                if (lo < 0f)
+                {
+                    hi -= lo;
+                    lo = 0f;
+                }
+                if (hi > 100f)
+                {
+                    lo -= hi - 100f;
+                    hi = 100f;
+                }
+                lo = Mathf.Max(0f, lo);
+                r.lo[p] = lo;
+                r.hi[p] = hi;
+                r.loM[p] = b.Quantile(lo);
+                r.hiM[p] = b.Quantile(hi);
+                r.swimShiftM[p] = b.Quantile(0.5f * (lo + hi)) - qMid;
+            }
+            return r;
+        }
+
+        /// <summary>
+        /// The habitat factor h of a node over this bed in period <paramref name="p"/> (spec 7.2, Docs/lake_phase2_spec.md
+        /// A3), 0 where its water <paramref name="w"/> is shallower than <paramref name="minWater"/>. A relative band is judged
+        /// on the node's rank <paramref name="rankPct"/>: 1 inside [A', B'], max(0.2, 1 - (A' - P) / 25) below, max(0.2,
+        /// 1 - (P - B') / 50) above; an absolute one in metres as before.
+        /// </summary>
+        public static float H(HabitatDef h, HabRes res, int p, float w, float rankPct, BedKind k, BedMat m, float edgeDist, float minWater)
         {
             if (w < minWater) return 0f;
             if (h == null) return 1f;
-            float d = h.shift[p], a = h.a + d, b = h.b + d;
-            float fit = w < a ? Mathf.Max(0.2f, 1f - 0.8f * (a - w)) : w > b ? Mathf.Max(0.2f, 1f - 0.4f * (w - b)) : 1f;
+            float fit;
+            if (h.rel)
+            {
+                if (res == null) fit = 1f;
+                else
+                {
+                    float a = res.lo[p], b = res.hi[p];
+                    fit = rankPct < a ? Mathf.Max(0.2f, 1f - (a - rankPct) / 25f) : rankPct > b ? Mathf.Max(0.2f, 1f - (rankPct - b) / 50f) : 1f;
+                }
+            }
+            else
+            {
+                float d = h.shift[p], a = h.a + d, b = h.b + d;
+                fit = w < a ? Mathf.Max(0.2f, 1f - 0.8f * (a - w)) : w > b ? Mathf.Max(0.2f, 1f - 0.4f * (w - b)) : 1f;
+            }
             return fit * h.kindW[(int)k] * h.periodKind[p, (int)k] * h.matW[(int)m] * (1f + h.edge * Mathf.Max(0f, 1f - edgeDist / 2.5f));
         }
 
-        /// <summary>The swim depth's range over water <paramref name="water"/> m deep (spec 7.5): the column's, shifted by half the period's shift.</summary>
-        public static void SwimRange(HabitatDef h, float dMin, float dMax, int p, float water, out float lo, out float hi)
+        /// <summary>The largest h a node can give the species in a period (the best kind x the best material x a full edge bonus).</summary>
+        public static float HMax(HabitatDef h, int p)
+        {
+            if (h == null) return 1f;
+            float k = 0f, m = 0f;
+            for (int i = 0; i < 9; i++) k = Mathf.Max(k, h.kindW[i] * h.periodKind[p, i]);
+            for (int i = 0; i < 4; i++) m = Mathf.Max(m, h.matW[i]);
+            return Mathf.Max(1e-6f, k * m * (1f + Mathf.Max(0f, h.edge)));
+        }
+
+        /// <summary>
+        /// The swim depth's range over water <paramref name="water"/> m deep (spec 7.5): the column's, shifted by half the
+        /// period's shift (a relative band's: its resolved swim shift in metres).
+        /// </summary>
+        public static void SwimRange(HabitatDef h, HabRes res, float dMin, float dMax, int p, float water, out float lo, out float hi)
         {
             float bot = water - 0.3f;
             if (h == null)
@@ -142,7 +251,7 @@ namespace FishingKing
             }
             else
             {
-                float d = h.shift[p] * 0.5f;
+                float d = (h.rel ? (res != null ? res.swimShiftM[p] : 0f) : h.shift[p]) * 0.5f;
                 float l = Mathf.Max(0.3f, dMin + d), u = Mathf.Max(l, dMax + d);
                 if (h.col == Column.Bottom)
                 {
@@ -208,27 +317,30 @@ namespace FishingKing
         }
 
         /// <summary>
-        /// How much of today's share each row of the region (a distance from the shore) keeps: all of it. The habitat moves a
-        /// species' fish along a row, to the flats, drop-offs, humps and channels at that distance, not from out of a rod's
-        /// reach into it, so the bites per minute of the reference player's fan stay today's (spec 8.3).
+        /// How much of today's share each row of the region (a distance from the shore) keeps: half of it
+        /// (Docs/lake_phase2_spec.md A3). The habitat moves a species' fish mostly along a row, to the flats, drop-offs,
+        /// humps and channels at that distance, and partly across the rows towards the depths it likes: where each fish
+        /// lives shows, while the economy (the reference player's fan, all rigs and periods) stays within its band (the
+        /// first knob if a short rod's income falls out of it).
         /// </summary>
-        public const float RowKeep = 1f;
+        public const float RowKeep = 0.5f;
 
         /// <summary>
         /// The new density over a region (spec 7.3): W = U x ((1 - beta) + beta x hn) where hn = h / mean_U(h) clamped to
-        /// [0.25, 3]; 0 where the water is too shallow for the species' biggest; then every row (one z) scaled back to today's
-        /// share of the region (<see cref="RowKeep"/>). Returns the cumulative sums.
+        /// [0.25, 3]; 0 where the water is too shallow for the species' biggest; then every row (one z) scaled towards today's
+        /// share of the region by <see cref="RowKeep"/>. Returns the cumulative sums.
         /// </summary>
         public static float[] Weights(Bathymetry b, Region reg, HabSpecies s, int p, out float total)
         {
             int n = reg.nodes.Length;
             var h = new float[n];
             float mw = MinWater(s.maxCm);
+            var res = s.res ?? Resolve(s.h, b);
             double hu = 0;
             for (int q = 0; q < n; q++)
             {
                 int k = reg.nodes[q];
-                h[q] = H(s.h, p, b.NodeDepth(k), b.NodeKind(k), b.NodeMat(k), b.EdgeDistNode(k), mw);
+                h[q] = H(s.h, res, p, b.NodeDepth(k), b.NodeRankPct(k), b.NodeKind(k), b.NodeMat(k), b.EdgeDistNode(k), mw);
                 hu += reg.u[q] * h[q];
             }
             float mean = reg.uSum > 0f ? (float)(hu / reg.uSum) : 1f;
@@ -278,6 +390,86 @@ namespace FishingKing
         /// <summary>The weight of node q in a cumulative array.</summary>
         public static float WeightAt(float[] cum, int q) => q == 0 ? cum[0] : cum[q] - cum[q - 1];
 
+        // ------------------------------------------------------------------ the derived spawn weights (Docs/lake_phase2_spec.md A4)
+        /// <summary>The availability multiplier's clamp.</summary>
+        public const float AvailMin = 0.6f, AvailMax = 1.4f;
+
+        /// <summary>A species of the stage for <see cref="DerivedWeights"/>: its habitat, its base weight and its activity per period.</summary>
+        public struct WeightIn
+        {
+            public HabSpecies s;
+            public float baseW;
+            public float[] act;
+        }
+
+        /// <summary>The derived weights: per species (input order) and period the habitat's availability q, A and W = base x A x a.</summary>
+        public sealed class Derived
+        {
+            public string[] ids;
+            public float[,] q, A, W;
+            public float[] qBar = new float[4];
+            /// <summary>(species, period) pairs where A hit its clamp, and the pairs with a > 0.</summary>
+            public int clampHits, pairs;
+        }
+
+        /// <summary>
+        /// The stage's spawn weights on this bed (Docs/lake_phase2_spec.md A4): for species s and period p the habitat's
+        /// availability over R_ref, q = sum U h / (h* sum U) (h* = <see cref="HMax"/>, the body rule included); the stock's
+        /// mean q-bar = sum base a q / sum base a; A = clamp(q / q-bar, 0.6, 1.4); W = base x A x a. Doubles, no randomness.
+        /// </summary>
+        public static Derived DerivedWeights(Bathymetry b, IList<WeightIn> list)
+        {
+            int ns = list.Count;
+            var d = new Derived { ids = new string[ns], q = new float[ns, 4], A = new float[ns, 4], W = new float[ns, 4] };
+            var nodes = b.RefNodes;
+            var u = b.RefU;
+            double uSum = 0;
+            for (int i = 0; i < u.Length; i++) uSum += u[i];
+            if (uSum <= 0) uSum = 1;
+            for (int s = 0; s < ns; s++)
+            {
+                var sp = list[s].s;
+                d.ids[s] = sp.id;
+                var res = sp.res ?? Resolve(sp.h, b);
+                float mw = MinWater(sp.maxCm);
+                for (int p = 0; p < 4; p++)
+                {
+                    double acc = 0;
+                    for (int i = 0; i < nodes.Length; i++)
+                    {
+                        int k = nodes[i];
+                        acc += u[i] * H(sp.h, res, p, b.NodeDepth(k), b.NodeRankPct(k), b.NodeKind(k), b.NodeMat(k), b.EdgeDistNode(k), mw);
+                    }
+                    d.q[s, p] = (float)(acc / (HMax(sp.h, p) * uSum));
+                }
+            }
+            for (int p = 0; p < 4; p++)
+            {
+                double num = 0, den = 0;
+                for (int s = 0; s < ns; s++)
+                {
+                    float a = list[s].act != null ? list[s].act[p] : 1f;
+                    num += (double)list[s].baseW * a * d.q[s, p];
+                    den += (double)list[s].baseW * a;
+                }
+                d.qBar[p] = den > 0 ? (float)(num / den) : 0f;
+                for (int s = 0; s < ns; s++)
+                {
+                    float a = list[s].act != null ? list[s].act[p] : 1f;
+                    float raw = d.qBar[p] > 1e-9f ? d.q[s, p] / d.qBar[p] : 1f;
+                    float A = Mathf.Clamp(raw, AvailMin, AvailMax);
+                    if (a > 0f)
+                    {
+                        d.pairs++;
+                        if (raw <= AvailMin || raw >= AvailMax) d.clampHits++;
+                    }
+                    d.A[s, p] = A;
+                    d.W[s, p] = list[s].baseW * A * a;
+                }
+            }
+            return d;
+        }
+
         /// <summary>The index whose cumulative weight first reaches <paramref name="r"/> (binary search).</summary>
         public static int Pick(float[] cum, float r)
         {
@@ -291,35 +483,22 @@ namespace FishingKing
             return lo;
         }
 
-        // ------------------------------------------------------------------ the bite budget's estimator (spec 8.2)
-        /// <summary>The reach scale's limits (spec 8).</summary>
-        public const float ScaleMin = 0.82f, ScaleMax = 1.22f;
-        /// <summary>D11's gate on the raw ratio (spec 8): fixed, not derived from the clamp.</summary>
-        public const float RawMin = 0.67f, RawMax = 1.49f;
-
-        public struct Budget
-        {
-            public float raw, scale, scaled, best10, worst10;
-            /// <summary>The best 10 % of casts' ratio before the reach scale (what the bed alone does to the best spots).</summary>
-            public float best10Raw;
-            /// <summary>The encounter score today (over all the casts, within R) and on the bed within R x scale (the same units).</summary>
-            public float today, bed;
-            public int casts;
-        }
-
-        /// <summary>The reference player's casts (shared by every species, period and rig of a rod and reach).</summary>
+        // ------------------------------------------------------------------ the reference player's casts (Docs/lake_phase2_spec.md A7)
+        /// <summary>The reference player's casts (shared by every species, period and rig of a rod).</summary>
         public sealed class CastSet
         {
             public Vector2[] at;
+            /// <summary>The water at each cast today (the authored profile) and over the bed (the grid, off it its derived profile).</summary>
             public float[] profileWater, gridWater;
-            public float castDist, reach;
+            public float castDist;
         }
 
         /// <summary>
         /// The reference player's casts (spec 8.2): yaw -38..38 in 4 degree steps, from zNear + 2.5 out to the rod's cast
-        /// distance every metre, from (<paramref name="anchorX"/>, 0); the water there today (the profile) and on the bed.
+        /// distance every metre, from (<paramref name="anchorX"/>, 0); the water there today (the authored profile) and on the
+        /// bed <paramref name="b"/> (null: today's).
         /// </summary>
-        public static CastSet Casts(Bathymetry b, StageLayout L, float castDist, float anchorX, float reach)
+        public static CastSet Casts(Bathymetry b, StageLayout L, float castDist, float anchorX)
         {
             var at = new List<Vector2>();
             for (int yi = 0; yi < 20; yi++)
@@ -328,15 +507,21 @@ namespace FishingKing
                 for (float rho = L.zNear + 2.5f; rho <= castDist + 1e-3f; rho += 1f)
                     at.Add(new Vector2(anchorX + rho * Mathf.Sin(yaw), rho * Mathf.Cos(yaw)));
             }
-            var cs = new CastSet { at = at.ToArray(), castDist = castDist, reach = reach };
-            int nc = cs.at.Length;
+            return CastsAt(b, L, at.ToArray(), castDist);
+        }
+
+        /// <summary>A cast set at given points (the live soak's spots): the water there today and over the bed.</summary>
+        public static CastSet CastsAt(Bathymetry b, StageLayout L, Vector2[] at, float castDist)
+        {
+            var cs = new CastSet { at = at, castDist = castDist };
+            int nc = at.Length;
             cs.profileWater = new float[nc];
             cs.gridWater = new float[nc];
             for (int c = 0; c < nc; c++)
             {
-                var p = cs.at[c];
-                cs.profileWater[c] = L.ProfileDepth(p.y);
-                cs.gridWater[c] = b.Covers(p.x, p.y) ? b.Depth(p.x, p.y) + StageLayout.TideOffset : L.ProfileDepth(p.y);
+                var p = at[c];
+                cs.profileWater[c] = L.AuthoredDepth(p.y);
+                cs.gridWater[c] = b == null ? cs.profileWater[c] : (b.Covers(p.x, p.y) ? b.Depth(p.x, p.y) : b.Profile(p.y)) + StageLayout.TideOffset;
             }
             return cs;
         }
@@ -405,8 +590,8 @@ namespace FishingKing
             public float total;
             public List<CoverZone> covers;
 
-            /// <summary>StageLayout.DepthAt over this bed (or the profile without one).</summary>
-            public float Water(float x, float z) => b != null && b.Covers(x, z) ? b.Depth(x, z) + StageLayout.TideOffset : L.ProfileDepth(z);
+            /// <summary>StageLayout.DepthAt over this bed (off the grid its derived profile), or without one today's authored profile.</summary>
+            public float Water(float x, float z) => b == null ? L.AuthoredDepth(z) : (b.Covers(x, z) ? b.Depth(x, z) : b.Profile(z)) + StageLayout.TideOffset;
         }
 
         /// <summary>
@@ -547,7 +732,7 @@ namespace FishingKing
                         x = np.x;
                         z = np.y;
                     }
-                    SwimRange(s.h, s.dMin, s.dMax, p, w.Water(x, z), out float lo, out float hi);
+                    SwimRange(s.h, s.res, s.dMin, s.dMax, p, w.Water(x, z), out float lo, out float hi);
                     t = new Vector3(x, -Mathf.Max(0.3f, Range(lo, hi)), z);
                     drawn = true;
                 }
@@ -555,7 +740,7 @@ namespace FishingKing
                 {
                     float z = Range(w.zMin, w.zMax);
                     float half = Mathf.Min(L.xLim - 0.5f, w.half(z));
-                    float bottom = L.ProfileDepth(z) - 0.3f;
+                    float bottom = (bed ? w.b.Profile(z) + StageLayout.TideOffset : L.AuthoredDepth(z)) - 0.3f;
                     float d = Range(Mathf.Min(s.dMin, bottom), Mathf.Min(s.dMax, bottom));
                     t = new Vector3(Range(-half, half), -Mathf.Max(0.3f, d), z);
                 }
@@ -584,7 +769,7 @@ namespace FishingKing
                         float cd;
                         if (bed)
                         {
-                            SwimRange(s.h, s.dMin, s.dMax, p, water, out float lo, out float hi);
+                            SwimRange(s.h, s.res, s.dMin, s.dMax, p, water, out float lo, out float hi);
                             cd = Range(lo, hi);
                         }
                         else
@@ -653,132 +838,6 @@ namespace FishingKing
             }
             occ.Close();
             return occ;
-        }
-
-        /// <summary>
-        /// The estimator (spec 8.2): over the casts, the fish today (<paramref name="today"/>, within the reach R) and on the
-        /// bed (<paramref name="bed"/>, x the share of its sizes that come into the water at the hook) whose depth is within
-        /// 2.5 m of the hook's; raw = bed / today at R; the reach scale is the one that brings the bed's count to today's
-        /// (solved over the cumulative count by distance), clamped to [ScaleMin, ScaleMax]; scaled = bed at R x scale / today.
-        /// With <paramref name="full"/> also the per-cast ratios of the best and worst 10 % of casts (after the scale) and the
-        /// best 10 % before it.
-        /// </summary>
-        public static Budget Estimate(CastSet cs, HabSpecies s, RigClass rig, Occupancy bed, Occupancy today, bool full)
-        {
-            int nc = cs.at.Length;
-            float R = cs.reach, Rmax = R * ScaleMax;
-            const int NH = 120;
-            float hb = Rmax / NH;
-            var hist = new double[NH + 1];
-            double eLeg = 0;
-            var perLeg = full ? new float[nc] : null;
-            var perNewR = full ? new float[nc] : null;
-            // (the two may be made with different numbers of fish: today's counts in the bed's samples)
-            float norm = today.samples > 0 ? (float)bed.samples / today.samples : 1f;
-            for (int c = 0; c < nc; c++)
-            {
-                var pc = cs.at[c];
-                float hdL = HookDepth(rig, cs.profileWater[c]), hdN = HookDepth(rig, cs.gridWater[c]);
-                float gate = SizeShare(s, cs.gridWater[c]);
-                double el = 0, enR = 0;
-                int i0 = Mathf.Max(0, Mathf.FloorToInt(pc.x - Rmax - bed.x0)), i1 = Mathf.Min(bed.nx - 1, Mathf.FloorToInt(pc.x + Rmax - bed.x0));
-                int j0 = Mathf.Max(0, Mathf.FloorToInt(pc.y - Rmax - bed.z0)), j1 = Mathf.Min(bed.nz - 1, Mathf.FloorToInt(pc.y + Rmax - bed.z0));
-                for (int j = j0; j <= j1; j++)
-                {
-                    float cz = bed.z0 + j + 0.5f - pc.y;
-                    for (int i = i0; i <= i1; i++)
-                    {
-                        float cx = bed.x0 + i + 0.5f - pc.x;
-                        float d = (float)Math.Sqrt(cx * cx + cz * cz);
-                        if (d > Rmax) continue;
-                        float en = gate > 0f ? bed.Count(i, j, hdN - 2.5f, hdN + 2.5f) * gate : 0f;
-                        hist[Mathf.Min(NH, (int)(d / hb))] += en;
-                        if (d <= R)
-                        {
-                            el += today.Count(i, j, hdL - 2.5f, hdL + 2.5f) * norm;
-                            enR += en;
-                        }
-                    }
-                }
-                eLeg += el;
-                if (full)
-                {
-                    perLeg[c] = (float)el;
-                    perNewR[c] = (float)enR;
-                }
-            }
-            // the bed's count within r, linear within a bin
-            var H = new double[NH + 2];
-            for (int k = 0; k <= NH; k++) H[k + 1] = H[k] + hist[k];
-            double E(float r)
-            {
-                float t = r / hb;
-                int k = Mathf.Clamp((int)t, 0, NH);
-                return H[k] + hist[k] * Mathf.Clamp01(t - k);
-            }
-            var budget = new Budget { casts = nc };
-            budget.raw = eLeg > 0 ? (float)(E(R) / eLeg) : 1f;
-            float scale;
-            if (eLeg <= 0) scale = 1f;
-            else if (E(R * ScaleMax) < eLeg) scale = ScaleMax;
-            else if (E(R * ScaleMin) > eLeg) scale = ScaleMin;
-            else
-            {
-                float lo = R * ScaleMin, hi = R * ScaleMax;
-                for (int it = 0; it < 30; it++)
-                {
-                    float mid = 0.5f * (lo + hi);
-                    if (E(mid) < eLeg) lo = mid;
-                    else hi = mid;
-                }
-                scale = 0.5f * (lo + hi) / R;
-            }
-            budget.scale = Mathf.Clamp(scale, ScaleMin, ScaleMax);
-            budget.scaled = eLeg > 0 ? (float)(E(R * budget.scale) / eLeg) : 1f;
-            budget.today = (float)eLeg;
-            budget.bed = (float)E(R * budget.scale);
-            if (!full) return budget;
-            // per cast: the bed within R x scale over today within R
-            float R2 = R * budget.scale;
-            var ratios = new List<float>();
-            var rawRatios = new List<float>();
-            for (int c = 0; c < nc; c++)
-            {
-                if (perLeg[c] <= 1e-6f) continue;
-                var pc = cs.at[c];
-                float hdN = HookDepth(rig, cs.gridWater[c]);
-                float gate = SizeShare(s, cs.gridWater[c]);
-                double en = 0;
-                int i0 = Mathf.Max(0, Mathf.FloorToInt(pc.x - R2 - bed.x0)), i1 = Mathf.Min(bed.nx - 1, Mathf.FloorToInt(pc.x + R2 - bed.x0));
-                int j0 = Mathf.Max(0, Mathf.FloorToInt(pc.y - R2 - bed.z0)), j1 = Mathf.Min(bed.nz - 1, Mathf.FloorToInt(pc.y + R2 - bed.z0));
-                if (gate > 0f)
-                    for (int j = j0; j <= j1; j++)
-                    {
-                        float cz = bed.z0 + j + 0.5f - pc.y;
-                        for (int i = i0; i <= i1; i++)
-                        {
-                            float cx = bed.x0 + i + 0.5f - pc.x;
-                            if (cx * cx + cz * cz > R2 * R2) continue;
-                            en += bed.Count(i, j, hdN - 2.5f, hdN + 2.5f) * gate;
-                        }
-                    }
-                ratios.Add((float)(en / perLeg[c]));
-                rawRatios.Add(perNewR[c] / perLeg[c]);
-            }
-            ratios.Sort();
-            rawRatios.Sort();
-            int tenth = Mathf.Max(1, ratios.Count / 10);
-            float lo10 = 0f, hi10 = 0f, hiRaw = 0f;
-            for (int t = 0; t < tenth && t < ratios.Count; t++)
-            {
-                lo10 += ratios[t];
-                hi10 += ratios[ratios.Count - 1 - t];
-                hiRaw += rawRatios[rawRatios.Count - 1 - t];
-            }
-            budget.worst10 = ratios.Count > 0 ? lo10 / tenth : 0f;
-            budget.best10 = ratios.Count > 0 ? hi10 / tenth : 0f;
-            budget.best10Raw = rawRatios.Count > 0 ? hiRaw / tenth : 0f;
-            return budget;
         }
     }
 }

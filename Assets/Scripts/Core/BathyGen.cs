@@ -7,10 +7,12 @@ namespace FishingKing
 {
     /// <summary>
     /// Builds a stage's <see cref="Bathymetry"/> from its <see cref="TerrainRecipe"/> and a world seed
-    /// (Docs/terrain_depth_spec.md 4, 5): the old profile as the base, flats (set-to blobs), an old creek, holes, humps and
-    /// noise, feathered back to the profile at the grid's edges; the pins from the fixed art clamp it (twice, round a slope
-    /// limit), then it is quantized to whole cm and its kinds, materials, flags, distances and zones derived. Every
-    /// attempt is validated (spec 5.4); after <see cref="TerrainRecipe.attempts"/> failures the fallback recipe is used.
+    /// (Docs/terrain_depth_spec.md 4, 5; Docs/lake_phase2_spec.md A1): a free base drawn from the seed's character (shallow
+    /// or deep, weedy or rocky), flats (set-to blobs, more on weedy lakes), the lane carved, an old creek, holes, humps and
+    /// noise; the distance profile P* derived from the result (the rows' medians), the grid's edges feathered back to it;
+    /// the pins from the fixed art clamp it (twice, round a slope limit), then it is quantized to whole cm and its kinds,
+    /// materials, flags, distances, zones and statistics derived. Every attempt is validated (V1-V11); after
+    /// <see cref="TerrainRecipe.attempts"/> failures the fallback (the middle character, no features) is used.
     /// <para>Deterministic on every platform: SplitMix64 streams per feature family seeded by FNV-1a / Murmur fmix32,
     /// integer-lattice value noise, polynomial smoothsteps, Catmull-Rom meanders; no sin / cos / exp / pow, no
     /// UnityEngine.Random, System.Random or string.GetHashCode; every smoothing pass is Jacobi (double-buffered).</para>
@@ -195,7 +197,14 @@ namespace FishingKing
             public View view;
             public int nx, nz, n;
             public float x0, z0, x1, z1;
-            public float[] baseD, laneSd;
+            /// <summary>The authored profile (the pier's window and ring, V3); the side factor's reach 0.9 x half(z, 640) per row; the shore's depth.</summary>
+            public float[] authD, laneSd, sideH;
+            public float shoreD;
+            /// <summary>Per row: the median window (node columns) of the derived profile, |x| within min(half(z, 600), X1 - feather).</summary>
+            public int[] rowI0, rowI1;
+            /// <summary>R_ref: z in [zNear + 1.5, 50], |x| within half(z, 600); 1 / (2 hw) a node.</summary>
+            public int[] refNodes;
+            public float[] refU;
             public bool[] inLane, fixedNode, spotBlocked;
             public float[] coreLo, coreHi;   // NaN: not a core node
             public int[] ringStart, ringCount;
@@ -229,7 +238,7 @@ namespace FishingKing
                 c.nodeX[k] = c.x0 + (k % c.nx) * Bathymetry.Cell;
                 c.nodeZ[k] = c.z0 + (k / c.nx) * Bathymetry.Cell;
             }
-            c.baseD = new float[n];
+            c.authD = new float[n];
             c.laneSd = new float[n];
             c.inLane = new bool[n];
             c.fixedNode = new bool[n];
@@ -237,10 +246,37 @@ namespace FishingKing
             c.coreLo = new float[n];
             c.coreHi = new float[n];
             c.reedT = new float[n];
+            c.shoreD = L.AuthoredMeanDepth(c.z0);
+            c.sideH = new float[c.nz];
+            c.rowI0 = new int[c.nz];
+            c.rowI1 = new int[c.nz];
+            var refN = new List<int>();
+            var refW = new List<float>();
+            float zRef0 = L.zNear + 1.5f, zRef1 = 50f;
+            for (int j = 0; j < c.nz; j++)
+            {
+                float z = c.z0 + j * Bathymetry.Cell;
+                c.sideH[j] = 0.9f * c.view.Half(z, 640f);
+                float hw = Mathf.Min(c.view.Half(z, 600f), c.x1 - r.feather);
+                c.rowI0[j] = Mathf.Max(0, Mathf.CeilToInt((-hw - c.x0) / Bathymetry.Cell - 1e-4f));
+                c.rowI1[j] = Mathf.Min(c.nx - 1, Mathf.FloorToInt((hw - c.x0) / Bathymetry.Cell + 1e-4f));
+                if (z < zRef0 - 1e-4f || z > zRef1 + 1e-4f) continue;
+                float h6 = c.view.Half(z, 600f);
+                float u = 1f / (2f * h6);
+                for (int i = 0; i < c.nx; i++)
+                {
+                    float x = c.x0 + i * Bathymetry.Cell;
+                    if (Mathf.Abs(x) > h6) continue;
+                    refN.Add(j * c.nx + i);
+                    refW.Add(u);
+                }
+            }
+            c.refNodes = refN.ToArray();
+            c.refU = refW.ToArray();
             for (int k = 0; k < n; k++)
             {
                 float x = c.X(k), z = c.Z(k);
-                c.baseD[k] = L.ProfileMeanDepth(z);
+                c.authD[k] = L.AuthoredMeanDepth(z);
                 c.coreLo[k] = c.coreHi[k] = float.NaN;
                 c.reedT[k] = 99f;
                 var p = new Vector2(x, z);
@@ -337,7 +373,7 @@ namespace FishingKing
                     var pin = rt.p;
                     float d;     // distance outside the core (<= 0: in it)
                     float lo = pin.lo, hi = pin.hi;
-                    if (pin.profile) lo = hi = c.baseD[k];
+                    if (pin.profile) lo = hi = c.authD[k];
                     if (pin.sel == PinSel.Rect) d = RectDist(pin.rect, p);
                     else if (pin.sel == PinSel.Lane) d = Mathf.Max(0f, c.laneSd[k]);
                     else
@@ -427,14 +463,15 @@ namespace FishingKing
                     if (new Vector2(p.x - q.c.x, p.y - q.c.y).magnitude - q.c.z < 1.0f && PolyDist(q.poly, p) < 1.0f) c.spotBlocked[k] = true;
             }
 
-            // ---- the blobs' segment distances over their boxes (scale <= 1.12, wobble <= 0.8)
+            // ---- the blobs' segment distances over their boxes (scale <= 1.12 x the weed's largest radius factor, wobble <= 0.8)
             int nb = r.blobs?.Length ?? 0;
             c.blobNodes = new int[nb][];
             c.blobSeg = new float[nb][];
+            float rMax = 1.12f * Mathf.Max(1f, Mathf.Max(r.character.flatRadius.x, r.character.flatRadius.y));
             for (int b = 0; b < nb; b++)
             {
                 var bl = r.blobs[b];
-                float reach = bl.r * 1.12f + 0.85f;
+                float reach = bl.r * rMax + 0.85f;
                 float bx0 = Mathf.Min(bl.a.x, bl.b.x) - reach, bx1 = Mathf.Max(bl.a.x, bl.b.x) + reach;
                 float bz0 = Mathf.Min(bl.a.y, bl.b.y) - reach, bz1 = Mathf.Max(bl.a.y, bl.b.y) + reach;
                 int i0 = Mathf.Max(0, Mathf.FloorToInt((bx0 - c.x0) / Bathymetry.Cell)), i1 = Mathf.Min(c.nx - 1, Mathf.CeilToInt((bx1 - c.x0) / Bathymetry.Cell));
@@ -463,6 +500,9 @@ namespace FishingKing
         {
             public float[] D, D2, wFlat, shoalW, chanC, humpC, humpRho, holeC;
             public sbyte[] flatId, humpIdx, holeIdx;
+            /// <summary>This attempt's flats: the recipe's blobs, then the extra weed flats (<see cref="nFl"/> in all).</summary>
+            public Blob[] fl;
+            public int nFl;
             public float[] blobScale, blobWob, blobE, blobT;
             public uint[] blobSalt;
             public float shelfBase;
@@ -471,26 +511,30 @@ namespace FishingKing
             public int holes, humps;
             public readonly List<(Vector2 c, float R)> features = new List<(Vector2, float)>();
             public string featLog = "";
+            /// <summary>The character (step 0a), the derived profile (step 5b, whole cm a row) and the materials' thresholds.</summary>
+            public BedCharacter ch;
+            public float[] pStar, envLo, envHi;
+            public float slopeGravel, channelGravel, openGravel, flatSand, shelfWeed;
 
             public float ZShelf(float x) => fallback ? shelfBase : shelfBase + 1.5f * Noise(x / 9f, 0f, shelfSalt);
         }
 
         static float FlatSdf(Ctx c, Work w, int b, float segDist, float x, float z, float laneSd)
         {
-            var bl = c.r.blobs[b];
+            var bl = w.fl[b];
             float sdf = segDist - bl.r * w.blobScale[b] + (w.blobWob[b] > 0f ? w.blobWob[b] * Noise(x / 6f, z / 6f, w.blobSalt[b]) : 0f);
             if (bl.gap > 0f) sdf = Mathf.Max(sdf, bl.gap - laneSd);
             return sdf;
         }
 
-        /// <summary>The least blob sdf at a point (for the features' clearances).</summary>
+        /// <summary>The least flat sdf at a point (for the features' clearances).</summary>
         static float MinFlatSdf(Ctx c, Work w, Vector2 p)
         {
             float lane = c.r.lane != null && c.r.lane.Length >= 3 ? SignedDist(c.r.lane, p) : 99f;
             float m = 99f;
-            for (int b = 0; b < (c.r.blobs?.Length ?? 0); b++)
+            for (int b = 0; b < w.nFl; b++)
             {
-                var bl = c.r.blobs[b];
+                var bl = w.fl[b];
                 m = Mathf.Min(m, FlatSdf(c, w, b, SegDist(p, bl.a, bl.b), p.x, p.y, lane));
             }
             return m;
@@ -530,12 +574,51 @@ namespace FishingKing
             return new Vector2(1f, 0f);
         }
 
+        static float Mid(Vector2 r) => 0.5f * (r.x + r.y);
+
+        /// <summary>
+        /// Step 0a (Docs/lake_phase2_spec.md A1; stream "character", a new one every attempt, so a retry draws a new lake):
+        /// the four u (depth, weed, rock, side), then the shelf's end, the drop's width, the side axis, the far rise, the
+        /// noise's scale and the lane's carve. The fallback takes the middle of every range (every u 0.5).
+        /// </summary>
+        static void DrawCharacter(Ctx c, Work w, uint attemptSeed)
+        {
+            var cs = c.r.character;
+            var st = Stream(attemptSeed, "character");
+            float ud = st.Next01(), uw = st.Next01(), ur = st.Next01(), us = st.Next01();
+            float zs = st.Range(cs.shelfEnd), ws = st.Range(cs.dropWidth), xc = st.Range(cs.sideAxis), phi = st.Next01() * cs.farRiseMax;
+            float noise = st.Range(cs.noiseAmp), lane = st.Range(cs.laneScale);
+            if (w.fallback)
+            {
+                ud = uw = ur = us = 0.5f;
+                zs = Mid(cs.shelfEnd);
+                ws = Mid(cs.dropWidth);
+                xc = Mid(cs.sideAxis);
+                phi = 0.5f * cs.farRiseMax;
+                noise = Mid(cs.noiseAmp);
+                lane = Mid(cs.laneScale);
+            }
+            float dm = CharacterSpec.Lerp(cs.mainDepth, ud);
+            w.ch = new BedCharacter
+            {
+                uDepth = ud, uWeed = uw, uRock = ur, uSide = us,
+                mainDepth = dm, shelfEnd = zs, dropWidth = ws, side = CharacterSpec.Lerp(cs.side, us), sideX = xc, farRise = phi, noise = noise,
+                laneT = Mathf.Max(cs.laneMin, dm * lane), label = BedCharacter.Label(ud, uw, ur),
+            };
+            w.slopeGravel = CharacterSpec.Lerp(cs.slopeGravel, ur);
+            w.channelGravel = CharacterSpec.Lerp(cs.channelGravel, ur);
+            w.openGravel = CharacterSpec.Lerp(cs.openGravel, ur);
+            w.flatSand = CharacterSpec.Lerp(cs.flatSand, uw);
+            w.shelfWeed = CharacterSpec.Lerp(cs.shelfWeed, uw);
+        }
+
         static void Run(Ctx c, Work w, uint attemptSeed)
         {
             var r = c.r;
+            var cs = r.character;
             int n = c.n, nb = r.blobs?.Length ?? 0;
+            bool laneOk = r.lane != null && r.lane.Length >= 3;
             float[] D = w.D;
-            Array.Copy(c.baseD, D, n);
             Array.Clear(w.wFlat, 0, n);
             Array.Clear(w.shoalW, 0, n);
             Array.Clear(w.chanC, 0, n);
@@ -552,8 +635,23 @@ namespace FishingKing
 
             var prof = Profile ? System.Diagnostics.Stopwatch.StartNew() : null;
             void Lap(string what) { if (prof != null) w.featLog += string.Format(CI, " [{0} {1:0.0}]", what, prof.Elapsed.TotalMilliseconds); }
-            // ---- step 1: the flats (stream "flats": 4 values per blob, in table order)
+            // ---- step 0a: the character; step 0b: the base (the shore's 1.2 m at z 0, a shelf to zs, a drop over ws to the main
+            // depth; the side and far factors take from the excess only, so the shore stays the shore)
+            DrawCharacter(c, w, attemptSeed);
+            var ch = w.ch;
+            for (int k = 0; k < n; k++)
+            {
+                float x = c.X(k), z = c.Z(k);
+                float side = 1f - ch.side * S(0f, c.sideH[k / c.nx], Mathf.Abs(x - ch.sideX));
+                float far = 1f - ch.farRise * S(cs.farZ.x, cs.farZ.y, z);
+                D[k] = c.shoreD + (ch.mainDepth - c.shoreD) * S(ch.shelfEnd, ch.shelfEnd + ch.dropWidth, z) * side * far;
+            }
+            w.featLog += string.Format(CI, " character d {0:0.00} w {1:0.00} r {2:0.00} s {3:0.00} Dm {4:0.00} zs {5:0.0} ws {6:0.0}", ch.uDepth, ch.uWeed, ch.uRock, ch.uSide, ch.mainDepth, ch.shelfEnd, ch.dropWidth);
+
+            // ---- step 1: the flats (stream "flats": 4 values per blob, in table order), their radius and depth by the weed;
+            // then the extra weed flats (stream "weedflats")
             var flats = Stream(attemptSeed, "flats");
+            float rMul = CharacterSpec.Lerp(cs.flatRadius, ch.uWeed), bias = CharacterSpec.Lerp(cs.flatBias, ch.uWeed);
             for (int b = 0; b < nb; b++)
             {
                 var bl = r.blobs[b];
@@ -565,42 +663,88 @@ namespace FishingKing
                     e = (bl.edge.x + bl.edge.y) * 0.5f;
                     t = (bl.depth.x + bl.depth.y) * 0.5f;
                 }
-                w.blobScale[b] = scale;
+                w.fl[b] = bl;
+                w.blobScale[b] = scale * rMul;
                 w.blobWob[b] = wob;
                 w.blobE[b] = e;
-                w.blobT[b] = t;
+                w.blobT[b] = t + bias;
                 w.blobSalt[b] = Mix(attemptSeed, Fnv1a(bl.id));
+            }
+            w.nFl = nb;
+            int extras = w.fallback ? 0 : Mathf.Min(cs.extraMax, (int)(3.99f * ch.uWeed * ch.uWeed));
+            var wf = Stream(attemptSeed, "weedflats");
+            for (int e = 0; e < extras; e++)
+            {
+                float R = wf.Range(cs.extraR), t = wf.Range(cs.extraDepth), edge = wf.Range(cs.extraEdge), wob = wf.Range(0.4f, 0.8f);
+                bool ok = false;
+                Vector2 cen = default;
+                for (int tr = 0; tr < 40; tr++)
+                {
+                    float z = wf.Range(cs.extraZ);
+                    float x = wf.Range(-1f, 1f) * Mathf.Max(0f, c.view.Half(z, 640f) - R);
+                    cen = new Vector2(x, z);
+                    if ((laneOk ? SignedDist(r.lane, cen) : 99f) < R + 3f || PinDist(c, cen) < R + 2f) continue;
+                    bool clear = true;
+                    for (int q = nb; q < w.nFl; q++) if ((w.fl[q].a - cen).magnitude < w.fl[q].r + R + 3f) clear = false;
+                    if (!clear) continue;
+                    ok = true;
+                    break;
+                }
+                if (!ok) continue;
+                int b = w.nFl++;
+                int no = b - nb + 1;
+                w.fl[b] = new Blob { id = "W" + no, flat = "weed" + no, a = cen, b = cen, r = R, depth = new Vector2(t, t), edge = new Vector2(edge, edge) };
+                w.blobScale[b] = 1f;
+                w.blobWob[b] = wob;
+                w.blobE[b] = edge;
+                w.blobT[b] = t;
+                w.blobSalt[b] = Mix(attemptSeed, Fnv1a(w.fl[b].id));
+                w.featLog += string.Format(CI, " weed{0} ({1:0.0},{2:0.0}) r {3:0.0} d {4:0.00}", no, cen.x, cen.y, R, t);
             }
             var shelf = Stream(attemptSeed, "shelf");
             w.shelfBase = w.fallback ? (r.shelfZ.x + r.shelfZ.y) * 0.5f : shelf.Range(r.shelfZ);
             w.shelfSalt = Mix(attemptSeed, Fnv1a("shelf"));
             w.flatNoiseSalt = Mix(attemptSeed, Fnv1a("flatnoise"));
             w.matSalt = Mix(attemptSeed, Fnv1a("mat"));
-            // sum of w_b t_b and w_b, the largest w, per node (only the blobs' boxes)
+            // sum of w_b t_b and w_b, the largest w, per node (only the flats' boxes)
             var sumW = w.D2;   // (scratch)
             var sumWT = new float[n];
             Array.Clear(sumW, 0, n);
             var flatBest = new float[n];
-            for (int b = 0; b < nb; b++)
+            void Accum(int b, int k, float segDist)
             {
-                var bl = r.blobs[b];
-                var nodes = c.blobNodes[b];
-                var seg = c.blobSeg[b];
-                for (int q = 0; q < nodes.Length; q++)
+                float sdf = FlatSdf(c, w, b, segDist, c.X(k), c.Z(k), c.laneSd[k]);
+                float wb = 1f - S(-w.blobE[b], 0f, sdf);
+                if (wb <= 0f) return;
+                sumW[k] += wb;
+                sumWT[k] += wb * w.blobT[b];
+                if (wb > w.wFlat[k]) w.wFlat[k] = wb;
+                if (wb > flatBest[k])
                 {
-                    int k = nodes[q];
-                    float sdf = FlatSdf(c, w, b, seg[q], c.X(k), c.Z(k), c.laneSd[k]);
-                    float wb = 1f - S(-w.blobE[b], 0f, sdf);
-                    if (wb <= 0f) continue;
-                    sumW[k] += wb;
-                    sumWT[k] += wb * w.blobT[b];
-                    if (wb > w.wFlat[k]) w.wFlat[k] = wb;
-                    if (wb > flatBest[k])
-                    {
-                        flatBest[k] = wb;
-                        w.flatId[k] = wb >= 0.5f ? (sbyte)b : (sbyte)-1;
-                    }
-                    if (bl.shoal && wb > w.shoalW[k]) w.shoalW[k] = wb;
+                    flatBest[k] = wb;
+                    w.flatId[k] = wb >= 0.5f ? (sbyte)b : (sbyte)-1;
+                }
+                if (w.fl[b].shoal && wb > w.shoalW[k]) w.shoalW[k] = wb;
+            }
+            for (int b = 0; b < w.nFl; b++)
+            {
+                if (b < nb)
+                {
+                    var nodes = c.blobNodes[b];
+                    var seg = c.blobSeg[b];
+                    for (int q = 0; q < nodes.Length; q++) Accum(b, nodes[q], seg[q]);
+                    continue;
+                }
+                var bl = w.fl[b];
+                float reach = bl.r * w.blobScale[b] + w.blobWob[b] + 0.05f;
+                int i0 = Mathf.Max(0, Mathf.FloorToInt((bl.a.x - reach - c.x0) / Bathymetry.Cell)), i1 = Mathf.Min(c.nx - 1, Mathf.CeilToInt((bl.a.x + reach - c.x0) / Bathymetry.Cell));
+                int j0 = Mathf.Max(0, Mathf.FloorToInt((bl.a.y - reach - c.z0) / Bathymetry.Cell)), j1 = Mathf.Min(c.nz - 1, Mathf.CeilToInt((bl.a.y + reach - c.z0) / Bathymetry.Cell));
+                for (int j = j0; j <= j1; j++)
+                for (int i = i0; i <= i1; i++)
+                {
+                    int k = j * c.nx + i;
+                    float d = SegDist(new Vector2(c.X(k), c.Z(k)), bl.a, bl.b);
+                    if (d <= reach) Accum(b, k, d);
                 }
             }
             for (int k = 0; k < n; k++)
@@ -609,26 +753,33 @@ namespace FishingKing
                 float t = sumWT[k] / sumW[k] + (w.fallback ? 0f : 0.12f * Noise(c.X(k) / 4f, c.Z(k) / 4f, w.flatNoiseSalt));
                 D[k] = D[k] + (t - D[k]) * w.wFlat[k];
             }
+            // ---- step 1c: the lane carved towards its target (deepened only)
+            if (laneOk)
+                for (int k = 0; k < n; k++)
+                {
+                    float wl = S(cs.laneEdge.x, cs.laneEdge.y, c.laneSd[k]);
+                    if (wl > 0f) D[k] = Mathf.Max(D[k], D[k] + (ch.laneT - D[k]) * wl);
+                }
 
             Lap("flats");
             if (!w.fallback)
             {
                 // ---- step 2: the old creek (stream "channel")
-                var ch = Stream(attemptSeed, "channel");
-                var cs = r.channel;
-                if (cs != null)
+                var chs = Stream(attemptSeed, "channel");
+                var cspec = r.channel;
+                if (cspec != null)
                 {
-                    var s0 = new Vector2(ch.Range(cs.startX), ch.Range(cs.startZ));
-                    float len = ch.Range(cs.len), A = ch.Range(cs.amp);
-                    int m = Mathf.CeilToInt(len / cs.step);
+                    var s0 = new Vector2(chs.Range(cspec.startX), chs.Range(cspec.startZ));
+                    float len = chs.Range(cspec.len), A = chs.Range(cspec.amp);
+                    int m = Mathf.CeilToInt(len / cspec.step);
                     var pts = new List<Vector2> { s0 };
                     for (int q = 1; q <= m; q++)
                     {
-                        float zq = s0.y + cs.step * q;
+                        float zq = s0.y + cspec.step * q;
                         float lim = c.view.Half(zq, 640f) - 3f;
-                        pts.Add(new Vector2(Mathf.Clamp(pts[q - 1].x + ch.Range(-A, A), -lim, lim), zq));
+                        pts.Add(new Vector2(Mathf.Clamp(pts[q - 1].x + chs.Range(-A, A), -lim, lim), zq));
                     }
-                    float hw = ch.Range(cs.halfWidth), extra = ch.Range(cs.extra);
+                    float hw = chs.Range(cspec.halfWidth), extra = chs.Range(cspec.extra);
                     // a uniform Catmull-Rom through them (the end points doubled), sampled every step / 16
                     var line = new List<Vector2>();
                     for (int q = 0; q < pts.Count - 1; q++)
@@ -673,12 +824,13 @@ namespace FishingKing
                 }
 
                 Lap("channel");
-                // ---- step 3: holes (stream "holes")
+                // ---- step 3: holes (stream "holes"): the second one more likely on a deep lake
                 var hs = Stream(attemptSeed, "holes");
                 var hspec = r.holes;
                 if (hspec != null)
                 {
-                    int count = hspec.countMin + (hspec.countMax > hspec.countMin && hs.Next01() < 0.5f ? 1 : 0);
+                    float p2 = CharacterSpec.Lerp(cs.hole2, ch.uDepth);
+                    int count = hspec.countMin + (hspec.countMax > hspec.countMin && hs.Next01() < p2 ? 1 : 0);
                     for (int h = 0; h < count; h++)
                     {
                         float R = hs.Range(hspec.radius), asp = hs.Range(hspec.aspect);
@@ -718,17 +870,18 @@ namespace FishingKing
                 }
 
                 Lap("holes");
-                // ---- step 4: humps (stream "humps")
+                // ---- step 4: humps (stream "humps"): 1 + floor(3.99 u_rock), each top relative to the water where it stands
                 var us = Stream(attemptSeed, "humps");
                 var uspec = r.humps;
                 if (uspec != null)
                 {
-                    int count = Mathf.Min(uspec.countMax, uspec.countMin + (int)(us.Next01() * (uspec.countMax - uspec.countMin + 1)));
+                    us.Next01();   // (the old count's draw: the stream's later values stay where they were)
+                    int count = Mathf.Min(uspec.countMax, uspec.countMin + (int)(3.99f * ch.uRock));
                     for (int h = 0; h < count; h++)
                     {
                         float R = us.Range(uspec.radius), asp = us.Range(uspec.aspect);
                         var u = Axis(ref us);
-                        float top = us.Range(uspec.amount);
+                        float frac = us.Range(cs.humpTop);
                         bool ok = false;
                         Vector2 cen = default;
                         float hgt = 0f;
@@ -738,13 +891,15 @@ namespace FishingKing
                             float xr = Mathf.Max(0f, c.view.Half(z, 640f) - R);
                             float x = us.Range(-1f, 1f) * xr;
                             cen = new Vector2(x, z);
-                            float lane = r.lane != null && r.lane.Length >= 3 ? SignedDist(r.lane, cen) : 99f;
+                            float lane = laneOk ? SignedDist(r.lane, cen) : 99f;
                             if (lane < R + 1f || MinFlatSdf(c, w, cen) < R + 1f || PinDist(c, cen) < R + 2f) continue;
                             bool clear = true;
                             foreach (var f in w.features) if ((f.c - cen).magnitude < f.R + R + 3f) clear = false;
                             if (!clear) continue;
-                            hgt = Bilinear(c, D, cen.x, cen.y) - top;
-                            if (hgt < 1.5f) continue;
+                            float dloc = Bilinear(c, D, cen.x, cen.y);
+                            float top = Mathf.Clamp(dloc * frac - cs.humpRock * ch.uRock, cs.humpClamp.x, cs.humpClamp.y);
+                            hgt = dloc - top;
+                            if (hgt < Mathf.Max(1f, 0.3f * dloc)) continue;
                             ok = true;
                             break;
                         }
@@ -770,23 +925,38 @@ namespace FishingKing
                 }
 
                 Lap("humps");
-                // ---- step 5: noise (stream "noise": its two salts)
+                // ---- step 5: noise (stream "noise": its two salts), x the character's scale
                 var ns = Stream(attemptSeed, "noise");
                 uint sa = ns.NextU32(), sb = ns.NextU32();
                 for (int k = 0; k < n; k++)
                 {
                     float x = c.X(k), z = c.Z(k);
-                    D[k] += (r.noiseA * Noise(x / r.noiseScaleA, z / r.noiseScaleA, sa) + r.noiseB * Noise(x / r.noiseScaleB, z / r.noiseScaleB, sb)) * (1f - r.noiseFlatDamp * w.wFlat[k]);
+                    D[k] += ch.noise * (r.noiseA * Noise(x / r.noiseScaleA, z / r.noiseScaleA, sa) + r.noiseB * Noise(x / r.noiseScaleB, z / r.noiseScaleB, sb)) * (1f - r.noiseFlatDamp * w.wFlat[k]);
                 }
             }
+            ch.holes = w.holes;
+            ch.humps = w.humps;
+            ch.weedFlats = w.nFl - nb;
+            w.ch = ch;
 
             Lap("noise");
-            // ---- step 6: feather back to the profile at the far edges (not the shore's)
+            // ---- step 5b: the provisional profile P0: per row the median over its window of the pre-feather bed with the
+            // pins' first pass and the slope limit's envelope applied (on a copy: the pier, the lane, the pads, the reeds, the
+            // log and the slopes they force are part of the lake's profile), smoothed along z ([1 4 6 4 1] / 16), within
+            // [0.6, 8.8], whole cm; the final P* is the finished rows' medians (step 9b)
+            var pinned = w.D2;   // (scratch: SlopeLimit's buffer, free until step 8)
+            Array.Copy(D, pinned, n);
+            ApplyPins(c, pinned, true);
+            for (int k = 0; k < n; k++) pinned[k] = Mathf.Clamp(pinned[k], r.minDepth, r.maxDepth);
+            Envelope(c, pinned, null, w.envLo ??= new float[n], w.envHi ??= new float[n]);
+            RowMedians(c, pinned, w.pStar, true);
+            // ---- step 6: feather to P0 at the far edges (not the shore's)
             for (int k = 0; k < n; k++)
             {
                 float x = c.X(k), z = c.Z(k);
+                float p = w.pStar[k / c.nx];
                 float edge = Mathf.Min(x - c.x0, Mathf.Min(c.x1 - x, c.z1 - z));
-                D[k] = c.baseD[k] + (D[k] - c.baseD[k]) * S(0f, r.feather, edge);
+                D[k] = p + (D[k] - p) * S(0f, r.feather, edge);
             }
 
             // ---- steps 7-9: pins, the slope limit, pins again, the global limits
@@ -800,6 +970,37 @@ namespace FishingKing
             w.featLog += " limit " + LastLimitPasses + " passes";
             ApplyPins(c, D, false);
             for (int k = 0; k < n; k++) D[k] = Mathf.Clamp(D[k], r.minDepth, r.maxDepth);
+            // ---- step 9b: P* = the final rows' medians (unsmoothed: the slope limit keeps them within 0.75 m a row); the
+            // side and far edges re-set to it, the slope limit and the pins' cores again (only the edge band moves)
+            RowMedians(c, D, w.pStar, false);
+            SlopeLimit(c, w, MaxLimitPasses);
+            w.featLog += " / " + LastLimitPasses + " passes";
+            ApplyPins(c, D, false);
+            for (int k = 0; k < n; k++) D[k] = Mathf.Clamp(D[k], r.minDepth, r.maxDepth);
+            Lap("profile");
+        }
+
+        /// <summary>
+        /// Per row the median of <paramref name="D"/> over the row's window (|x| within min(half(z, 600), X1 - feather)),
+        /// optionally smoothed along z ([1 4 6 4 1] / 16, the ends repeated), within [0.6, 8.8], whole cm.
+        /// </summary>
+        static void RowMedians(Ctx c, float[] D, float[] into, bool smooth)
+        {
+            var med = new float[c.nz];
+            var buf = new float[c.nx];
+            for (int j = 0; j < c.nz; j++)
+            {
+                int i0 = c.rowI0[j], m = c.rowI1[j] - i0 + 1;
+                for (int i = 0; i < m; i++) buf[i] = D[j * c.nx + i0 + i];
+                Array.Sort(buf, 0, m);
+                med[j] = (m & 1) == 1 ? buf[m / 2] : 0.5f * (buf[m / 2 - 1] + buf[m / 2]);
+            }
+            for (int j = 0; j < c.nz; j++)
+            {
+                float s = !smooth ? med[j]
+                    : (med[Mathf.Max(0, j - 2)] + 4f * med[Mathf.Max(0, j - 1)] + 6f * med[j] + 4f * med[Mathf.Min(c.nz - 1, j + 1)] + med[Mathf.Min(c.nz - 1, j + 2)]) / 16f;
+                into[j] = Mathf.RoundToInt(Mathf.Clamp(s, 0.6f, 8.8f) * 100f) * 0.01f;
+            }
         }
 
         /// <summary>The slope limit's cap on passes (it stops as soon as every edge is within the limit).</summary>
@@ -892,9 +1093,38 @@ namespace FishingKing
         }
 
         /// <summary>
+        /// The slope limit's step (1): every node's window (a pin core's, the side and far edges' <paramref name="edges"/>
+        /// value per row (null: free), elsewhere the global depth limits) spread at the limit slope by min / max-plus sweeps,
+        /// and <paramref name="a"/> clamped into it (the mean where the spread windows cross).
+        /// </summary>
+        static void Envelope(Ctx c, float[] a, float[] edges, float[] lo, float[] hi)
+        {
+            float step = c.r.maxSlope * Bathymetry.Cell - 0.002f;
+            int nx = c.nx, nz = c.nz, n = c.n;
+            for (int k = 0; k < n; k++)
+            {
+                int i = k % nx, j = k / nx;
+                if (edges != null && (i == 0 || i == nx - 1 || j == nz - 1)) lo[k] = hi[k] = edges[j];
+                else if (!float.IsNaN(c.coreLo[k]))
+                {
+                    lo[k] = Mathf.Max(c.r.minDepth, c.coreLo[k]);
+                    hi[k] = Mathf.Min(c.r.maxDepth, c.coreHi[k]);
+                }
+                else
+                {
+                    lo[k] = c.r.minDepth;
+                    hi[k] = c.r.maxDepth;
+                }
+            }
+            MaxPlus(lo, nx, nz, step);
+            MinPlus(hi, nx, nz, step);
+            for (int k = 0; k < n; k++) a[k] = lo[k] > hi[k] ? 0.5f * (lo[k] + hi[k]) : Mathf.Clamp(a[k], lo[k], hi[k]);
+        }
+
+        /// <summary>
         /// The slope limit (spec 4.2 step 8): every 4-neighbour edge at most maxSlope x 0.5 m, the pins' cores inside their
-        /// windows, the far edges on the profile. (1) The windows' own limits (every node's [lo, hi]: a core's window, the
-        /// far edges' profile, elsewhere the global depth limits) spread at the limit slope: the deep water beside a reed
+        /// windows, the side and far edges on the derived profile P*. (1) The windows' own limits (every node's [lo, hi]: a
+        /// core's window, the edges' P*, elsewhere the global depth limits) spread at the limit slope: the deep water beside a reed
         /// core held at 1.2 m comes up in a cone round it. (2) Relaxed Jacobi passes (double-buffered, only near an edge
         /// over the limit; each node half way into the window its neighbours allow, cores clamped into theirs) up to
         /// <paramref name="maxPasses"/>, which give the drop-offs their full slope. (3) What is left over is closed exactly:
@@ -910,24 +1140,7 @@ namespace FishingKing
             // (1) the windows' envelopes
             var lo = new float[n];
             var hi = new float[n];
-            for (int k = 0; k < n; k++)
-            {
-                int i = k % nx, j = k / nx;
-                if (i == 0 || i == nx - 1 || j == nz - 1) lo[k] = hi[k] = c.baseD[k];
-                else if (!float.IsNaN(c.coreLo[k]))
-                {
-                    lo[k] = Mathf.Max(c.r.minDepth, c.coreLo[k]);
-                    hi[k] = Mathf.Min(c.r.maxDepth, c.coreHi[k]);
-                }
-                else
-                {
-                    lo[k] = c.r.minDepth;
-                    hi[k] = c.r.maxDepth;
-                }
-            }
-            MaxPlus(lo, nx, nz, step);
-            MinPlus(hi, nx, nz, step);
-            for (int k = 0; k < n; k++) a[k] = lo[k] > hi[k] ? 0.5f * (lo[k] + hi[k]) : Mathf.Clamp(a[k], lo[k], hi[k]);
+            Envelope(c, a, w.pStar, lo, hi);
             if (sw0 != null) w.featLog += string.Format(CI, " {{env {0:0.0}}}", sw0.Elapsed.TotalMilliseconds);
             // (2) Jacobi passes near the edges over the limit (only the nodes round an edge over it; after a pass only the
             // edges of the nodes that moved can have gone over)
@@ -1091,12 +1304,13 @@ namespace FishingKing
 
         static Work NewWork(Ctx c)
         {
-            int n = c.n, nb = c.r.blobs?.Length ?? 0;
+            int n = c.n, nb = (c.r.blobs?.Length ?? 0) + Mathf.Max(0, c.r.character.extraMax);
             return new Work
             {
                 D = new float[n], D2 = new float[n], wFlat = new float[n], shoalW = new float[n], chanC = new float[n], humpC = new float[n],
                 humpRho = new float[n], holeC = new float[n], flatId = new sbyte[n], humpIdx = new sbyte[n], holeIdx = new sbyte[n],
-                blobScale = new float[nb], blobWob = new float[nb], blobE = new float[nb], blobT = new float[nb], blobSalt = new uint[nb],
+                fl = new Blob[nb], blobScale = new float[nb], blobWob = new float[nb], blobE = new float[nb], blobT = new float[nb], blobSalt = new uint[nb],
+                pStar = new float[c.nz],
             };
         }
 
@@ -1152,7 +1366,7 @@ namespace FishingKing
                 else kd = BedKind.Open;
                 b.kind[k] = (byte)kd;
             }
-            // materials
+            // materials (the thresholds by the character: weedy flats and shelves, rocky slopes, channels and open water)
             for (int k = 0; k < n; k++)
             {
                 float x = c.X(k), z = c.Z(k), d = D[k];
@@ -1161,11 +1375,12 @@ namespace FishingKing
                 BedMat m;
                 if (kd == BedKind.Hump) m = w.humpRho[k] < 0.6f ? BedMat.Gravel : BedMat.Sand;
                 else if (kd == BedKind.Hole) m = BedMat.Mud;
-                else if (kd == BedKind.Channel) m = n3 > 0.45f ? BedMat.Gravel : BedMat.Sand;
-                else if (slope[k] >= 0.6f) m = BedMat.Gravel;
-                else if (kd == BedKind.Flat || kd == BedKind.Shoal) m = kd == BedKind.Flat && n3 > 0.5f ? BedMat.Sand : BedMat.Weed;
-                else if (kd == BedKind.Shelf) m = c.reedT[k] <= 1.5f ? BedMat.Weed : n3 < -0.35f ? BedMat.Mud : BedMat.Sand;
+                else if (kd == BedKind.Channel) m = n3 > w.channelGravel ? BedMat.Gravel : BedMat.Sand;
+                else if (slope[k] >= w.slopeGravel) m = BedMat.Gravel;
+                else if (kd == BedKind.Flat || kd == BedKind.Shoal) m = kd == BedKind.Flat && n3 > w.flatSand ? BedMat.Sand : BedMat.Weed;
+                else if (kd == BedKind.Shelf) m = c.reedT[k] <= w.shelfWeed ? BedMat.Weed : n3 < -0.35f ? BedMat.Mud : BedMat.Sand;
                 else if (d >= 5.5f) m = BedMat.Mud;
+                else if (n3 > w.openGravel) m = BedMat.Gravel;
                 else m = n3 > 0.2f ? BedMat.Sand : BedMat.Mud;
                 b.mat[k] = (byte)m;
             }
@@ -1218,8 +1433,8 @@ namespace FishingKing
                 else if (kd == BedKind.Hole && w.holeIdx[k] >= 0) id = "hole" + (w.holeIdx[k] + 1);
                 else if (kd == BedKind.Channel) id = "channel";
                 else if (kd == BedKind.Shoal) id = "shoal";
-                else if (w.flatId[k] >= 0 && w.wFlat[k] >= 0.5f && (c.r.blobs[w.flatId[k]].flat == "flatL" || c.r.blobs[w.flatId[k]].flat == "flatR"))
-                    id = c.r.blobs[w.flatId[k]].flat;
+                else if (w.flatId[k] >= 0 && w.wFlat[k] >= 0.5f && IsFlatZone(w.fl[w.flatId[k]].flat))
+                    id = w.fl[w.flatId[k]].flat;
                 else if (kd == BedKind.Shelf) id = "shelf";
                 else if (c.inLane[k]) id = "lane";
                 else if (D[k] >= 5.5f) id = "basin";
@@ -1255,7 +1470,15 @@ namespace FishingKing
                     area = nodes.Count * Bathymetry.Cell * Bathymetry.Cell, minD = mn, maxD = mx, box = Rect.MinMaxRect(bx0, bz0, bx1, bz1), nodes = nodes.ToArray(),
                 });
             }
-            // the hash (FNV-1a over cm, mat, zone, kind)
+            // ---- step 11b: the derived profile and the lake's statistics over R_ref (Docs/lake_phase2_spec.md A1)
+            b.pStar = (float[])w.pStar.Clone();
+            b.rowI0 = c.rowI0;
+            b.rowI1 = c.rowI1;
+            b.refNodes = c.refNodes;
+            b.refU = c.refU;
+            b.Character = w.ch;
+            Stats(b);
+            // the hash (FNV-1a over cm, mat, zone, kind, then P*'s rows in cm)
             uint h = 2166136261u;
             void Byte(byte v)
             {
@@ -1270,14 +1493,74 @@ namespace FishingKing
             for (int k = 0; k < n; k++) Byte(b.mat[k]);
             for (int k = 0; k < n; k++) Byte(b.zone[k]);
             for (int k = 0; k < n; k++) Byte(b.kind[k]);
+            for (int j = 0; j < nz; j++)
+            {
+                int pc = Mathf.RoundToInt(b.pStar[j] * 100f);
+                Byte((byte)(pc & 0xff));
+                Byte((byte)(pc >> 8));
+            }
             b.Hash = h;
             return b;
         }
+
+        /// <summary>
+        /// R_ref's weighted depth distribution (every row weighing the same): the depth at each whole percentile, every
+        /// node's mid-rank (F(&lt; d) + F(&lt;= d)) / 2 in per mille, the shares of the materials and kinds. Doubles, a fixed order.
+        /// </summary>
+        static void Stats(Bathymetry b)
+        {
+            int maxCm = 0;
+            for (int k = 0; k < b.cm.Length; k++) if (b.cm[k] > maxCm) maxCm = b.cm[k];
+            var hist = new double[maxCm + 1];
+            var mat = new double[4];
+            var kind = new double[9];
+            double tot = 0;
+            for (int q = 0; q < b.refNodes.Length; q++)
+            {
+                int k = b.refNodes[q];
+                double u = b.refU[q];
+                hist[b.cm[k]] += u;
+                mat[b.mat[k]] += u;
+                kind[b.kind[k]] += u;
+                tot += u;
+            }
+            if (tot <= 0) tot = 1;
+            var le = new double[maxCm + 1];
+            double acc = 0;
+            for (int c = 0; c <= maxCm; c++)
+            {
+                acc += hist[c];
+                le[c] = acc / tot;
+            }
+            b.rankOfCm = new float[maxCm + 1];
+            for (int c = 0; c <= maxCm; c++) b.rankOfCm[c] = (float)(le[c] - 0.5 * hist[c] / tot);
+            b.quantCm = new ushort[101];
+            int first = 0;
+            while (first < maxCm && hist[first] <= 0) first++;
+            int last = maxCm;
+            while (last > 0 && hist[last] <= 0) last--;
+            b.quantCm[0] = (ushort)first;
+            int cc = first;
+            for (int p = 1; p <= 100; p++)
+            {
+                double want = p / 100.0 - 1e-9;
+                while (cc < last && le[cc] < want) cc++;
+                b.quantCm[p] = (ushort)cc;
+            }
+            b.quantCm[100] = (ushort)last;
+            b.rankPm = new ushort[b.cm.Length];
+            for (int k = 0; k < b.cm.Length; k++) b.rankPm[k] = (ushort)Mathf.Clamp(Mathf.RoundToInt(1000f * b.rankOfCm[b.cm[k]]), 0, 1000);
+            for (int m = 0; m < 4; m++) b.matShare[m] = (float)(mat[m] / tot);
+            for (int k = 0; k < 9; k++) b.kindShare[k] = (float)(kind[k] / tot);
+        }
+
+        static bool IsFlatZone(string flat) => flat == "flatL" || flat == "flatR" || (flat != null && flat.StartsWith("weed"));
 
         static string ZoneName(string id)
         {
             if (id.StartsWith("hump")) return "수중 둔덕 " + id.Substring(4);
             if (id.StartsWith("hole")) return "깊은 웅덩이 " + id.Substring(4);
+            if (id.StartsWith("weed")) return "수초 평지 " + id.Substring(4);
             return id switch
             {
                 "shelf" => "얕은 턱",
@@ -1329,8 +1612,15 @@ namespace FishingKing
             return d;
         }
 
-        // ------------------------------------------------------------------ step 12: validation (spec 5.4)
-        /// <summary>V1-V8 (V9 logged): the failures, with a line per check in <paramref name="report"/>.</summary>
+        // ------------------------------------------------------------------ step 12: validation (spec 5.4, Docs/lake_phase2_spec.md A1)
+        /// <summary>The V10 bounds on R_ref's depths (m) and the V11 floors on its shares.</summary>
+        public const float Q10Min = 0.6f, Q50Min = 1.8f, Q50Max = 5.5f, Q90Min = 3.4f, Q90Max = 8.6f, Spread9010 = 1.8f, Spread5010 = 0.6f, Spread9050 = 0.6f;
+        public const float WeedMin = 0.05f, GravelMin = 0.02f, SandMin = 0.05f, MudMin = 0.05f, FlatShoalMin = 0.06f, DropoffMin = 0.03f, HoleChannelMin = 0.02f, HumpMin = 0.005f;
+
+        /// <summary>
+        /// V1-V11 (V9 logged): the failures, with a line per check in <paramref name="report"/>. The fallback (no channel,
+        /// holes or humps) is not held to V11's Hole + Channel and Hump floors.
+        /// </summary>
         static int Validate(Ctx c, Bathymetry b, out string report)
         {
             var sb = new System.Text.StringBuilder();
@@ -1344,7 +1634,7 @@ namespace FishingKing
             }
             // V1 pins, V2 limits, V3 pier, V4 far edges
             int v1 = 0, v2 = 0, v3 = 0, v4 = 0, v7 = 0;
-            string v1At = "";
+            string v1At = "", v4At = "";
             for (int k = 0; k < n; k++)
             {
                 float d = Dk(k);
@@ -1355,14 +1645,18 @@ namespace FishingKing
                 }
                 if (d < c.r.minDepth - 1e-4f || d > c.r.maxDepth + 1e-4f) v2++;
                 int i = k % nx, j = k / nx;
-                if ((i == 0 || i == nx - 1 || j == nz - 1) && Mathf.Abs(d - c.baseD[k]) > 0.01f) v4++;
+                if ((i == 0 || i == nx - 1 || j == nz - 1) && Mathf.Abs(d - b.pStar[j]) > 0.01f)
+                {
+                    if (v4 == 0) v4At = string.Format(CI, "; first ({0:0.0},{1:0.0}) {2:0.00} not {3:0.00}", c.X(k), c.Z(k), d, b.pStar[j]);
+                    v4++;
+                }
             }
-            foreach (int k in c.pierCore) if (Mathf.Abs(Dk(k) - c.baseD[k]) > 0.01f) v3++;
+            foreach (int k in c.pierCore) if (Mathf.Abs(Dk(k) - c.authD[k]) > 0.01f) v3++;
             foreach (int k in c.laneCore) if (Dk(k) < 4.5f - 0.005f) v7++;
             Check("V1", v1 == 0, $"pin cores in their windows ({v1} out{v1At})");
             Check("V2", v2 == 0, string.Format(CI, "every node in [{0:0.00}, {1:0.00}] ({2} out; min {3:0.00} max {4:0.00})", c.r.minDepth, c.r.maxDepth, v2, b.DepthMin, b.DepthMax));
-            Check("V3", v3 == 0, $"pier core = the profile within 1 cm ({v3} off of {c.pierCore.Count})");
-            Check("V4", v4 == 0, $"far edges = the profile within 1 cm ({v4} off)");
+            Check("V3", v3 == 0, $"pier core = the authored profile within 1 cm ({v3} off of {c.pierCore.Count})");
+            Check("V4", v4 == 0, $"side and far edges = the derived profile P* within 1 cm ({v4} off{v4At})");
             // V5 slopes
             int v5 = 0;
             float worst = 0f;
@@ -1400,7 +1694,7 @@ namespace FishingKing
                     if (Dk(k) < need - 0.005f) v6++;
             Check("V6", v6 == 0, $"no inverted band, bed solids in >= 0.3 m ({v6} nodes off)");
             Check("V7", v7 == 0, $"lane core >= 4.5 ({v7} shallower of {c.laneCore.Count})");
-            // V8 the legend's spot for every rod
+            // V8 the legend's spot for every rod (over this grid's own water: off it its own P*)
             var v8 = new System.Text.StringBuilder();
             bool v8ok = true;
             foreach (float cd in CastDists)
@@ -1410,18 +1704,26 @@ namespace FishingKing
                 if (spots < 6) v8ok = false;
             }
             Check("V8", v8ok, "legend spot centres per cast distance (>= 6):" + v8);
-            // V9 (information): the centre line against the profile
+            // V9 (information): P* against the authored profile every 5 m; the final rows' medians against P*
             var v9 = new System.Text.StringBuilder();
-            var band = new float[Mathf.CeilToInt((c.z1 + 0.01f) / 5f) + 1];
-            for (int k = 0; k < n; k++)
-            {
-                float x = c.X(k), z = c.Z(k);
-                if (Mathf.Abs(x) > 3f) continue;
-                int q = Mathf.Clamp(Mathf.FloorToInt((z - c.z0) / 5f), 0, band.Length - 1);
-                band[q] = Mathf.Max(band[q], Dk(k) / Mathf.Max(0.1f, c.baseD[k]));
-            }
-            for (int q = 0; q < band.Length; q++) if (band[q] > 0f) v9.Append(string.Format(CI, " {0:0}:{1:0.00}", c.z0 + 5f * q, band[q]));
-            sb.Append("V9 INFO centre line max D / profile per 5 m:").Append(v9).Append('\n');
+            for (int j = 0; j < nz; j += 10) v9.Append(string.Format(CI, " {0:0}:{1:0.00}/{2:0.00}", c.z0 + j * Bathymetry.Cell, b.pStar[j], c.authD[j * nx]));
+            float rowOff = 0f;
+            for (int j = 0; j < nz; j++) rowOff = Mathf.Max(rowOff, Mathf.Abs(b.FinalRowMedian(j) - b.pStar[j]));
+            sb.Append("V9 INFO P* / authored per 5 m:").Append(v9).Append(string.Format(CI, "; final row medians - P* at most {0:0.00} m\n", rowOff));
+            // V10 R_ref's depths
+            float q10 = b.Quantile(10f), q50 = b.Quantile(50f), q90 = b.Quantile(90f);
+            Check("V10", q10 >= Q10Min - 1e-4f && q50 >= Q50Min - 1e-4f && q50 <= Q50Max + 1e-4f && q90 >= Q90Min - 1e-4f && q90 <= Q90Max + 1e-4f
+                         && q90 - q10 >= Spread9010 - 1e-4f && q50 - q10 >= Spread5010 - 1e-4f && q90 - q50 >= Spread9050 - 1e-4f,
+                string.Format(CI, "R_ref depths Q10 {0:0.00} (>= {3:0.0}), Q50 {1:0.00} (in [{4:0.0}, {5:0.0}]), Q90 {2:0.00} (in [{6:0.0}, {7:0.0}]); Q90 - Q10 {8:0.00} (>= {9:0.0}), Q50 - Q10 {10:0.00}, Q90 - Q50 {11:0.00} (>= {12:0.0})",
+                    q10, q50, q90, Q10Min, Q50Min, Q50Max, Q90Min, Q90Max, q90 - q10, Spread9010, q50 - q10, q90 - q50, Spread5010));
+            // V11 R_ref's shares (the fallback: no channel, holes or humps to share)
+            float weed = b.MatShare(BedMat.Weed), gravel = b.MatShare(BedMat.Gravel), sand = b.MatShare(BedMat.Sand), mud = b.MatShare(BedMat.Mud);
+            float flatShoal = b.KindShare(BedKind.Flat) + b.KindShare(BedKind.Shoal), drop = b.KindShare(BedKind.Dropoff);
+            float holeChan = b.KindShare(BedKind.Hole) + b.KindShare(BedKind.Channel), hump = b.KindShare(BedKind.Hump);
+            bool v11 = weed >= WeedMin && gravel >= GravelMin && sand >= SandMin && mud >= MudMin && flatShoal >= FlatShoalMin && drop >= DropoffMin
+                       && (b.Fallback || (holeChan >= HoleChannelMin && hump >= HumpMin));
+            Check("V11", v11, string.Format(CI, "R_ref shares weed {0:0.0}% gravel {1:0.0}% sand {2:0.0}% mud {3:0.0}% (>= 5 / 2 / 5 / 5); flat + shoal {4:0.0}% (>= 6), drop-off {5:0.0}% (>= 3), hole + channel {6:0.0}% (>= 2){8}, hump {7:0.0}% (>= 0.5){8}",
+                100f * weed, 100f * gravel, 100f * sand, 100f * mud, 100f * flatShoal, 100f * drop, 100f * holeChan, 100f * hump, b.Fallback ? " waived (fallback)" : ""));
             report = sb.ToString();
             return fails;
         }

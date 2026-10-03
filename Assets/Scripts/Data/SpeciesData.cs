@@ -369,6 +369,8 @@ namespace FishingKing
                     population = ReqInt(o, "population", at, SE),
                 };
                 if (s.id != null) at = $"stage {s.id}: ";
+                // (a stage with a generated bed derives its weights: a given weight overrides the rarity's base, Docs/lake_phase2_spec.md A4)
+                s.Derived = s.id != null && TerrainRecipes.Has(s.id);
                 var fl = o["fish"];
                 if (fl == null || fl.kind != JNode.Kind.Array) SE("E3", at + "\"fish\" (the species exposed here) must be an array");
                 else
@@ -383,9 +385,10 @@ namespace FishingKing
                             continue;
                         }
                         CheckKeys(e, StageFishKeys, fat, SE);
-                        // (step 1: every weight is given; NaN stays the "derive it" mark for later)
+                        // (a weight is required off a generated bed; on one it is optional: absent, the rarity's base)
                         string fid = ReqStr(e, "id", fat, SE, "E8");
-                        float w = ReqNum(e, "weight", fat, SE, "E8");
+                        bool given = !s.Derived || e.Has("weight");
+                        float w = given ? ReqNum(e, "weight", fat, SE, "E8") : float.NaN;
                         if (fid == null) continue;
                         if (s.id != null)
                         {
@@ -398,7 +401,8 @@ namespace FishingKing
                             if (!r.fileIds.Contains(fid)) E("E8", $"{fat}id: unknown species '{fid}' (no Fish/{fid}.json)");
                             continue;
                         }
-                        if (float.IsNaN(w)) continue;
+                        if (!given) w = RarityInfo.SpawnBase(species[fid].rarity);
+                        s.GivenWeight[fid] = given;
                         s.spawns.Add(new KeyValuePair<string, float>(fid, w));
                     }
                 }

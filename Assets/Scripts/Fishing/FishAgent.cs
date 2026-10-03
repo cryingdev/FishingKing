@@ -90,6 +90,16 @@ namespace FishingKing
         /// <summary>A period began in which this species is not about (a = 0): it leaves at this real time (-1 = no).</summary>
         public float LeaveAt = -1f;
 
+        /// <summary>
+        /// The per-encounter feeding roll (on a generated bed, FishingController.RollFeeding): whether it is feeding, whether
+        /// that is decided, and when it was last in reach of the rig (Time.time); the decision is dropped after 10 s out of reach.
+        /// </summary>
+        public bool Feeding, FeedDecided;
+        public float LastInReach;
+
+        /// <summary>Seconds out of reach after which a fish's feeding decision is made afresh.</summary>
+        public const float FeedForget = 10f;
+
         void PickTarget()
         {
             // not its time of day (engaged when the period began, or stocked late in the cross-fade): it swims off soon,
@@ -213,6 +223,8 @@ namespace FishingKing
                 Flee();
                 return;
             }
+            // (out of the rig's reach long enough: the next encounter rolls its feeding afresh)
+            if (FeedDecided && Time.time - LastInReach > FeedForget) FeedDecided = false;
             var before = Pos;
             Steer(target, speed, dt);
             // the current carries it a little (it holds station against most of it)

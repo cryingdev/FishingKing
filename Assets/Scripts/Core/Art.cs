@@ -41,18 +41,25 @@ namespace FishingKing
         public bool Terrain => Bathy != null;
 
         /// <summary>
-        /// The water's depth at a plan point (m, + the tide): the grid where it covers the point, else the distance profile
-        /// (every other stage: exactly the old DepthAt(z), the same float operations).
+        /// The water's depth at a plan point (m, + the tide): the grid where it covers the point, off it the bed's derived
+        /// profile (Docs/lake_phase2_spec.md A2); without a grid (every other stage) exactly the old DepthAt(z), the same
+        /// float operations.
         /// </summary>
-        public float DepthAt(float x, float z) => (Bathy != null && Bathy.Covers(x, z) ? Bathy.Depth(x, z) : BaseDepthAt(z)) + TideOffset;
+        public float DepthAt(float x, float z) => (Bathy != null ? (Bathy.Covers(x, z) ? Bathy.Depth(x, z) : Bathy.Profile(z)) : BaseDepthAt(z)) + TideOffset;
 
         public float DepthAt(Vector3 p) => DepthAt(p.x, p.z);
 
-        /// <summary>The old distance profile (+ the tide): what DepthAt(z) was before the terrain.</summary>
-        public float ProfileDepth(float z) => BaseDepthAt(z) + TideOffset;
+        /// <summary>
+        /// The stage's distance profile (+ the tide): with a generated bed its derived profile (the rows' medians), else the
+        /// authored one (what DepthAt(z) was before the terrain).
+        /// </summary>
+        public float ProfileDepth(float z) => (Bathy != null ? Bathy.Profile(z) : BaseDepthAt(z)) + TideOffset;
 
-        /// <summary>The profile without the tide: the generator's base.</summary>
-        public float ProfileMeanDepth(float z) => BaseDepthAt(z);
+        /// <summary>The authored profile (+ the tide): stage_&lt;id&gt;.json's depthZ / depthV, whatever the bed (today's lake for the economy).</summary>
+        public float AuthoredDepth(float z) => BaseDepthAt(z) + TideOffset;
+
+        /// <summary>The authored profile without the tide (the pier's pin, the derived profile's shape beyond the grid).</summary>
+        public float AuthoredMeanDepth(float z) => BaseDepthAt(z);
 
         float BaseDepthAt(float z)
         {

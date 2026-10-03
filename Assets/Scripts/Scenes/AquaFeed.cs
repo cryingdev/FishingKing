@@ -690,6 +690,14 @@ namespace FishingKing
             }
         }
 
+        /// <summary>Test hook (-fkauto newspecies, -fkaqua species): <paramref name="n"/> pellets of a feed poured at <paramref name="at"/> (world), as a bag pours them (no pointer, no feed used).</summary>
+        public void DebugPellets(string feedId, Vector2 at, int n)
+        {
+            var f = AquaCare.Feed(feedId);
+            if (f == null || f.live) return;
+            for (int i = 0; i < n; i++) SpawnPellet(f, at);
+        }
+
         void SpawnPellet(FeedDef feed, Vector2 mouth)
         {
             var arr = feed.premium ? flakeS : pelletS;

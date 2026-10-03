@@ -16,6 +16,8 @@ namespace FishingKing
             public string name, rule, file, contains;
             public int min = 1;
             public bool blender;
+            /// <summary>A positive control: the edit is allowed, so the copy must pass with no error at all.</summary>
+            public bool clean;
             public Func<SpeciesCheck.Context> make;
         }
 
@@ -40,6 +42,15 @@ namespace FishingKing
                 {
                     fails++;
                     log($"[SPECIES] CHECK FAIL fixture {fx.name}: the validator threw {e.GetType().Name}: {e.Message}");
+                    continue;
+                }
+                if (fx.clean)
+                {
+                    var errs = got.Where(f => f.error).ToList();
+                    bool pass = errs.Count == 0;
+                    if (!pass) fails++;
+                    log($"[SPECIES] CHECK {(pass ? "PASS" : "FAIL")} fixture {fx.name}: expects no error: " +
+                        (pass ? "none" : "got " + string.Join(" | ", errs.Take(4))));
                     continue;
                 }
                 var hits = got.Where(f => f.error && f.rule == fx.rule && (fx.file == null || f.file == fx.file) &&
@@ -221,6 +232,22 @@ namespace FishingKing
                 make = () => Species(real, "carp", j => j.Set("habitat", JNode.Str(j["habitat"].text.Replace("col:bottom,", "")))) };
             yield return new Fx { name = "an unknown habitat key", rule = "E9", file = F("carp"), contains = "deepth",
                 make = () => Species(real, "carp", j => j.Set("habitat", JNode.Str(j["habitat"].text + ",deepth:3"))) };
+            // (Docs/lake_phase2_spec.md A3: a generated bed's bands are relative, the shifts in points)
+            string Depth(JNode j, string band) => System.Text.RegularExpressions.Regex.Replace(j["habitat"].text, @"depth:[^,]*", "depth:" + band);
+            yield return new Fx { name = "an inverted p-band", rule = "E9", file = F("crucian_carp"), contains = "p70-p25",
+                make = () => Species(real, "crucian_carp", j => j.Set("habitat", JNode.Str(Depth(j, "p70-p25")))) };
+            yield return new Fx { name = "a too narrow p-band", rule = "E9", file = F("bluegill"), contains = "B - A >= 10",
+                make = () => Species(real, "bluegill", j => j.Set("habitat", JNode.Str(Depth(j, "p40-p45")))) };
+            yield return new Fx { name = "a band in metres on a generated bed", rule = "E9", file = F("carp"), contains = "mixes units",
+                make = () => Species(real, "carp", j => j.Set("habitat", JNode.Str(Depth(j, "3.0-7.0")))) };
+            yield return new Fx { name = "mixed units (a shift in metres)", rule = "E9", file = F("largemouth_bass"), contains = "mixes units",
+                make = () => Species(real, "largemouth_bass", j => j.Set("habitat", JNode.Str(j["habitat"].text + ",@dawn:-0.4"))) };
+            yield return new Fx { name = "a p-shift out of range", rule = "E9", file = F("crucian_carp"), contains = "at most 50 points",
+                make = () => Species(real, "crucian_carp", j => j.Set("habitat", JNode.Str(j["habitat"].text.Replace("@day:15p", "@day:60p")))) };
+            yield return new Fx { name = "a missing weight off the bed", rule = "E8", file = "stages.json", contains = "weight is required",
+                make = () => Roster(real, r => FishList(r, "stream").items.First(e => e["id"].text == "pale_chub").Set("weight", null)) };
+            yield return new Fx { name = "a weight given on the bed (an override: allowed)", clean = true,
+                make = () => Roster(real, r => FishList(r, "lake").items.First(e => e["id"].text == "crucian_carp").Set("weight", JNode.Num("20"))) };
             // ---- E10 legends
             yield return new Fx { name = "an unknown encounter", rule = "E10", file = F("golden_carp"), contains = "golden_karp",
                 make = () => Species(real, "golden_carp", j => j.Set("encounter", JNode.Str("golden_karp"))) };

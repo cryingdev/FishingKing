@@ -1,0 +1,22 @@
+{
+  "id": "white_crucian",
+  "name": "떡붕어",
+  "desc": "떡밥에 떼로 몰려드는 붕어의 사촌. 붕어보다 등이 높고 크게 자란다.",
+  "rarity": "common",
+  "minCm": 15,
+  "maxCm": 45,
+  "weightK": 1.8,
+  "basePrice": 40,
+  "power": 2.0,
+  "stamina": 7,
+  "speed": 2.2,
+  "aggression": 0.3,
+  "jump": 0,
+  "depthMin": 0.8,
+  "depthMax": 3,
+  "baits": "paste:1,corn:0.6,worm:0.4,golden:0.3",
+  "activity": { "dawn": 1.2, "day": 1.2, "evening": 1.3, "night": 0.5 },
+  "cover": { "seek": 0.15, "reach": 6, "dig": 0.8, "types": ["weed", "pad"] },
+  "diet": { "foods": ["pellet"], "style": "grab", "note": "a plankton grazer raised on paste (떡밥): pellets" },
+  "habitat": "depth:p10-p50,flat:1.6,shelf:1.5,shoal:1.4,dropoff:1.0,hump:0.8,open:0.8,channel:0.6,hole:0.5,basin:0.4,weed:1.7,mud:1.0,sand:0.8,gravel:0.6,edge:0.3,col:mid,beta:0.7,@dawn:-8p,@day:12p,@evening:-8p,@night:-5p,@day.dropoff:1.4,@day.shoal:1.3,@evening.flat:1.3"
+}
