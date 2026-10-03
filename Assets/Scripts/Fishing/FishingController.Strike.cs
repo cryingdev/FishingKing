@@ -50,9 +50,6 @@ namespace FishingKing
         public static string StrikeLabel(StrikeGrade g) =>
             g == StrikeGrade.Perfect ? "PERFECT!" : g == StrikeGrade.Great ? "GREAT!" : g == StrikeGrade.Good ? "GOOD" : g == StrikeGrade.Bad ? "BAD" : "";
 
-        static Color StrikeColor(StrikeGrade g) =>
-            g == StrikeGrade.Perfect ? UIKit.Gold : g == StrikeGrade.Great ? UIKit.Sky : g == StrikeGrade.Good ? UIKit.Cream : new Color(0.7f, 0.7f, 0.7f);
-
         /// <summary>The ideal strike strength for the rig now: the hook's under a natural bait, a lure's own.</summary>
         public float IdealStrike => RigHook != null ? RigHook.setStrength : LureSetStrength;
 

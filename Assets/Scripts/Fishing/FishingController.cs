@@ -879,7 +879,7 @@ namespace FishingKing
                     StartRodJerk(LureIn.FlickStrength);
                 }
                 // the old 톡 (a quick upward swipe) does nothing now: remind the player the 톡 is pulled down
-                else if (LureIn.UpRejectNow && Time.time - upHintT > 6f)
+                else if (LureIn.UpRejectNow && Time.time - upHintT > 6f && FishingHUD.Guides)
                 {
                     upHintT = Time.time;
                     hud.Flash("톡은 아래로 당겨요!", UIKit.Sky, 1.4f);
@@ -1576,7 +1576,7 @@ namespace FishingKing
             var p2 = P.To2D(Tackle.Surface);
             Fx.Ripple(p2, Mathf.Clamp(P.PixelsPerMetre(Tackle.Surface) / 64f, 0.1f, 0.5f), P.Foreshorten(Tackle.Surface) * 1.6f + 0.15f,
                 new Color(1, 1, 1, 0.6f), 0.6f);
-            hud.Flash("톡톡... 입질이다! 기다려요", UIKit.Sky, 0.9f);
+            hud.Flash(FishingHUD.G("톡톡... 입질이다!", "기다려요"), UIKit.Sky, 0.9f);
         }
 
         public void OnBite(FishAgent f)
@@ -1608,7 +1608,7 @@ namespace FishingKing
             Fx.Splash(p2, Mathf.Clamp(0.7f * P.ScaleAt(Tackle.Surface), 0.2f, 0.6f), Stage.WaterTint, 5, P.DepthOf(Tackle.Surface));
             biteMark.enabled = true;
             PlaceBiteMark(); // right away, not only from the next frame's update (it would flash at the origin)
-            hud.Flash("쑥! 위로 쳐올려 챔질!", UIKit.Gold, 0.9f);
+            hud.Flash(FishingHUD.G("쑥!", "위로 쳐올려 챔질!"), UIKit.Gold, 0.9f);
             SetState(S.Biting);
         }
 
@@ -1678,7 +1678,7 @@ namespace FishingKing
                 }
                 else
                 {
-                    hud.Flash("놓쳤다! 계속 움직여서 유혹해요", UIKit.Bad);
+                    hud.Flash(FishingHUD.G("놓쳤다!", "계속 움직여서 유혹해요"), UIKit.Bad);
                     SetState(S.Waiting);
                 }
             }
@@ -1699,8 +1699,9 @@ namespace FishingKing
             if (Tackle.UsesFloat && !Tackle.BaitGone) Game.I.ConsumeBait();
             var grade = pendingGrade;
             BeginFight(f, false);
-            if (grade != StrikeGrade.None) hud.Flash($"{StrikeLabel(grade)}  걸었다! 원을 그려 릴을 감아요!", StrikeColor(grade), 1.4f);
-            else hud.Flash("걸었다! 원을 그려 릴을 감아요!", UIKit.Gold, 1.2f);
+            // (a graded 챔질: its word arched over the fish, FishingHUD.ShowStrike)
+            hud.ShowStrike(grade);
+            hud.Flash(FishingHUD.G("걸었다!", "원을 그려 릴을 감아요!"), UIKit.Gold, 1.2f);
         }
 
         /// <summary>

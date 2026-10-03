@@ -905,10 +905,11 @@ namespace FishingKing
                     hint.text = ctl.Tackle.UsesFloat ? "찌를 지켜보세요... 원을 그리면 채비를 감아요"
                         : !string.IsNullOrEmpty(ctl.Tackle.Bait.hint) ? ctl.Tackle.Bait.hint : "원을 그려 루어를 감으며 움직여 유혹하세요";
                     break;
-                case FishingController.S.Biting: hint.text = "지금이야! 화면을 탭!"; break;
+                case FishingController.S.Biting: hint.text = "지금이야! 위로 쳐올려 챔질!"; break;
                 case FishingController.S.Fighting: hint.text = ""; break;
                 default: hint.text = ""; break;
             }
+            if (!Guides) hint.text = "";   // (설정 → 조작 → 조작 안내 문구 숨김)
             UIKit.FitPlate(hint, hintPlate);
         }
 
@@ -937,9 +938,86 @@ namespace FishingKing
             Tween.Punch(flash.transform, 0.12f);
         }
 
+        // ------------------------------------------------------------------ the 챔질 grade over the hooked fish
+        /// <summary>The grade word's life (s), its pop (s, to <see cref="StrikePop"/> x and back), its fade (s), its rise (UI units over its life).</summary>
+        public const float StrikeLife = 1.3f, StrikePopT = 0.1f, StrikeSettleT = 0.22f, StrikePop = 1.25f, StrikeFade = 0.35f, StrikeRise = 26f;
+        /// <summary>How far above the fish's mouth on screen it sits (UI units), and the sprite's scale (its pixels x this).</summary>
+        public const float StrikeLift = 70f, StrikeScale = 2f;
+        Image strikeImg;
+        CanvasGroup strikeGroup;
+        float strikeT = -1f;
+        Vector2 strikeAt;
+
+        /// <summary>The word of a graded 챔질 (UI/strike_*.png, Tools/Blender/fk_items.py "strike") pops up over the hooked fish.</summary>
+        public void ShowStrike(FishingController.StrikeGrade g)
+        {
+            if (g == FishingController.StrikeGrade.None) return;
+            var spr = Art.UI("strike_" + g.ToString().ToLowerInvariant());
+            if (spr == null) return;
+            if (strikeImg == null)
+            {
+                strikeImg = UIKit.Img(root, null, Vector2.zero, "StrikeGrade");
+                strikeImg.raycastTarget = false;
+                strikeImg.rectTransform.anchorMin = strikeImg.rectTransform.anchorMax = root.pivot;
+                strikeGroup = strikeImg.gameObject.AddComponent<CanvasGroup>();
+                strikeGroup.blocksRaycasts = false;
+            }
+            strikeImg.sprite = spr;
+            strikeImg.rectTransform.sizeDelta = new Vector2(spr.rect.width, spr.rect.height) * StrikeScale;
+            strikeImg.transform.SetAsLastSibling();
+            strikeImg.enabled = true;
+            strikeT = 0f;
+            strikeAt = StrikeAnchor(strikeAt);
+            UpdateStrike(0f);
+        }
+
+        /// <summary>The hooked fish's mouth on screen (UI units in the root), or <paramref name="last"/> once it is off.</summary>
+        Vector2 StrikeAnchor(Vector2 last)
+        {
+            var f = ctl.Hooked;
+            if (f == null || PixelView.Current == null) return last;
+            var P = ctl.Stage.P;
+            var w = P.To2D(P.Apparent(f.MouthPos));
+            RectTransformUtility.ScreenPointToLocalPointInRectangle(root, PixelView.Current.WorldToScreen(w), null, out var local);
+            return local;
+        }
+
+        void UpdateStrike(float dt)
+        {
+            if (strikeImg == null || strikeT < 0f) return;
+            strikeT += dt;
+            if (strikeT >= StrikeLife)
+            {
+                strikeT = -1f;
+                strikeImg.enabled = false;
+                return;
+            }
+            strikeAt = StrikeAnchor(strikeAt);
+            float t = strikeT;
+            float s = t < StrikePopT ? Mathf.Lerp(0.3f, StrikePop, t / StrikePopT)
+                : t < StrikeSettleT ? Mathf.Lerp(StrikePop, 1f, (t - StrikePopT) / (StrikeSettleT - StrikePopT)) : 1f;
+            strikeImg.rectTransform.localScale = new Vector3(s, s, 1f);
+            var half = root.rect.size * 0.5f;
+            var p = strikeAt + new Vector2(0f, StrikeLift + StrikeRise * (t / StrikeLife));
+            float hw = strikeImg.rectTransform.sizeDelta.x * 0.5f + 8f;
+            p.x = Mathf.Clamp(p.x, -half.x + hw, half.x - hw);
+            p.y = Mathf.Clamp(p.y, -half.y + 40f, half.y - 150f);
+            strikeImg.rectTransform.anchoredPosition = new Vector2(Mathf.Round(p.x), Mathf.Round(p.y));
+            strikeGroup.alpha = Mathf.Clamp01((StrikeLife - t) / StrikeFade);
+        }
+
+        /// <summary>The grade word on screen now (for the tests): shown, its sprite's name.</summary>
+        public string StrikeShown => strikeImg != null && strikeImg.enabled && strikeT >= 0f && strikeImg.sprite != null ? strikeImg.sprite.name : "";
+
+        /// <summary>The how-to lines are shown (설정 → 조작 → 조작 안내 문구; a save from before it: shown).</summary>
+        public static bool Guides => Game.Data == null || Game.Data.guideText;
+        /// <summary>An event's flash with its how-to tail (걸었다! + 원을 그려 릴을 감아요!), the tail left off with the guides hidden.</summary>
+        public static string G(string evt, string guide) => Guides ? evt + " " + guide : evt;
+
         public void Tick(float dt)
         {
             UpdateLineText(dt);
+            UpdateStrike(dt);
             if (flashTime > 0)
             {
                 flashTime -= dt;
@@ -1153,7 +1231,7 @@ namespace FishingKing
             SnagSlackRow(prop, sn);
             if (sn.r >= FishingController.TightR && sn.kind != "pad")
             {
-                phaseLabel.text = prop ? "팽팽해요! 감지 말고 줄을 풀어요" : "팽팽해요! 감지 마세요!";
+                phaseLabel.text = !Guides ? "팽팽해요!" : prop ? "팽팽해요! 감지 말고 줄을 풀어요" : "팽팽해요! 감지 마세요!";
                 phaseLabel.color = blinkOn ? UIKit.Bad : Color.Lerp(UIKit.Bad, Color.white, 0.4f);
             }
             else if (prop)
@@ -1180,6 +1258,8 @@ namespace FishingKing
                 phaseLabel.text = ctl.Stage.L.IsIce ? "감지 말고 톡!" : "감지 말고 톡! 또는 좌우로 밀어요";
                 phaseLabel.color = UIKit.Sky;
             }
+            // (설정 → 조작 → 조작 안내 문구 숨김: the how-to lines go, the tension warning stays)
+            if (!Guides && !(sn.r >= FishingController.TightR && sn.kind != "pad")) phaseLabel.text = "";
         }
     }
 }
