@@ -38,9 +38,12 @@ namespace FishingKing
             var obs = ctl.Stage.Obstacles;
             var tets = obs == null ? new List<Obstacle>() : obs.Snags.Where(o => o.Has("tet")).ToList();
             if (tets.Count == 0 && obs != null) tets = obs.Snags.ToList();
-            if (tets.Count == 0)
+            // the props standing in the water (rocks, posts, the boat ...): the rig is also laid round them (half the tries
+            // where there are snag zones too)
+            var props = obs == null ? new List<Obstacle>() : obs.Solids.Where(o => o.Standing && !o.Near).ToList();
+            if (tets.Count == 0 && props.Count == 0)
             {
-                Log($"[HUNT] CHECK FAIL {ctl.Stage.Def.id} has no snag zones to cast at");
+                Log($"[HUNT] CHECK FAIL {ctl.Stage.Def.id} has no snag zones or props to cast at");
                 Application.Quit();
                 yield break;
             }
@@ -61,7 +64,7 @@ namespace FishingKing
             if (sweepTest) FishingController.DebugStallTime = 8f;
             int catches = 0, freedSweep = 0, cutCatch = 0;
             Log($"[HUNT] listener volume {AudioListener.volume}, sweep test {sweepTest}");
-            Log($"[HUNT] {ctl.Stage.Def.id}: {tries} tries at {tets.Count} zones ({string.Join(", ", tets.Select(o => o.id))}), bait {baitId}, seed {seed}");
+            Log($"[HUNT] {ctl.Stage.Def.id}: {tries} tries at {tets.Count} zones and {props.Count} props, bait {baitId}, seed {seed}");
             // -fkhuntat <x>,<z>: every try lays the float there (a spot found jamming), the tide still random
             Vector2? at = null;
             var atArg = Arg("-fkhuntat");
@@ -74,16 +77,33 @@ namespace FishingKing
             Log($"[HUNT] listener volume {AudioListener.volume}, mute {AudioMix.Muted}, at {(at.HasValue ? at.Value.ToString("0.00") : "random")}");
             float[] phases = { 0.5f, 0.25f, 0.75f };
             int cuts = 0, winds = 0, stalls0 = ctl.RetrieveStalls, stuck = 0, perched = 0, forced = 0;
+            // -fkhuntsecs <s>: stop after this long (real time), however many tries are left
+            float limit = ArgF("-fkhuntsecs") ?? 0f, start = Time.realtimeSinceStartup;
+            int done = 0;
             for (int k = 0; k < tries; k++)
             {
-                var z = tets[rnd.Next(tets.Count)];
-                float t = (float)rnd.NextDouble();
-                var a = new Vector2(z.x0, z.z0);
-                var b = new Vector2(z.x1, z.z1);
-                var on = Vector2.Lerp(a, b, t);
-                var dir = (b - a).sqrMagnitude > 1e-6f ? (b - a).normalized : Vector2.right;
-                var side = new Vector2(-dir.y, dir.x);
-                var p = at ?? on + side * (((float)rnd.NextDouble() * 2f - 1f) * (z.rad + 1.5f));
+                if (limit > 0f && Time.realtimeSinceStartup - start > limit) break;
+                done++;
+                Obstacle z;
+                Vector2 p;
+                if (props.Count > 0 && (tets.Count == 0 || rnd.Next(2) == 0))
+                {
+                    // round a prop: 0.2-2 m off its footprint's broad circle, any side
+                    z = props[rnd.Next(props.Count)];
+                    float ang = (float)(rnd.NextDouble() * Mathf.PI * 2f), r = z.R * 0.7f + 0.2f + (float)rnd.NextDouble() * 1.8f;
+                    p = at ?? z.C + new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * r;
+                }
+                else
+                {
+                    z = tets[rnd.Next(tets.Count)];
+                    float t = (float)rnd.NextDouble();
+                    var a = new Vector2(z.x0, z.z0);
+                    var b = new Vector2(z.x1, z.z1);
+                    var on = Vector2.Lerp(a, b, t);
+                    var dir = (b - a).sqrMagnitude > 1e-6f ? (b - a).normalized : Vector2.right;
+                    var side = new Vector2(-dir.y, dir.x);
+                    p = at ?? on + side * (((float)rnd.NextDouble() * 2f - 1f) * (z.rad + 1.5f));
+                }
                 float phase = phases[rnd.Next(phases.Length)];
                 bool old = rnd.Next(2) == 0, bare = rnd.Next(2) == 0, cut = rnd.Next(3) != 0;
                 GameClock.TidePhase = phase;
@@ -187,7 +207,7 @@ namespace FishingKing
             int stalls = ctl.RetrieveStalls - stalls0;
             FishingController.DebugStallTime = 0f;
             Log($"[HUNT] caught on a prop {catches} (prop catches {ctl.PropCatches}): {freedSweep} slid off with the rod held to the free side, {cutCatch} cut");
-            Log($"[HUNT] {tries} tries: {cuts} cut ({forced} forced snags), {winds} wound, {perched} laid perched; stalls {stalls}, not home {stuck}");
+            Log($"[HUNT] {done} of {tries} tries: {cuts} cut ({forced} forced snags), {winds} wound, {perched} laid perched; stalls {stalls}, not home {stuck}");
             Log($"[HUNT] CHECK {(stalls == 0 && stuck == 0 ? "PASS" : "FAIL")} every rig wound in by the tetrapods came home (stalls {stalls}, not home {stuck})");
             Log("[HUNT] stall hunt done");
             Application.Quit();
