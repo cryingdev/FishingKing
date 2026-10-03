@@ -1421,11 +1421,17 @@ namespace FishingKing
                 if (p.y < 10f || p.y > 26f || Mathf.Abs(p.x) > 12f || b.NodeDepth(k) < 2.5f) continue;
                 if ((b.NodeFlags(k) & BedFlag.Edge) != 0 && (k % 5) == 0) spots.Add(p);
             }
-            foreach (var (id, cm, lo, hi) in new[] { ("carp", 70f, 0.58f, 0.75f), ("crucian_carp", 25f, 0.40f, 0.60f) })
+            // The carp (a big runner) must take the deeper side clearly more often (its 30 % pull). The crucian has no pull, but
+            // its deeper share is NOT 0.5: these spots sit on edges and the room rule turns runs back towards the middle, which is
+            // the deeper water here, so the plain geometry alone gives ~0.6. For it the share is only logged; what is checked is
+            // the rule itself: an unforced run keeps the step's own side, and a forced flip only happens away from water too
+            // shallow for the fish into water deep enough (or, for a big runner, into water 0.3 m+ deeper).
+            foreach (var (id, cm, lo, hi, bandGated) in new[] { ("carp", 70f, 0.58f, 0.75f, true), ("crucian_carp", 25f, 0f, 1f, false) })
             {
                 var sp = GameDatabase.GetFish(id);
                 float need = HabitatModel.MinWater(cm);
-                int deeper = 0, counted = 0, badDest = 0, replayOff = 0, runs = 0;
+                bool runner = sp != null && sp.habitat != null && sp.habitat.runDeep && cm >= 40f;
+                int deeper = 0, counted = 0, badDest = 0, replayOff = 0, runs = 0, ruleOff = 0, forcedN = 0;
                 for (int f = 0; f < 60 && spots.Count > 0; f++)
                 {
                     yield return ToReady(ctl);
@@ -1454,12 +1460,23 @@ namespace FishingKing
                             if (wTaken > wOther) deeper++;
                         }
                         if (Mathf.Max(wTaken, wOther) >= need + 0.3f && wTaken < need + 0.3f) badDest++;
+                        // the rule: RunSteps[i] is the step handed to the bed (after the room rule), r.x the side taken, r.w forced
+                        if (i < FishingController.RunSteps.Count)
+                        {
+                            bool flipped = Mathf.Sign(r.x) != Mathf.Sign(FishingController.RunSteps[i]);
+                            bool forced = r.w > 0.5f;
+                            if (forced) forcedN++;
+                            bool fromShallow = wOther < need + 0.3f && wTaken >= need + 0.3f;
+                            bool deepPull = runner && wTaken >= wOther + 0.3f;
+                            if (forced != flipped || (forced && !fromShallow && !deepPull)) ruleOff++;
+                        }
                     }
                     yield return new WaitForSeconds(0.2f);
                 }
                 float share = counted > 0 ? deeper / (float)counted : 0f;
-                DCheck(string.Format(CIc, "D9 {0} {1:0} cm, 60 fights, {2} runs: of the {3} with sides 0.3 m+ apart {4} took the deeper ({5:0.00}, in [{6:0.00}, {7:0.00}]); {8} headed into too little water with the other side open; the step draws match a fresh System.Random(seed + 1) ({9} off)",
-                    id, cm, runs, counted, deeper, share, lo, hi, badDest, replayOff), counted >= 30 && share >= lo && share <= hi && badDest == 0 && replayOff == 0);
+                DCheck(string.Format(CIc, "D9 {0} {1:0} cm, 60 fights, {2} runs: of the {3} with sides 0.3 m+ apart {4} took the deeper ({5:0.00}, {6}); {7} headed into too little water with the other side open; {8} forced flips, {9} against the rule; the step draws match a fresh System.Random(seed + 1) ({10} off)",
+                    id, cm, runs, counted, deeper, share, bandGated ? string.Format(CIc, "in [{0:0.00}, {1:0.00}]", lo, hi) : "geometry only, logged", badDest, forcedN, ruleOff, replayOff),
+                    counted >= 30 && (!bandGated || (share >= lo && share <= hi)) && badDest == 0 && replayOff == 0 && ruleOff == 0);
             }
             yield return ToReady(ctl);
             FishingController.NoBites = false;
