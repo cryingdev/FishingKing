@@ -36,6 +36,14 @@ namespace FishingKing
         public string kind;
         /// <summary>0..1+: the snag tension ratio (winding against it builds it; 1 held = the line breaks).</summary>
         public float r;
+        /// <summary>A prop catch (Docs/obstacles_spec.md 6.10): how far the hook point has bitten into the face, 0..1 (SnagPhysics.Bite).</summary>
+        public float embed;
+        /// <summary>A prop catch: how far the rig has slid up (+) / down (-) the faces from where it caught (m).</summary>
+        public float dy;
+        /// <summary>A prop catch: how far it has slid along the faces in plan from where it caught (m).</summary>
+        public float slid;
+        /// <summary>A prop catch: sliding last frame (sliding friction; at rest, static: SnagPhysics.StaticK).</summary>
+        public bool moving;
     }
 
     /// <summary>
@@ -649,11 +657,45 @@ namespace FishingKing
                 new Vector2(Surface.x - from.x, Surface.z - from.z).magnitude, metres, touches.Count);
         }
 
-        /// <summary>Whether winding towards <paramref name="to"/> with the rod swept this way would slide the rig off the props it is held against.</summary>
-        public bool WouldSlide(Vector3 to, float sweepSin)
+        /// <summary>
+        /// The faces of the props the rig touches where it lies now, for the caught rig's physics (Docs/obstacles_spec.md
+        /// 6.10, SnagPhysics.Face): each prop's waterline face normal, its lean from the tiers, its friction and its top.
+        /// </summary>
+        public void PropFaces(List<PropFace> into)
         {
-            var p = Pull(to, sweepSin, out _);
-            return PullAlong(new Vector2(Surface.x, Surface.z), p, out _).sqrMagnitude >= 1e-8f;
+            into.Clear();
+            var xz = new Vector2(Surface.x, Surface.z);
+            Touching(xz);
+            foreach (var c in touches)
+                into.Add(SnagPhysics.Face(xz, c.n, c.o.TierPoly, c.o.TierY0, c.o.TierY1, c.o.top, c.o.Mat.Friction, c.o.id));
+        }
+
+        /// <summary>The hook point's grab on the props touched (the roughest material's snag factor x the prop's own).</summary>
+        public float PropGrab()
+        {
+            Touching(new Vector2(Surface.x, Surface.z));
+            float g = 0f;
+            foreach (var c in touches) g = Mathf.Max(g, c.o.Mat.grab * c.o.grabK);
+            return touches.Count > 0 ? g : 1f;
+        }
+
+        /// <summary>The line's pull in plan towards <paramref name="to"/> with the rod swept (<paramref name="sweepSin"/>): the line's way plus the sweep's bend.</summary>
+        public Vector2 PullDir(Vector3 to, float sweepSin) => Pull(to, sweepSin, out _);
+
+        /// <summary>A caught rig slid <paramref name="d"/> along the faces (m, plan); never into a prop.</summary>
+        public void SlideOnProps(Vector2 d)
+        {
+            Surface = PushOut(new Vector3(Surface.x + d.x, 0f, Surface.z + d.y));
+        }
+
+        /// <summary>The props the rig touches where it lies now (for the logs and the caught rig's faces).</summary>
+        public int TouchCount
+        {
+            get
+            {
+                Touching(new Vector2(Surface.x, Surface.z));
+                return touches.Count;
+            }
         }
 
         /// <summary>Freed off a prop it was held against: <paramref name="metres"/> out along the faces' normals (a 톡 lifts it off; never into a prop).</summary>

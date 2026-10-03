@@ -68,8 +68,11 @@ namespace FishingKing
         public float Slack01 = 0.3f;
         /// <summary>0..1 how close the line is to breaking: the rod tip and the line shiver with it.</summary>
         public float Strain01;
-        /// <summary>0..1 raises the rod from the pose's angle to upright (landing a fish).</summary>
+        /// <summary>0..1 raises the rod from the pose's angle to upright (landing a fish; a rig caught on a prop, the rod lifted to work it free).</summary>
         public float RodLift01;
+        /// <summary>0..1 lowers the rod's tip towards the water by up to <see cref="RodDipDeg"/> (a rig caught on a prop, the rod lowered to work it free).</summary>
+        public float RodDip01;
+        public const float RodDipDeg = 30f;
         /// <summary>
         /// 0..1 the 톡's rod jerk (set by the controller: a quick rise, a short hold, an easy return): the rod snaps up and
         /// back towards him from its hold (<see cref="RodJerkUp"/>, just past upright) and the line comes taut; the 3D
@@ -759,6 +762,12 @@ namespace FishingKing
             RodAngles = new Vector2(Mathf.Asin(Mathf.Clamp(baseDir.z, -1f, 1f)) * Mathf.Rad2Deg, Mathf.Atan2(baseDir.x, baseDir.y) * Mathf.Rad2Deg);
 
             var dir = RodLift01 > 0f ? Vector3.Slerp(baseDir, upright, Mathf.Clamp01(RodLift01)).normalized : baseDir;
+            // lowered: turned down about the axis across it (towards the horizontal)
+            if (RodDip01 > 0f)
+            {
+                var across = Vector3.Cross(dir, Vector3.up);
+                if (across.sqrMagnitude > 1e-6f) dir = (Quaternion.AngleAxis(-RodDipDeg * Mathf.Clamp01(RodDip01), across.normalized) * dir).normalized;
+            }
             // the 톡 jerks the rod up and back towards him (the tip lifts on screen)
             if (jerk > 0f) dir = Vector3.Slerp(dir, jerkUp, jerk).normalized;
             // under load the tip section swings round to follow the line, a soft rod further than a stiff one

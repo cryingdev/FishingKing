@@ -147,5 +147,15 @@ namespace FishingKing
         /// </summary>
         public static float WalkKeys =>
             (SimRight || KeyHeld(Key.D) || KeyHeld(Key.RightArrow) ? 1f : 0f) - (SimLeft || KeyHeld(Key.A) || KeyHeld(Key.LeftArrow) ? 1f : 0f);
+
+        /// <summary>Simulated rod keys used by the test autopilot: lift (W / up arrow), lower (S / down arrow), wind (Space), give line (B).</summary>
+        public static bool SimLift, SimDrop, SimWind, SimGive;
+
+        /// <summary>
+        /// The rod's pitch by keyboard while a rig is caught (<see cref="SideSlide"/>, vertical): +1 lifts the rod (W / up
+        /// arrow), -1 lowers it (S / down arrow), plus the autopilot's keys.
+        /// </summary>
+        public static float PitchKeys =>
+            (SimLift || KeyHeld(Key.W) || KeyHeld(Key.UpArrow) ? 1f : 0f) - (SimDrop || KeyHeld(Key.S) || KeyHeld(Key.DownArrow) ? 1f : 0f);
     }
 }

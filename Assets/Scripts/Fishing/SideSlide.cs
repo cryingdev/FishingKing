@@ -18,9 +18,20 @@ namespace FishingKing
     /// <see cref="StillMm"/> mm (a resting fingertip creeps and rolls by more than a pixel or two on a sharp screen).</para>
     /// <para>The keys only sweep once they have been let go since the sweep came on (A / D still held from walking at the
     /// ready sweep nothing); a bite holds the sweep (<see cref="Freeze"/>).</para>
+    /// <para>Made <c>vertical</c> it reads the rod's PITCH while a rig is caught on a prop (FishingController.Pitch,
+    /// Docs/obstacles_spec.md 6.10): the same rules turned a quarter round, a slide DOWN the screen lifts the rod (+, as the
+    /// 톡's pull down jerks it up) and a slide up lowers it (-); it must take longer than a 톡 (<see cref="PitchMinTime"/>),
+    /// so a quick pull down stays a 톡. W / S (and the up / down arrows) hold it while held.</para>
     /// </summary>
     public class SideSlide
     {
+        /// <summary>A vertical slide (the pitch) leans live and commits only once its stroke is longer than a 톡 (s).</summary>
+        public const float PitchMinTime = LureInput.FlickMaxTime;
+        readonly bool vertical;
+
+        /// <summary><paramref name="vertical"/>: the rod's pitch (a slide down / up the screen, W / S) instead of its sweep.</summary>
+        public SideSlide(bool vertical = false) { this.vertical = vertical; }
+
         public const float MinTravel = 0.06f;    // W, net sideways, to commit
         public const float LiveTravel = 0.035f;  // W, the rod starts leaning live
         public const float MaxAngle = 30f;       // degrees from horizontal
@@ -96,8 +107,10 @@ namespace FishingKing
                 var s = PointerInput.Samples;
                 int from = 0;
                 while (from < s.Count - 1 && s[from].time < fromT) from++;   // (the samples list drops its oldest on long presses)
-                var cls = Classify(s, from);
-                Live = !circled && cls.straight && Mathf.Abs(cls.dx) >= LiveTravel && Mathf.Abs(cls.lateDeg) <= LateAngle;
+                var cls = Classify(s, from, vertical);
+                // (the pitch: no live lean while the stroke could still be a 톡)
+                bool slow = !vertical || cls.dur >= PitchMinTime;
+                Live = !circled && slow && cls.straight && Mathf.Abs(cls.dx) >= LiveTravel && Mathf.Abs(cls.lateDeg) <= LateAngle;
                 if (Live)
                 {
                     live = Clamp(startValue + cls.dx / FullTravel);
@@ -130,6 +143,7 @@ namespace FishingKing
                     else if (Mathf.Abs(cls.dx) < MinTravel) LastReject = cls.deg > MaxAngle ? "angle" : "short";
                     else if (cls.deg > MaxAngle) LastReject = "angle";
                     else if (!cls.straight) LastReject = "bent";
+                    else if (!slow) LastReject = "quick";   // (the pitch: a quick pull down is a 톡)
                     else Commit(cls.dx);
                     live = Value;
                 }
@@ -138,7 +152,7 @@ namespace FishingKing
             // a live lean that ended without being committed was taken back (the stroke became a circle / bent away)
             if (wasLive && !Live && !SlideNow) Cancels++;
             wasLive = Live;
-            float k = PointerInput.WalkKeys;
+            float k = vertical ? PointerInput.PitchKeys : PointerInput.WalkKeys;
             if (keyLatch)
             {
                 if (k == 0f) keyLatch = false;
@@ -174,7 +188,7 @@ namespace FishingKing
             Slides++;
             SlideNow = true;
             LastReject = "";
-            Debug.Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, "[Sweep] slide {0:+0.000;-0.000}W -> sweep {1:+0.00;-0.00;0.00}", dx, v));
+            Debug.Log(string.Format(System.Globalization.CultureInfo.InvariantCulture, vertical ? "[Pitch] slide {0:+0.000;-0.000}W -> pitch {1:+0.00;-0.00;0.00}" : "[Sweep] slide {0:+0.000;-0.000}W -> sweep {1:+0.00;-0.00;0.00}", dx, v));
         }
 
         static float Clamp(float v) => Mathf.Clamp(v, -1f, 1f);
@@ -182,27 +196,33 @@ namespace FishingKing
         struct Stroke
         {
             public float dx, deg, lateDeg, far;   // net sideways (W), chord / latest direction from horizontal (deg), farthest from the start (W)
+            public float dur;                     // s from the stroke's first sample to its last
             public bool straight;
         }
 
-        /// <summary>The stroke from sample <paramref name="i0"/> to the last: net sideways travel, angles, straightness.</summary>
-        static Stroke Classify(System.Collections.Generic.IReadOnlyList<PointerInput.Sample> s, int i0)
+        /// <summary>
+        /// The stroke from sample <paramref name="i0"/> to the last: net sideways travel, angles, straightness.
+        /// <paramref name="vert"/>: turned a quarter round first (down the screen = + travel, angles from the vertical).
+        /// </summary>
+        static Stroke Classify(System.Collections.Generic.IReadOnlyList<PointerInput.Sample> s, int i0, bool vert = false)
         {
             var r = new Stroke { deg = 90f, lateDeg = 90f };
             int n = s.Count;
             if (n - i0 < 2) return r;
+            r.dur = s[n - 1].time - s[i0].time;
             float W = Mathf.Max(1f, Screen.width);
-            var p0 = s[i0].pos;
-            var d = s[n - 1].pos - p0;
+            Vector2 At(int i) => vert ? new Vector2(-s[i].pos.y, s[i].pos.x) : s[i].pos;
+            var p0 = At(i0);
+            var d = At(n - 1) - p0;
             float chord = d.magnitude;
-            for (int i = i0 + 1; i < n; i++) r.far = Mathf.Max(r.far, (s[i].pos - p0).magnitude / W);
+            for (int i = i0 + 1; i < n; i++) r.far = Mathf.Max(r.far, (At(i) - p0).magnitude / W);
             r.dx = d.x / W;
             if (chord < 1f) return r;
             r.deg = Mathf.Atan2(Mathf.Abs(d.y), Mathf.Abs(d.x)) * Mathf.Rad2Deg;
             float bow = 0f;
             for (int i = i0 + 1; i < n - 1; i++)
             {
-                var q = s[i].pos - p0;
+                var q = At(i) - p0;
                 bow = Mathf.Max(bow, Mathf.Abs(d.x * q.y - d.y * q.x) / chord);
                 // coming back past the start: a loop, not a slide
                 // (more than a quarter chord behind the start along the slide: Dot(q, d) is that distance x the chord)
@@ -211,7 +231,7 @@ namespace FishingKing
             // the latest direction: over the last LateWindow (at least two samples back), the same way as the chord
             int j = n - 2;
             while (j > i0 && s[n - 1].time - s[j].time < LateWindow) j--;
-            var late = s[n - 1].pos - s[j].pos;
+            var late = At(n - 1) - At(j);
             r.lateDeg = late.sqrMagnitude < 4f ? 0f
                 : Vector2.Dot(late, d) < 0f ? 180f : Mathf.Atan2(Mathf.Abs(late.y), Mathf.Abs(late.x)) * Mathf.Rad2Deg;
             r.straight = bow <= Bow * chord && r.deg <= MaxAngle;

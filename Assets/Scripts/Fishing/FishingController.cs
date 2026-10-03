@@ -404,6 +404,10 @@ namespace FishingKing
             if (sweepKeep) Slide.Freeze();
             else Slide.Update(Gesture, sweepIn);
             Angler.Sweep = sweepIn || sweepKeep ? Slide.Shown * Angler.SweepMax : 0f;
+            // the rod's pitch (a slow slide down / up, W / S): only while a rig is caught on a prop (FishingController.SnagFree)
+            bool pitchIn = !L.IsIce && State == S.Snagged && Tackle.Snag != null && Tackle.Snag.kind == "prop";
+            Pitch.Update(Gesture, pitchIn);
+            if (!pitchIn && (pitchS != 0f || Pitch.Value != 0f || Angler.RodDip01 != 0f)) ClearRodPitch();
             Angler.SideLow = State == S.Fighting;   // side pressure: the rod held low to the side
             // the legend's lurk point, cues and build-up (the meter runs while a lure soaks; never on a spent rig or a bare hook)
             if (Watch != null && State != S.Encounter && Watch.Tick(dt, State == S.Waiting && Tackle.State == Tackle.Mode.Water && !NoBites && !spentRig && !Tackle.BareHook))
