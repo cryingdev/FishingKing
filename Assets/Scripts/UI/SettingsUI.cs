@@ -50,8 +50,10 @@ namespace FishingKing
             var w = Dialog.Window("조작", new Vector2(Width, Height), out var close, onClose: onClose);
             Choice(w, 0, "손잡이", () => Game.Data.leftHanded ? 1 : 0, v => Game.I.SetLeftHanded(v == 1), ("오른손", 0), ("왼손", 1));
             Choice(w, 1, "낚싯대 위치", () => Game.Data.rodCentre ? 1 : 0, v => Game.I.SetRodCentre(v == 1), ("옆", 0), ("가운데", 1));
+            // the how-to lines (FishingHUD.Guides): the hint bar, the flashes' instructions, the snag strip's guide
+            Row(w, 2, "조작 안내 문구", () => Game.Data.guideText, on => Game.I.SetGuideText(on), "표시", "숨김");
             var note = UIKit.Label(w, "왼손: 낚싯대를 오른손에 들고 왼손으로 릴을 감아요.\n가운데: 두 손으로 배 앞에 들고 끝은 정면을 향해요.", 18, UIKit.Ink, TextAnchor.UpperLeft, false);
-            note.rectTransform.At(new Vector2(0, 1), new Vector2(44, FirstRowY - 2 * RowStep + 26), new Vector2(Width - 88, 96), new Vector2(0, 1));
+            note.rectTransform.At(new Vector2(0, 1), new Vector2(44, FirstRowY - 3 * RowStep + 26), new Vector2(Width - 88, 60), new Vector2(0, 1));
             note.name = "ControlsNote";
             var done = UIKit.Button(w, "닫기", "grey", close, new Vector2(160, 56));
             done.GetComponent<RectTransform>().At(new Vector2(0.5f, 0), new Vector2(0, 28), new Vector2(160, 56), new Vector2(0.5f, 0));

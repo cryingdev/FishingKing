@@ -373,7 +373,7 @@ namespace FishingKing
                 f.ForceBite();
                 Fx.Splash(s2, Mathf.Clamp(P.PixelsPerMetre(tk.Surface) / 25f, 0.4f, 1.1f), Stage.WaterTint, 12, P.DepthOf(tk.Surface));
                 Fx.Ripple(s2, Mathf.Clamp(P.PixelsPerMetre(tk.Surface) * 1.6f / 64f, 0.12f, 0.8f), P.Foreshorten(tk.Surface) * 1.6f + 0.15f, Color.white, 0.8f);
-                hud.Flash("연잎을 뚫고 덮쳤다! 쑥! 지금 탭해서 챔질!", UIKit.Gold, 1f);
+                hud.Flash(FishingHUD.G("연잎을 뚫고 덮쳤다! 쑥!", "위로 쳐올려 챔질!"), UIKit.Gold, 1f);
                 Obstacles.Say($"pad strike {f.Sp.id}");
                 return;
             }
@@ -587,7 +587,7 @@ namespace FishingKing
             ResetPropWork();
             foreach (var f in Spawner.Fish) if (f.State == FishAgent.St.Approach || f.State == FishAgent.St.Nibble) f.LoseInterest();
             SetState(S.Snagged);
-            if (kind == "pad") hud.Flash("연잎에 걸렸어요 — 톡 당기거나 좌우로 밀어요", UIKit.Bad, 1.6f);
+            if (kind == "pad") hud.Flash(FishingHUD.G("연잎에 걸렸어요", "— 톡 당기거나 좌우로 밀어요"), UIKit.Bad, 1.6f);
             else if (kind == "prop") hud.Flash($"{PropName(zone)}에 걸렸다!", UIKit.Bad, 1.2f);
             else hud.Flash(kind == "weed" ? "수초에 걸렸다!" : kind == "reed" ? "갈대에 걸렸다!" : "밑걸림!", UIKit.Bad, 1.2f);
             Sfx.Play(kind == "hard" || kind == "prop" ? Sfx.Knock : Sfx.Tear, 0.6f, 0.8f);
@@ -1014,7 +1014,7 @@ namespace FishingKing
             fishDepthTarget = Mathf.Clamp(bed - 0.2f, Mathf.Min(sp.depthMin, bed), Mathf.Min(sp.depthMax, bed));
             Fight.BeginCoverRun();
             horseT = 0f;
-            hud.Flash("커버로 파고든다! 반대로 밀어요!", UIKit.Bad, 1.1f);
+            hud.Flash(FishingHUD.G("커버로 파고든다!", "반대로 밀어요!"), UIKit.Bad, 1.1f);
             Obstacles.Say(string.Format(CIo, "cover run {0} -> {1} hold ({2:0.00}, {3:0.00}) yaw {4:+0.00;-0.00} run {5:+0;-0}", sp.id, c.id, hold.x, hold.y, coverYaw, FishRun));
         }
 
@@ -1138,7 +1138,7 @@ namespace FishingKing
             if (!abrTold && f.Abrasion >= 0.6f)
             {
                 abrTold = true;
-                hud.Flash("줄이 버티지 못해요! 빨리 빼내요!", UIKit.Bad, 1.2f);
+                hud.Flash(FishingHUD.G("줄이 버티지 못해요!", "빨리 빼내요!"), UIKit.Bad, 1.2f);
             }
             sparkT -= dt;
             if (sparkT <= 0f)

@@ -98,6 +98,7 @@ namespace FishingKing
         // before them reads 100 (the initialisers), soundOn stays the master mute on top
         public int masterVol = 100, musicVol = 100, sfxVol = 100, ambVol = 100;
         public bool reelRing = true;     // the circle + direction arrows shown while drawing reel circles
+        public bool guideText = true;    // 설정 → 조작 → 조작 안내 문구: the how-to lines (the hint bar, the flashes' instructions, the snag strip's guide); a save from before it reads true
         public bool reelReverse;         // counter-clockwise winds in (default: clockwise)
         public int zoomMode;             // 캐스팅 후 줌인 (ZoomMode): 0 1.25배 (default; older saves), 1 끔, 2 1.5배, 3 액티브
         // 설정 → 조작 (Angler.ReadSettings): 왼손 = the rod in the right hand, the left hand cranking (default 오른손: the rod in

@@ -641,6 +641,12 @@ namespace FishingKing
             Notify();
         }
 
+        public void SetGuideText(bool on)
+        {
+            data.guideText = on;
+            Notify();
+        }
+
         public void SetReelRing(bool on)
         {
             data.reelRing = on;
