@@ -82,12 +82,20 @@ namespace FishingKing
             Obstacles.Rnd = new System.Random(seed + 1);
             SteerGear("rod_carbon", "reel_highgear", "line_nylon4");
             EquipTest("bait_shrimp", ctl);
+            // -fksfhook <id>: the rig's hook (a pack bought and put on; the weedless one's guard snags less and bites less)
+            string hookArg = Arg("-fksfhook");
+            var sfHook = hookArg != null ? GameDatabase.GetItem<HookDef>(hookArg) : null;
+            if (sfHook != null)
+            {
+                if (!sfHook.infinite) Game.I.AddHook(sfHook.id, 999);
+                Game.I.Equip(sfHook);
+            }
             FishingController.NoBites = true;
             GameClock.Scale = 0f;
             GameClock.Min = GameClock.Centre(Period.Day);
             Application.targetFrameRate = -1;
             Time.captureDeltaTime = 1f / 60f;
-            Log($"[SNAGFREE] {ctl.Stage.Def.id}: {props.Count} props, {tets.Count} tetrapod zones, seed {seed}, {target} catches a way, limit {limit:0} s");
+            Log($"[SNAGFREE] {ctl.Stage.Def.id}: {props.Count} props, {tets.Count} tetrapod zones, seed {seed}, {target} catches a way, limit {limit:0} s, hook {Game.I.Hook.id}");
             var ways = new[] { new SfWay { name = "sweep" }, new SfWay { name = "slack" }, new SfWay { name = "tight" } };
             float[] phases = { 0.5f, 0.25f, 0.75f };
             float start = Time.realtimeSinceStartup;
